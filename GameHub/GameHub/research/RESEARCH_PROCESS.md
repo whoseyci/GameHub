@@ -9,7 +9,7 @@ This file replaces the many raw experiment logs that were generated during resea
 Build in `public/index.html`:
 
 ```text
-v15-skyjo-bucketed-polish
+v14-skyjo-polished
 ```
 
 ### Flip 7 hard
@@ -65,13 +65,8 @@ training/skyjo_solo_params.json
 ```
 
 ```json
-{
-  "n4": [2.427,3.157,3.55,1.873,4.354,3.155,1.87,3.686,1.634,2.64,0.818,7.501],
-  "n6": [2.425,3.413,3.211,1.995,3.733,3.335,0.798,3.036,1.283,2.688,0.645,8.273]
-}
+[2.925,3.717,3.222,2.816,3.552,3.377,1.422,3.281,1.41,3.035,0.877,7.546]
 ```
-
-The client uses `n4` for 2–4 players and `n6` for 5+ players.
 
 Param layout:
 
@@ -84,10 +79,10 @@ Final eval snapshot vs previous uploaded-v3 production policy:
 
 | Players | New solo-polished | Previous prod v3 | Result |
 |---:|---:|---:|---|
-| 2 | 58.63% (`n4`) | 41.38% | big gain |
-| 4 | 49.54% (`n4`) | 29.33% | huge gain |
-| 6 | 40.88% (`n6`) | 22.18% | huge gain |
-| 8 | 26–27% (`n4`/`n6`) | ~16–18% | huge gain |
+| 2 | 55.55% | 44.45% | big gain |
+| 4 | 48.33% | 29.65% | huge gain |
+| 6 | 38.90% | 22.53% | huge gain |
+| 8 | 27.09% | 15.83% | huge gain |
 
 Note: these evals include fillers such as medium/easy where relevant; see previous commits if raw logs are needed.
 
@@ -157,10 +152,9 @@ Note: these evals include fillers such as medium/easy where relevant; see previo
    - Added explicit features for low cards, high discard discipline, reveal geometry, triplet opportunities, and unsafe close penalty.
    - Direct multiplayer tuning over these features became the strongest Skyjo bot.
 
-6. **Polish runs from current solo policy**
+6. **Polish run from current solo policy**
    - Further improved the solo-inspired policy.
-   - Separate polish runs found that 2–4p and 5+p prefer slightly different risk/tempo settings.
-   - Promoted as final v15 bucketed policy.
+   - Promoted as final v14.
 
 ---
 
