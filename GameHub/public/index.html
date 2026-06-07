@@ -216,6 +216,10 @@
       <h1 class="logo">GAME HUB</h1>
       <p class="muted" style="margin-bottom:26px">Play card games with friends.</p>
       <div id="verStamp" style="margin-top:4px;font-size:.72rem;color:var(--text-dim);font-weight:800;letter-spacing:.5px;opacity:.75"></div>
+      <div style="margin:10px 0 14px">
+        <div class="muted" style="font-size:.8rem;margin-bottom:6px;font-weight:700">Available games (click to Quick Play)</div>
+        <div id="mainMenuGames" class="game-tiles"></div>
+      </div>
       <button class="btn purple" onclick="goOnline()">Play Online</button>
       <button class="btn secondary" onclick="showScreen('localPick')">Local (Pass &amp; Play)</button>
       <button class="btn secondary" onclick="showRulesMenu()" style="background:transparent;box-shadow:none;border:2px solid var(--border)">📖 How to Play</button>
@@ -374,7 +378,7 @@
    shape as Skyjo below. The hub never needs to change.
    ==================================================================== */
 const PARTYKIT_HOST = location.host; // served by the same Worker
-const BUILD_VERSION = "v14-skyjo-polished"; // bump on each change; shown on the menu
+const BUILD_VERSION = "v15-qwixx-added"; // bump on each change; shown on the menu
 
 const $=id=>document.getElementById(id);
 function showScreen(id){
@@ -484,6 +488,7 @@ function goOnline(){showScreen('onlineSetup');}
 catalogue=[
   {id:'skyjo',name:'Skyjo',minPlayers:2,maxPlayers:8,description:'Lowest score wins.',emoji:'🃏'},
   {id:'flip7',name:'Flip 7',minPlayers:2,maxPlayers:8,description:'Push your luck to 200.',emoji:'🎴'},
+  {id:'qwixx',name:'Qwixx',minPlayers:2,maxPlayers:5,description:'Cross numbers left-to-right in colored rows using dice sums.',emoji:'🎲'},
 ];
 
 /* ---- Rulebooks (accessible from menu, pickers, and inside a game) ---- */
@@ -507,6 +512,17 @@ const RULES={
       'Round ends when all players bust/stay or someone Flip 7s. First to 200 wins.',
     ],
     tip:'High numbers are riskier (more copies in the deck). The 0 is always safe.'},
+  qwixx:{title:'🎲 Qwixx',quick:'Cross numbers using dice sums (2–12).',
+    steps:[
+      'Everyone sees the same dice roll (2 white + 4 colored).',
+      'On your turn (active player): first optionally cross the white sum in any row; then cross a colored die + one white in that color\'s row (or pass).',
+      'Non-active players may cross the white sum in any row.',
+      'Numbers must be crossed left-to-right (increasing for red/yellow, decreasing for green/blue).',
+      'Lock a row (and remove its die) once you have 5+ crosses including the lock number (12 or 2).',
+      'Game ends when 2+ rows locked, or anyone reaches 4 penalties (–5 each).',
+      'Score: sum of (crosses × (crosses+1)/2) per row minus 5×penalties. Highest wins.',
+    ],
+    tip:'The active player gets two crosses per turn (white + colored). Everyone can take the white sum.'},
 };
 function openRules(gameId){
   const r=RULES[gameId];if(!r){showRulesMenu();return;}
@@ -1165,6 +1181,179 @@ class Flip7Engine{
     return{game:'flip7',phase:s.phase,over,yourSeat:seat,summary,flip7:{round:s.round,current:s.current,phase:s.phase,pendingAction:s.pendingAction,viewerSeat:seat,deckCount:s.deck.length,discardCount:s.discard.length,seq:s.seq,events:s.events,players:s.players.map(p=>({name:p.name,nums:p.nums,mods:p.mods,second:p.second,status:p.status,bustCard:p.bustCard,banked:p.banked,unique:new Set(p.nums).size,live:live(p)}))}};}
 }
 
+/* ====================== QWIXX CLIENT (added so the game appears + is playable) ======================
+   Minimal but functional UI + input wiring. Matches the server Qwixx module.
+   Local/offline is a stub (online works fully via the authoritative server).
+   ================================================================= */
+(function(){
+  const COLORS = ["red","yellow","green","blue"];
+  const ROW_NUMS = {
+    red: [2,3,4,5,6,7,8,9,10,11,12],
+    yellow: [2,3,4,5,6,7,8,9,10,11,12],
+    green: [12,11,10,9,8,7,6,5,4,3,2],
+    blue: [12,11,10,9,8,7,6,5,4,3,2],
+  };
+  const COLOR_STYLES = {
+    red: {bg:'#f55', border:'#c00'},
+    yellow: {bg:'#ff5', border:'#cc0'},
+    green: {bg:'#5f5', border:'#0a0'},
+    blue: {bg:'#55f', border:'#00c'},
+  };
+
+  function render(view){
+    const s = view.qwixx || {};
+    const main = $('mainBoardsContainer');
+    const mini = $('miniBoardsContainer');
+    const top = $('topArea');
+    main.innerHTML = '';
+    mini.innerHTML = '';
+
+    const isMyTurn = s.activeSeat === view.yourSeat;
+    const dice = s.dice;
+
+    // Dice + turn header
+    let topHtml = `<div style="display:flex;gap:10px;align-items:center;justify-content:center;flex-wrap:wrap">`;
+    if (dice) {
+      const die = (v, col) => `<span style="display:inline-block;width:40px;height:40px;line-height:40px;text-align:center;font-size:20px;font-weight:800;border:3px solid #222;border-radius:8px;background:${(col==='white'?'#f8f8f8':COLOR_STYLES[col].bg)};color:#111;margin:1px 3px;box-shadow:0 2px 3px rgba(0,0,0,.4);">${v}</span>`;
+      topHtml += `<div style="margin-right:8px"><b>White</b><br>${die(dice.white1,'white')}${die(dice.white2,'white')}</div>`;
+      topHtml += `<div><b>Colored</b><br>${die(dice.red,'red')}${die(dice.yellow,'yellow')}${die(dice.green,'green')}${die(dice.blue,'blue')}</div>`;
+    } else {
+      topHtml += `<div style="padding:6px 14px;background:#222;border-radius:8px;color:#999;font-size:13px">Dice not rolled</div>`;
+    }
+    topHtml += `</div>`;
+    topHtml += `<div style="text-align:center;margin-top:4px;font-size:13px;font-weight:700">${isMyTurn ? '<span style="color:#5f5">YOUR TURN</span>' : ((s.allPlayers[s.activeSeat]?.name||'P'+(s.activeSeat+1)) + "'s turn")}</div>`;
+    top.innerHTML = topHtml;
+
+    // YOUR BOARD
+    const yourBoard = document.createElement('div');
+    yourBoard.style.cssText = 'margin:8px 0 4px;padding:10px 8px;background:#111;border:2px solid #333;border-radius:12px';
+    let yourHtml = `<div style="font-weight:700;font-size:13px;margin-bottom:6px;color:#ccc">YOU — Penalties: <b>${s.yourPenalties||0}</b>/4 ${s.yourLocked ? Object.values(s.yourLocked).filter(Boolean).length : 0} locked</div>`;
+
+    COLORS.forEach(color => {
+      const nums = ROW_NUMS[color];
+      const crossed = new Set((s.yourRows && s.yourRows[color]) || []);
+      const locked = !!(s.yourLocked && s.yourLocked[color]);
+      const st = COLOR_STYLES[color];
+      yourHtml += `<div style="display:flex;gap:3px;margin:3px 0;align-items:center">`;
+      yourHtml += `<span style="width:52px;font-size:10px;font-weight:800;color:${st.bg};letter-spacing:0.5px">${color.toUpperCase()}</span>`;
+      nums.forEach(n => {
+        const isC = crossed.has(n);
+        const clickable = !!dice && !isC && !locked;
+        const bg = isC ? st.bg : '#1f1f1f';
+        const colr = isC ? '#111' : '#ddd';
+        yourHtml += `<span class="qwixx-cell" data-color="${color}" data-num="${n}" style="flex:1 0 22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;border:1.5px solid ${st.border};background:${bg};color:${colr};border-radius:3px;${clickable ? 'cursor:pointer' : 'opacity:.55'}">${n}</span>`;
+      });
+      if (locked) yourHtml += `<span style="margin-left:4px;font-size:11px">🔒</span>`;
+      yourHtml += `</div>`;
+    });
+    yourBoard.innerHTML = yourHtml;
+    main.appendChild(yourBoard);
+
+    // Wire clicks
+    yourBoard.querySelectorAll('.qwixx-cell').forEach(el => {
+      const col = el.dataset.color;
+      const num = parseInt(el.dataset.num, 10);
+      const crossed = new Set((s.yourRows && s.yourRows[col]) || []);
+      if (!crossed.has(num) && dice && !(s.yourLocked && s.yourLocked[col])) {
+        el.onclick = () => {
+          const wsum = dice.white1 + dice.white2;
+          if (num === wsum) {
+            act(view.yourSeat, {action: 'cross_white', color: col});
+          } else if (isMyTurn) {
+            const cval = dice[col];
+            if (dice.white1 + cval === num) act(view.yourSeat, {action:'cross_colored', white:1, color: col});
+            else if (dice.white2 + cval === num) act(view.yourSeat, {action:'cross_colored', white:2, color: col});
+          }
+        };
+      }
+    });
+
+    // Controls for active (use attached listeners so act() from closure works)
+    if (isMyTurn) {
+      const ctr = document.createElement('div');
+      ctr.style.cssText = 'text-align:center;margin:6px 0';
+      if (!dice) {
+        const b = document.createElement('button');
+        b.className = 'btn';
+        b.style.padding = '6px 18px';
+        b.textContent = '🎲 Roll the Dice';
+        b.onclick = () => act(view.yourSeat, {action:'roll'});
+        ctr.appendChild(b);
+      } else {
+        const pass = document.createElement('button');
+        pass.className = 'btn';
+        pass.style.background = '#622';
+        pass.style.padding = '6px 12px';
+        pass.textContent = 'PASS (+1 penalty)';
+        pass.onclick = () => act(view.yourSeat, {action:'pass'});
+        ctr.appendChild(pass);
+
+        COLORS.forEach(c => {
+          const row = (s.yourRows && s.yourRows[c]) || [];
+          const lockNum = (c==='red'||c==='yellow') ? 12 : 2;
+          if (row.length >= 5 && row.includes(lockNum) && !(s.yourLocked && s.yourLocked[c])) {
+            const lb = document.createElement('button');
+            lb.className = 'btn';
+            lb.style.background = '#252';
+            lb.style.padding = '4px 8px';
+            lb.style.fontSize = '12px';
+            lb.textContent = `Lock ${c} 🔒`;
+            lb.onclick = () => act(view.yourSeat, {action:'lock', color: c});
+            ctr.appendChild(document.createTextNode(' '));
+            ctr.appendChild(lb);
+          }
+        });
+      }
+      main.appendChild(ctr);
+    }
+
+    // Other players
+    (s.allPlayers || []).forEach(p => {
+      if (p.seat === view.yourSeat) return;
+      const d = document.createElement('div');
+      d.style.cssText = 'display:inline-block;margin:2px 6px;padding:2px 8px;background:#222;border-radius:6px;font-size:11px;white-space:nowrap';
+      const actv = (p.seat === s.activeSeat) ? ' <span style="color:#5f5">●</span>' : '';
+      d.innerHTML = `${p.name} <span style="opacity:.7">P${p.penalties}</span> L${p.lockedCount}${actv}`;
+      mini.appendChild(d);
+    });
+
+    if (s.removedDice && s.removedDice.length) {
+      const r = document.createElement('div');
+      r.style.cssText = 'font-size:10px;color:#666;margin-top:2px';
+      r.textContent = 'Dice removed: ' + s.removedDice.join(' ');
+      mini.appendChild(r);
+    }
+  }
+
+  function act(seat, msg){
+    if (window.mode === 'local') {
+      console.log('[Qwixx] Local play stub only — use online for the real game.');
+    } else {
+      net.send({type:'action', ...msg});
+    }
+  }
+
+  window.LocalEngines['qwixx'] = function(names){
+    return {
+      apply(){}, next(){}, actor(){return 0;},
+      viewFor(seat){
+        return {
+          game:'qwixx', phase:'PLAY', over:false, yourSeat:seat,
+          qwixx: {
+            activeSeat:0, dice:null,
+            yourRows:{red:[],yellow:[],green:[],blue:[]},
+            yourPenalties:0, yourLocked:{red:false,yellow:false,green:false,blue:false},
+            removedDice:[],
+            allPlayers: names.map((n,i)=>({seat:i, name:n||('P'+(i+1)), penalties:0, lockedCount:0}))
+          }
+        };
+      }
+    };
+  };
+
+  window.GameClients['qwixx'] = {render};
+})();
+
 /* ====================== BOTS ======================
    Bots "think" on the host's client (online) or the local device (offline) so the
    server spends ~0 compute. Easy/Medium are heuristics; Hard uses compact
@@ -1474,6 +1663,13 @@ const Bots=(()=>{
       try{
         if(gameId==='skyjo')return skyjoChoose(view,diff);
         if(gameId==='flip7')return flip7Choose(view,diff);
+        if(gameId==='qwixx'){
+          const s = view.qwixx || {};
+          if(!s.dice) return {action:'roll'};
+          // Very simple bot (always pass after rolling). Doesn't rely on personalized 'your' data in the host view.
+          // Good enough to unblock testing with bots; real players get full game.
+          return {action:'pass'};
+        }
       }catch(e){console.warn('bot error',e);}
       return null;
     }
@@ -1543,6 +1739,7 @@ function scheduleBot(view,bot,seat){
 /* ====================== INIT ====================== */
 {const v=$('verStamp');if(v)v.textContent='build '+BUILD_VERSION;}
 renderTiles('quickTiles',quickPlay); // quick play: no size filter (matchmaking fills the room)
+renderTiles('mainMenuGames', quickPlay);
 renderLocalSeats();
 refreshLocalTiles();
 if(SFX.muted){const b=$('soundBtn');if(b){b.textContent='🔇';b.classList.add('off');}}

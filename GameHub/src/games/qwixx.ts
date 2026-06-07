@@ -61,8 +61,8 @@ export const Qwixx: GameModule = {
 
   create(names) {
     const state: QwixxState = {
-      players: names.map(() => ({
-        name: "",
+      players: names.map((name) => ({
+        name: name || "",
         rows: createEmptyRows(),
         penalties: 0,
         locked: { red: false, yellow: false, green: false, blue: false },
@@ -73,7 +73,6 @@ export const Qwixx: GameModule = {
       lockedRows: 0,
       removedDice: [],
     };
-    // names assigned in view
     return state;
   },
 
