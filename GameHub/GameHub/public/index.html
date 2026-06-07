@@ -1659,6 +1659,13 @@ const Bots=(()=>{
       try{
         if(gameId==='skyjo')return skyjoChoose(view,diff);
         if(gameId==='flip7')return flip7Choose(view,diff);
+        if(gameId==='qwixx'){
+          const s = view.qwixx || {};
+          if(!s.dice) return {action:'roll'};
+          // Very simple bot (always pass after rolling). Doesn't rely on personalized 'your' data in the host view.
+          // Good enough to unblock testing with bots; real players get full game.
+          return {action:'pass'};
+        }
       }catch(e){console.warn('bot error',e);}
       return null;
     }
