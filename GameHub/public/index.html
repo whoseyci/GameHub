@@ -498,6 +498,15 @@ const RULES={
     ],
     tip:'Dump high cards, keep low/negative ones. Watch for column triplets!'},
   flip7:{title:'🎴 Flip 7',quick:'Push your luck — race to 200.',
+  qwixx:{title:'🎲 Qwixx',quick:'Cross numbers left-to-right using dice.',
+    steps:[
+      'Roll 2 white + 4 colored dice. Everyone can cross the white sum in any row.',
+      'Active player may also cross one white+colored sum in the matching color row.',
+      'Numbers must be crossed left→right in each row; skipping blocks earlier numbers.',
+      'Lock a row (remove die) by crossing 5+ numbers then the end lock number (12 red/yellow, 2 green/blue).',
+      'Game ends at 2 locked rows or 4 penalties (-5 each). Score = triangular numbers per row.',
+    ],
+    tip:'Lock rows early to force penalties on opponents. Balance multiple rows.'},
     steps:[
       'On your turn choose <b>Hit</b> (draw a card) or <b>Stay</b> (bank your points, you’re out for the round).',
       'Number cards: there’s one 0, two 2s, three 3s … twelve 12s. Draw a <b>duplicate number → BUST</b> (score 0 this round).',
@@ -1113,6 +1122,90 @@ class SkyjoEngine{
   // reset the timeline cursor when (re)entering a game
   window._flip7ResetSeq=function(){lastSeq=-1;};
   window.GameClients['flip7']={render};
+
+/* -------------------- QWIXX client (basic functional) -------------------- */
+(function(){
+  function render(view){
+    const s = view.qwixx;
+    $('topArea').style.display = 'none';
+    $('miniBoardsContainer').innerHTML = '';
+    const main = $('mainBoardsContainer');
+    main.innerHTML = '';
+    const COLORS = ['red','yellow','green','blue'];
+    const RANGES = {red:[2,12,1,12], yellow:[2,12,1,12], green:[12,2,-1,2], blue:[12,2,-1,2]};
+
+    // dice display + controls
+    const diceDiv = document.createElement('div');
+    diceDiv.style.cssText = 'display:flex;gap:8px;justify-content:center;margin:10px 0;flex-wrap:wrap';
+    if(s.dice){
+      const d = s.dice;
+      const labels = ['W1','W2','R','Y','G','B'];
+      const vals = [d.white1,d.white2,d.red,d.yellow,d.green,d.blue];
+      vals.forEach((v,i)=>{ const el=document.createElement('div'); el.style.cssText='width:42px;height:42px;border:2px solid #fff;border-radius:8px;background:#fff;color:#111;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:1.4rem'; el.textContent=v; diceDiv.appendChild(el); });
+    }
+    main.appendChild(diceDiv);
+
+    // status
+    const sb = $('statusBar');
+    const myTurn = s.activeSeat === view.yourSeat && view.yourSeat >=0;
+    if(myTurn && !s.dice) sb.innerHTML = `<button class="btn green" style="margin:0;padding:8px 18px" onclick="net.send({type:'action',action:'roll'})">Roll Dice</button>`;
+    else if(myTurn && s.dice) sb.innerHTML = `<span style="color:#10b981">Your turn — choose crosses or Pass</span>`;
+    else sb.textContent = `Waiting for P${s.activeSeat+1}...`;
+
+    // player boards
+    s.allPlayers.forEach((pl,i) => {
+      const wrap = document.createElement('div');
+      wrap.className = 'player-board' + (i===s.activeSeat ? ' active-turn' : '') + (i===view.yourSeat ? ' me' : '');
+      const header = document.createElement('div'); header.className='board-header';
+      header.innerHTML = `<span>${pl.name}</span><span class="score-badge">Pen: ${pl.penalties}</span>`;
+      wrap.appendChild(header);
+
+      const grid = document.createElement('div'); grid.style.cssText='display:grid;grid-template-columns:repeat(4,1fr);gap:4px';
+      COLORS.forEach((c,ci) => {
+        const col = document.createElement('div'); col.style.cssText='display:flex;flex-direction:column;gap:2px';
+        const r = RANGES[c];
+        const nums = [];
+        for(let n=r[0]; r[2]>0 ? n<=r[1] : n>=r[1]; n+=r[2]) nums.push(n);
+        nums.forEach(n => {
+          const cell = document.createElement('div');
+          cell.style.cssText = `width:32px;height:32px;border:1px solid #64748b;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:0.85rem;font-weight:700;${s.yourRows && s.yourRows[c] && s.yourRows[c].includes(n) ? 'background:#22c55e;color:#fff' : 'background:#334155'}`;
+          cell.textContent = n;
+          if(i===view.yourSeat && myTurn && s.dice){
+            const sumW = s.dice.white1 + s.dice.white2;
+            const canW = sumW === n;
+            const canC = false; // colored handled separately
+            if(canW) { cell.style.border='2px solid #eab308'; cell.onclick=()=>net.send({type:'action',action:'cross_white',color:c}); }
+          }
+          col.appendChild(cell);
+        });
+        grid.appendChild(col);
+      });
+      wrap.appendChild(grid);
+
+      // action buttons for active
+      if(i===view.yourSeat && myTurn && s.dice){
+        const acts = document.createElement('div'); acts.style.cssText='margin-top:6px;display:flex;gap:6px;flex-wrap:wrap';
+        // white already clickable on cells
+        COLORS.forEach(c=>{
+          const b=document.createElement('button'); b.className='btn secondary'; b.style.cssText='padding:4px 8px;font-size:0.75rem;margin:0'; b.textContent = 'W+'+c[0];
+          b.onclick = () => {
+            const w = prompt('Which white? 1 or 2')|0;
+            net.send({type:'action',action:'cross_colored',white:w,color:c});
+          };
+          acts.appendChild(b);
+        });
+        const pass = document.createElement('button'); pass.className='btn'; pass.style.cssText='padding:4px 8px;font-size:0.75rem;margin:0;background:#ef4444'; pass.textContent='Pass (-5)';
+        pass.onclick=()=>net.send({type:'action',action:'pass'});
+        acts.appendChild(pass);
+        wrap.appendChild(acts);
+      }
+      main.appendChild(wrap);
+    });
+    if(view.over && view.summary && !document.getElementById('overlay').classList.contains('hidden')){} else if(view.over){ /* handled by hub */ }
+    prevView = view; curView = view;
+  }
+  window.GameClients['qwixx'] = {render};
+})();
 
   // local engine wrapper
   window.LocalEngines['flip7']=function(names){
