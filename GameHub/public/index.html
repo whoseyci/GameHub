@@ -166,20 +166,40 @@
   .status-bar{position:fixed;bottom:calc(16px + env(safe-area-inset-bottom,0px));left:50%;transform:translateX(-50%);background:rgba(30,41,59,.95);backdrop-filter:blur(10px);padding:13px 26px;border-radius:30px;font-weight:800;font-size:1.05rem;box-shadow:0 10px 30px rgba(0,0,0,.5);border:2px solid var(--border);z-index:100;text-align:center;color:var(--text);max-width:92vw;transition:transform .3s var(--spring)}
   .status-bar.bump{animation:popIn .4s var(--spring)}
 
-  /* ---- Flip 7 specific ---- */
+  /* ---- Flip 7 specific (card designs mirror the OG game) ---- */
   .f7-row{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:6px}
   .f7-card{width:clamp(38px,11vw,52px);height:clamp(54px,15vw,74px);border-radius:10px;display:flex;align-items:center;justify-content:center;
-    font-weight:900;font-size:clamp(1.1rem,4vw,1.6rem);background:#fff;box-shadow:0 3px 6px rgba(0,0,0,.3);border:2px solid #fff;animation:popReveal .4s var(--spring) both}
-  .f7-card.mod{background:#fde68a;border-color:#f59e0b;color:#92400e;font-size:1rem}
-  .f7-card.act{background:#c7d2fe;border-color:#6366f1;color:#3730a3;font-size:.8rem;text-align:center;line-height:1}
-  .f7-card.second{background:#bbf7d0;border-color:#10b981;color:#065f46}
-  .f7-status{font-weight:800;font-size:.85rem;padding:3px 10px;border-radius:10px;margin-left:6px}
+    font-weight:900;font-size:clamp(1.2rem,4.2vw,1.7rem);box-shadow:0 3px 6px rgba(0,0,0,.35);border:3px solid #fff;color:#fff;
+    position:relative;animation:popReveal .4s var(--spring) both}
+  /* number cards: white inner number on a coloured face (set inline per value) */
+  .f7-card.num{text-shadow:0 1px 2px rgba(0,0,0,.35)}
+  /* modifiers: dark card, gold text */
+  .f7-card.mod{background:#1f2937;border-color:#fbbf24;color:#fbbf24;font-size:1.05rem}
+  .f7-card.modx2{background:#1f2937;border-color:#f472b6;color:#f472b6}
+  /* Second Chance: full red card, pink heart */
+  .f7-card.second{background:#dc2626;border-color:#ef4444;color:#fbcfe8;font-size:1.7rem}
+  /* Freeze: light blue, blue snowflake */
+  .f7-card.freeze{background:#bae6fd;border-color:#38bdf8;color:#0369a1;font-size:1.7rem}
+  /* Flip 3: neon yellow, white F3 */
+  .f7-card.flip3{background:#eaff00;border-color:#d4e600;color:#fff;font-size:1.2rem;font-style:italic;text-shadow:0 1px 3px rgba(0,0,0,.45)}
+  .f7-card.busted-card{opacity:.55;filter:grayscale(.35)}
+  .f7-card.bust-cause{outline:3px solid #ef4444;outline-offset:1px;animation:shakeX .5s ease}
+  @keyframes shakeX{0%,100%{transform:translateX(0)}20%{transform:translateX(-5px) rotate(-3deg)}40%{transform:translateX(5px) rotate(3deg)}60%{transform:translateX(-3px)}80%{transform:translateX(3px)}}
+  .f7-status{font-weight:800;font-size:.85rem;padding:3px 10px;border-radius:10px;margin-left:6px;text-transform:capitalize}
   .f7-status.active{background:rgba(59,130,246,.2);color:#60a5fa}
   .f7-status.stayed{background:rgba(16,185,129,.2);color:#10b981}
   .f7-status.busted{background:rgba(239,68,68,.2);color:#ef4444}
   .f7-controls{position:fixed;bottom:calc(70px + env(safe-area-inset-bottom,0px));left:50%;transform:translateX(-50%);display:flex;gap:12px;z-index:110}
   .f7-controls .btn{margin:0;width:auto;padding:14px 28px}
   .f7-empty{color:var(--text-dim);font-weight:700;font-size:.85rem}
+  /* dealer pile + flying-deal animation */
+  .f7-dealer{display:flex;flex-direction:column;align-items:center;gap:6px;margin:8px auto 2px}
+  .f7-deck{width:clamp(60px,16vw,84px);height:clamp(85px,22vw,118px);border-radius:14px;background:var(--card-back);
+    border:3px solid #818cf8;box-shadow:0 8px 18px rgba(0,0,0,.5),inset 0 -6px 0 rgba(0,0,0,.25);display:flex;align-items:center;justify-content:center;position:relative}
+  .f7-deck::after{content:'✦';color:rgba(255,255,255,.5);font-size:2.4rem}
+  .f7-deck .cnt{position:absolute;bottom:-20px;left:50%;transform:translateX(-50%);font-size:.7rem;color:var(--text-dim);font-weight:800;white-space:nowrap}
+  .f7-deck.deal{animation:deckNudge .25s var(--spring)}
+  @keyframes deckNudge{0%{transform:translateY(0)}50%{transform:translateY(-6px) scale(1.04)}100%{transform:translateY(0)}}
   @media(max-width:600px){.overlay-box{padding:22px}.score-table th,.score-table td{padding:8px 6px;font-size:.95rem}}
   @media(min-width:760px){:root{--slot-w:84px;--bcard-w:74px}.top-area{margin-top:18px}}
 </style>
@@ -591,7 +611,7 @@ function dispatchView(view){
   client.render(view);
 }
 function flushView(){if(pendingView){const v=pendingView;pendingView=null;dispatchView(v);}}
-function resetGameUi(){curView=null;prevView=null;animating=false;pendingView=null;summaryShown=false;lastRoundShown=false;$('overlay').classList.add('hidden');$('overlay').style.opacity='';const f7=$('f7Controls');if(f7)f7.remove();$('topArea').style.display='';}
+function resetGameUi(){curView=null;prevView=null;animating=false;pendingView=null;summaryShown=false;lastRoundShown=false;$('overlay').classList.add('hidden');$('overlay').style.opacity='';const f7=$('f7Controls');if(f7)f7.remove();const dw=$('f7DealerWrap');if(dw)dw.remove();$('topArea').style.display='';}
 function hideOverlay(){const o=$('overlay');if(o.classList.contains('hidden'))return;o.style.opacity='0';setTimeout(()=>{o.classList.add('hidden');o.style.opacity='';},220);}
 function bumpStatus(){const sb=$('statusBar');sb.classList.remove('bump');void sb.offsetWidth;sb.classList.add('bump');}
 
@@ -651,7 +671,7 @@ window.LocalEngines={};
 
   function render(view){
     $('topArea').style.display=''; // Skyjo uses the deck/discard piles
-    const f7=$('f7Controls');if(f7)f7.innerHTML='';
+    const f7=$('f7Controls');if(f7)f7.innerHTML='';const dw=$('f7DealerWrap');if(dw)dw.style.display='none';
     const s=view.skyjo; // engine state (personalized)
     const viewer=s.viewerIndex;
     const isPlay=s.phase==='PLAY'||s.phase==='FINAL_TURNS';
@@ -834,10 +854,52 @@ class SkyjoEngine{
 /* -------------------- FLIP 7 client -------------------- */
 (function(){
   function modText(m){return m==='x2'?'×2':m;}
-  function actText(a){return a==='freeze'?'❄ Freeze':a==='flip3'?'🔃 Flip 3':'🛟 2nd';}
+  // OG Flip 7 number palette (cool→warm by value).
+  const NUMCOL=['#94a3b8','#38bdf8','#22d3ee','#34d399','#4ade80','#a3e635','#facc15','#fb923c','#f97316','#ef4444','#ec4899','#d946ef','#a855f7'];
+  function numFace(n){return NUMCOL[Math.max(0,Math.min(12,n))];}
+  // Build a card element matching its kind.
+  function cardEl(kind,val,{busted=false,cause=false}={}){
+    const c=document.createElement('div');c.className='f7-card';
+    if(kind==='num'){c.classList.add('num');c.textContent=val;c.style.background=numFace(val);}
+    else if(kind==='mod'){c.classList.add(val==='x2'?'modx2':'mod');c.textContent=modText(val);}
+    else if(val==='second'){c.classList.add('second');c.innerHTML='♥';c.title='Second Chance';}
+    else if(val==='freeze'){c.classList.add('freeze');c.innerHTML='❄';c.title='Freeze';}
+    else if(val==='flip3'){c.classList.add('flip3');c.textContent='F3';c.title='Flip Three';}
+    if(busted)c.classList.add('busted-card');
+    if(cause){c.classList.remove('busted-card');c.classList.add('bust-cause');}
+    return c;
+  }
+  // Distinct VFX: a full-screen tinted burst with an icon.
+  function actionVfx(kind){
+    const o=document.createElement('div');
+    o.style.cssText='position:fixed;inset:0;z-index:400;pointer-events:none;display:flex;align-items:center;justify-content:center';
+    const icon=document.createElement('div');
+    if(kind==='freeze'){o.style.background='radial-gradient(circle,rgba(186,230,253,.5),transparent 60%)';icon.textContent='❄';icon.style.color='#38bdf8';}
+    else{o.style.background='radial-gradient(circle,rgba(234,255,0,.45),transparent 60%)';icon.textContent='F3';icon.style.color='#fff';icon.style.fontStyle='italic';icon.style.textShadow='0 2px 8px #d4e600';}
+    icon.style.cssText+=';font-size:7rem;font-weight:900;animation:popReveal .5s var(--spring)';
+    o.appendChild(icon);document.body.appendChild(o);
+    setTimeout(()=>{o.style.transition='opacity .3s';o.style.opacity='0';setTimeout(()=>o.remove(),300);},650);
+  }
+  // Fly a face-down card from the dealer deck to a target board (anticipation).
+  function dealFromDeck(targetBoardEl){
+    return new Promise(res=>{
+      const deck=$('f7Deck');if(!deck||!targetBoardEl){res();return;}
+      deck.classList.remove('deal');void deck.offsetWidth;deck.classList.add('deal');
+      const a=deck.getBoundingClientRect(),b=targetBoardEl.getBoundingClientRect();
+      const c=document.createElement('div');
+      Object.assign(c.style,{position:'fixed',top:a.top+'px',left:a.left+'px',width:a.width+'px',height:a.height+'px',
+        borderRadius:'12px',background:'var(--card-back)',border:'3px solid #818cf8',zIndex:1000,boxShadow:'0 16px 30px rgba(0,0,0,.5)',
+        transition:'all .42s var(--spring-soft)',pointerEvents:'none'});
+      document.body.appendChild(c);c.offsetHeight;
+      requestAnimationFrame(()=>{c.style.top=(b.top+10)+'px';c.style.left=(b.left+20)+'px';c.style.transform='scale(.6) rotate(8deg)';c.style.opacity='.4';});
+      setTimeout(()=>{c.remove();res();},440);
+    });
+  }
+  let _lastDealKey=null;
+
   function render(view){
     const s=view.flip7,viewer=s.viewerSeat;
-    // Flip 7 doesn't use the deck/discard piles or held window — hide them.
+    // Flip 7 doesn't use the Skyjo deck/discard piles or held window — hide them.
     $('topArea').style.display='none';$('miniBoardsContainer').innerHTML='';
     const myTurn=s.phase==='PLAY'&&s.current===viewer&&s.players[viewer]&&s.players[viewer].status==='active'&&!s.pendingAction;
     const pending=s.pendingAction&&s.pendingAction.from===viewer;
@@ -845,38 +907,60 @@ class SkyjoEngine{
     // animations / sounds from log
     const prevLog=prevView&&prevView.flip7?prevView.flip7.log:null;
     const log=s.log;
-    if(log&&JSON.stringify(log)!==JSON.stringify(prevLog)){
+    const newLog=log&&JSON.stringify(log)!==JSON.stringify(prevLog);
+    if(newLog){
       if(log.type==='got')SFX.flip();
       else if(log.type==='bust')SFX.bad();
       else if(log.type==='flip7'){SFX.win();Kit.confetti();}
       else if(log.type==='stay')SFX.good();
-      else if(log.type==='freeze')SFX.discard();
+      else if(log.type==='freeze'){SFX.discard();actionVfx('freeze');}      // distinct VFX (#2)
+      else if(log.type==='flip3'){SFX.triplet();actionVfx('flip3');}        // distinct VFX (#2)
       else if(log.type==='second_used')SFX.good();
     }
     // turn banner
     if(prevView&&prevView.flip7&&s.phase==='PLAY'&&s.current!==prevView.flip7.current){const mine=s.current===viewer;Kit.turnBanner(mine?'Your turn!':(s.players[s.current]?.name+"'s turn"),mine);bumpStatus();if(mine)SFX.yourTurn();}
 
-    // boards
-    const main=$('mainBoardsContainer');main.innerHTML='';
+    // ----- Dealer pile (anticipation) -----
+    const main=$('mainBoardsContainer');
+    let dealerWrap=$('f7DealerWrap');
+    if(!dealerWrap){dealerWrap=document.createElement('div');dealerWrap.id='f7DealerWrap';dealerWrap.className='f7-dealer';
+      dealerWrap.innerHTML=`<div class="pile-label">Dealer</div><div id="f7Deck" class="f7-deck"><span class="cnt"></span></div>`;
+      $('topArea').parentNode.insertBefore(dealerWrap,$('topArea'));}
+    dealerWrap.style.display=(s.phase==='PLAY')?'flex':'none';
+    const cntEl=dealerWrap.querySelector('.cnt');if(cntEl)cntEl.textContent=`deck ${s.deckCount} · out ${s.discardCount}`;
+
+    // ----- boards -----
+    main.innerHTML='';
     s.players.forEach((p,i)=>{
       const wrap=document.createElement('div');
+      const busted=p.status==='busted';
       wrap.className='player-board'+(s.current===i&&s.phase==='PLAY'?' active-turn':'')+(i===viewer?' me':'');
-      wrap.style.minWidth='260px';
+      wrap.style.minWidth='260px';if(busted)wrap.style.opacity='.85';
       const head=document.createElement('div');head.className='board-header';
-      head.innerHTML=`<span>${p.name}${i===viewer?' (You)':''} <span class="f7-status ${p.status}">${p.status}</span></span><span class="score-badge">Now: ${p.live} · Total: ${p.banked}</span>`;
+      head.innerHTML=`<span>${p.name}${i===viewer?' (You)':''} <span class="f7-status ${p.status}">${p.status}</span></span><span class="score-badge">${busted?'BUST':'Now: '+p.live} · Total: ${p.banked}</span>`;
       wrap.appendChild(head);
       const row=document.createElement('div');row.className='f7-row';
       if(!p.nums.length&&!p.mods.length&&!p.second){row.innerHTML='<span class="f7-empty">no cards yet</span>';}
-      p.nums.forEach(n=>{const c=document.createElement('div');c.className='f7-card';c.textContent=n;c.style.color=Kit.cardColor(n);row.appendChild(c);});
-      p.mods.forEach(m=>{const c=document.createElement('div');c.className='f7-card mod';c.textContent=modText(m);row.appendChild(c);});
-      if(p.second){const c=document.createElement('div');c.className='f7-card act second';c.textContent='🛟';c.title='Second Chance';row.appendChild(c);}
+      // numbers (busted cards stay visible #1; the duplicate that caused it is highlighted)
+      p.nums.forEach(n=>row.appendChild(cardEl('num',n,{busted})));
+      if(busted&&p.bustCard!=null)row.appendChild(cardEl('num',p.bustCard,{cause:true})); // the offending duplicate
+      p.mods.forEach(m=>row.appendChild(cardEl('mod',m,{busted})));
+      if(p.second)row.appendChild(cardEl('act','second'));
       wrap.appendChild(row);
       const meta=document.createElement('div');meta.className='muted';meta.style.cssText='margin-top:6px;font-size:.8rem';
       meta.textContent=`${p.unique}/7 unique`;wrap.appendChild(meta);
-      // action targeting: clicking a board chooses the target
-      if(pending){const canTarget=(s.pendingAction.kind==='freeze')?p.status!=='busted':p.status==='active';if(canTarget){wrap.style.cursor='pointer';wrap.style.outline='2px dashed #f59e0b';wrap.onclick=()=>net.spectating?null:act(viewer,{action:'target',target:i});}}
+      // action targeting: only ACTIVE players are valid targets (matches server)
+      if(pending&&p.status==='active'){wrap.style.cursor='pointer';wrap.style.outline='2px dashed #f59e0b';wrap.onclick=()=>net.spectating?null:act(viewer,{action:'target',target:i});}
       main.appendChild(wrap);
     });
+
+    // play a deal animation when someone just received a card
+    if(newLog&&log.type==='got'&&log.player!=null){
+      const tb=document.getElementById('main-board-'+log.player)||main.children[log.player];
+      // (boards above don't have ids; use index)
+      const targetBoard=main.children[log.player];
+      dealFromDeck(targetBoard);
+    }
 
     // controls + status
     let ctrl=$('f7Controls');if(!ctrl){ctrl=document.createElement('div');ctrl.id='f7Controls';ctrl.className='f7-controls';document.body.appendChild(ctrl);}
@@ -895,7 +979,7 @@ class SkyjoEngine{
     }
     else if(mode==='local'){const cur=s.players[s.current];sb.innerHTML=`<span style="color:#10b981">${cur?cur.name:''}'s turn</span>`;
       if(s.phase==='PLAY'&&cur&&cur.status==='active'&&!s.pendingAction){const hit=document.createElement('button');hit.className='btn green';hit.textContent='Hit';hit.onclick=()=>act(s.current,{action:'hit'});const stay=document.createElement('button');stay.className='btn secondary';stay.textContent='Stay';stay.onclick=()=>act(s.current,{action:'stay'});ctrl.appendChild(hit);ctrl.appendChild(stay);}
-      if(s.pendingAction){sb.innerHTML=`<span style="color:#f59e0b">${cur.name}: ${s.pendingAction.kind==='freeze'?'Freeze':'Flip 3'} — tap a player</span>`;document.querySelectorAll('#mainBoardsContainer .player-board').forEach((w,i)=>{const canT=(s.pendingAction.kind==='freeze')?s.players[i].status!=='busted':s.players[i].status==='active';if(canT){w.style.cursor='pointer';w.style.outline='2px dashed #f59e0b';w.onclick=()=>act(s.current,{action:'target',target:i});}});}
+      if(s.pendingAction){sb.innerHTML=`<span style="color:#f59e0b">${cur.name}: ${s.pendingAction.kind==='freeze'?'Freeze ❄':'Flip 3'} — tap an active player</span>`;document.querySelectorAll('#mainBoardsContainer .player-board').forEach((w,i)=>{if(s.players[i].status==='active'){w.style.cursor='pointer';w.style.outline='2px dashed #f59e0b';w.onclick=()=>act(s.current,{action:'target',target:i});}});}
     }
     else sb.textContent='Waiting for '+(s.players[s.current]?.name||'…');
 
@@ -922,23 +1006,27 @@ class SkyjoEngine{
 /* ---- Flip 7 engine (client copy for local offline play; mirrors src/games/flip7.ts) ---- */
 class Flip7Engine{
   constructor(names){this.s=this._fresh(names,names.map(()=>0));}
-  _buildDeck(){const d=[];d.push({kind:'num',v:0});for(let n=1;n<=12;n++)for(let i=0;i<n;i++)d.push({kind:'num',v:n});for(const m of['+2','+4','+6','+8','+10','x2'])d.push({kind:'mod',v:m});for(const a of['freeze','flip3','second'])for(let i=0;i<3;i++)d.push({kind:'act',v:a});for(let i=d.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[d[i],d[j]]=[d[j],d[i]];}return d;}
-  _fresh(names,banked){const s={players:names.map((n,i)=>({name:n,nums:[],mods:[],second:false,status:'active',banked:banked[i]||0,roundScore:0})),deck:this._buildDeck(),discard:[],current:0,phase:'PLAY',round:1,pendingAction:null,flip3Left:0,flip3Target:-1,log:null};for(let i=0;i<s.players.length;i++)this._give(s,i,this._draw(s),true);s.current=this._firstActive(s,0);return s;}
-  _draw(s){if(!s.deck.length){s.deck=s.discard;s.discard=[];for(let i=s.deck.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[s.deck[i],s.deck[j]]=[s.deck[j],s.deck[i]];}}return s.deck.pop();}
+  _newP(name,banked){return{name,nums:[],mods:[],second:false,status:'active',bustCard:null,banked:banked||0,roundScore:0};}
+  _buildDeck(){const d=[];d.push({kind:'num',v:0});for(let n=1;n<=12;n++)for(let i=0;i<n;i++)d.push({kind:'num',v:n});for(const m of['+2','+4','+6','+8','+10','x2'])d.push({kind:'mod',v:m});for(const a of['freeze','flip3','second'])for(let i=0;i<3;i++)d.push({kind:'act',v:a});this._sh(d);return d;}
+  _sh(d){for(let i=d.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[d[i],d[j]]=[d[j],d[i]];}}
+  _fresh(names,banked){const s={players:names.map((n,i)=>this._newP(n,banked[i]||0)),deck:this._buildDeck(),discard:[],current:0,phase:'PLAY',round:1,pendingAction:null,flip3Left:0,flip3Target:-1,log:null};
+    for(let i=0;i<s.players.length;i++){let c=this._draw(s),g=0;while(c.kind==='act'&&g++<200){s.deck.unshift(c);this._sh(s.deck);c=this._draw(s);}this._give(s,i,c,true);}
+    s.current=this._firstActive(s,0);return s;}
+  _draw(s){if(!s.deck.length){s.deck=s.discard;s.discard=[];this._sh(s.deck);s.log={type:'reshuffle'};}return s.deck.pop();}
   _firstActive(s,from){for(let k=0;k<s.players.length;k++){const i=(from+k)%s.players.length;if(s.players[i].status==='active')return i;}return from;}
   _activeCount(s){return s.players.filter(p=>p.status==='active').length;}
   _unique(p){return new Set(p.nums).size;}
   _give(s,pi,card,initial=false){const p=s.players[pi];
-    if(card.kind==='num'){const n=card.v;if(p.nums.includes(n)){if(p.second){p.second=false;s.discard.push(card);s.log={type:'second_used',player:pi};return'ok';}p.status='busted';p.nums=[];p.mods=[];s.log={type:'bust',player:pi,value:n};return'bust';}p.nums.push(n);p.nums.sort((a,b)=>a-b);s.log={type:'got',player:pi,card};if(this._unique(p)>=7){p.status='stayed';s.log={type:'flip7',player:pi};return'flip7';}return'ok';}
+    if(card.kind==='num'){const n=card.v;if(p.nums.includes(n)){if(p.second){p.second=false;s.discard.push(card);s.log={type:'second_used',player:pi,value:n};return'ok';}p.status='busted';p.bustCard=n;s.log={type:'bust',player:pi,value:n};return'bust';}p.nums.push(n);p.nums.sort((a,b)=>a-b);s.log={type:'got',player:pi,card};if(this._unique(p)>=7){p.status='stayed';s.log={type:'flip7',player:pi};return'flip7';}return'ok';}
     if(card.kind==='mod'){p.mods.push(card.v);s.log={type:'got',player:pi,card};return'ok';}
     const a=card.v;if(a==='second'){if(!p.second){p.second=true;s.log={type:'got',player:pi,card};return'ok';}const t=s.players.findIndex((q,i)=>i!==pi&&q.status==='active'&&!q.second);if(t>=0){s.players[t].second=true;s.log={type:'second_pass',from:pi,to:t};}else s.discard.push(card);return'ok';}
-    if(initial)return this._resolve(s,pi,a,pi);s.pendingAction={kind:a,from:pi};s.log={type:'await_target',kind:a,from:pi};return'action';}
-  _resolve(s,from,kind,target){s.pendingAction=null;const tp=s.players[target];if(kind==='freeze'){if(tp.status==='active')tp.status='stayed';s.log={type:'freeze',from,target};return'ok';}s.flip3Left=3;s.flip3Target=target;s.log={type:'flip3',from,target};this._runFlip3(s);return'ok';}
-  _runFlip3(s){while(s.flip3Left>0){const t=s.flip3Target,tp=s.players[t];if(tp.status!=='active'){s.flip3Left=0;break;}s.flip3Left--;const r=this._give(s,t,this._draw(s));if(r==='bust'||r==='flip7'){s.flip3Left=0;break;}if(r==='action'){const pa=s.pendingAction;this._resolve(s,pa.from,pa.kind,pa.from);}}}
+    if(initial)return'ok';s.pendingAction={kind:a,from:pi};s.log={type:'await_target',kind:a,from:pi};return'action';}
+  _resolve(s,from,kind,target){s.pendingAction=null;const tp=s.players[target];if(kind==='freeze'){if(tp.status==='active'){tp.status='stayed';s.log={type:'freeze',from,target};}else s.log={type:'freeze_void',from,target};return'ok';}s.flip3Left=3;s.flip3Target=target;s.log={type:'flip3',from,target};this._runFlip3(s);return'ok';}
+  _runFlip3(s){while(s.flip3Left>0){const t=s.flip3Target,tp=s.players[t];if(!tp||tp.status!=='active'){s.flip3Left=0;s.flip3Target=-1;break;}s.flip3Left--;const r=this._give(s,t,this._draw(s));if(r==='bust'||r==='flip7'){s.flip3Left=0;s.flip3Target=-1;break;}if(r==='action'){const pa=s.pendingAction;this._resolve(s,pa.from,pa.kind,pa.from);}}s.flip3Left=0;s.flip3Target=-1;}
   _advance(s){if(this._activeCount(s)===0){this._score(s);return;}s.current=this._firstActive(s,(s.current+1)%s.players.length);}
-  _score(s){let f7=-1;for(const p of s.players){if(p.status==='busted'){p.roundScore=0;continue;}const u=new Set(p.nums).size;let base=p.nums.reduce((a,b)=>a+b,0);if(p.mods.includes('x2'))base*=2;for(const m of p.mods)if(m[0]==='+')base+=parseInt(m.slice(1));if(u>=7){base+=15;f7=1;}p.roundScore=base;p.banked+=base;}s.phase=s.players.some(p=>p.banked>=200)?'GAME_OVER':'ROUND_END';}
+  _score(s){let f7=-1;for(const p of s.players){if(p.status==='busted'){p.roundScore=0;continue;}const u=new Set(p.nums).size;let base=p.nums.reduce((a,b)=>a+b,0);if(p.mods.includes('x2'))base*=2;for(const m of p.mods)if(m[0]==='+')base+=parseInt(m.slice(1));if(u>=7){base+=15;f7=1;}p.roundScore=base;p.banked+=base;}s.pendingAction=null;s.flip3Left=0;s.flip3Target=-1;s.phase=s.players.some(p=>p.banked>=200)?'GAME_OVER':'ROUND_END';}
   apply(seat,msg){const s=this.s;if(s.phase!=='PLAY')return;
-    if(s.pendingAction){if(msg.action==='target'&&s.pendingAction.from===seat){const t=msg.target|0;if(s.players[t].status==='active'||s.pendingAction.kind==='freeze'){this._resolve(s,seat,s.pendingAction.kind,t);this._advance(s);renderLocal();}}return;}
+    if(s.pendingAction){if(msg.action==='target'&&s.pendingAction.from===seat){const t=msg.target|0;if(s.players[t]&&s.players[t].status==='active'){this._resolve(s,seat,s.pendingAction.kind,t);this._advance(s);renderLocal();}}return;}
     if(seat!==s.current||s.players[seat].status!=='active')return;
     if(msg.action==='stay'){s.players[seat].status='stayed';s.log={type:'stay',player:seat};this._advance(s);}
     else if(msg.action==='hit'){const r=this._give(s,seat,this._draw(s));if(r==='action'){renderLocal();return;}this._advance(s);}
@@ -946,7 +1034,7 @@ class Flip7Engine{
   next(){const s=this.s;const over=s.phase==='GAME_OVER';this.s=this._fresh(s.players.map(p=>p.name),over?s.players.map(()=>0):s.players.map(p=>p.banked));if(!over)this.s.round=s.round+1;}
   viewFor(seat){const s=this.s;const over=s.phase==='GAME_OVER';let summary;if(s.phase==='ROUND_END'||s.phase==='GAME_OVER'){const mx=Math.max(...s.players.map(p=>p.banked));summary={rows:s.players.map((p,i)=>({seat:i,name:p.name,score:p.banked,delta:p.roundScore})),winners:s.players.map((p,i)=>p.banked===mx?i:-1).filter(i=>i>=0)};}
     const live=p=>{if(p.status==='busted')return 0;let b=p.nums.reduce((a,c)=>a+c,0);if(p.mods.includes('x2'))b*=2;for(const m of p.mods)if(m[0]==='+')b+=parseInt(m.slice(1));if(new Set(p.nums).size>=7)b+=15;return b;};
-    return{game:'flip7',phase:s.phase,over,yourSeat:seat,summary,flip7:{round:s.round,current:s.current,phase:s.phase,pendingAction:s.pendingAction,viewerSeat:seat,deckCount:s.deck.length,players:s.players.map(p=>({name:p.name,nums:p.nums,mods:p.mods,second:p.second,status:p.status,banked:p.banked,unique:new Set(p.nums).size,live:live(p)})),log:s.log}};}
+    return{game:'flip7',phase:s.phase,over,yourSeat:seat,summary,flip7:{round:s.round,current:s.current,phase:s.phase,pendingAction:s.pendingAction,viewerSeat:seat,deckCount:s.deck.length,discardCount:s.discard.length,players:s.players.map(p=>({name:p.name,nums:p.nums,mods:p.mods,second:p.second,status:p.status,bustCard:p.bustCard,banked:p.banked,unique:new Set(p.nums).size,live:live(p)})),log:s.log}};}
 }
 
 /* ====================== INIT ====================== */
