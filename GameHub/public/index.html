@@ -2,6 +2,9 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -212,6 +215,7 @@
     <div class="menu-card">
       <h1 class="logo">GAME HUB</h1>
       <p class="muted" style="margin-bottom:26px">Play card games with friends.</p>
+      <div id="verStamp" style="position:absolute;bottom:8px;right:12px;font-size:.65rem;color:var(--text-dim);font-weight:700;opacity:.6"></div>
       <button class="btn purple" onclick="goOnline()">Play Online</button>
       <button class="btn secondary" onclick="showScreen('localPick')">Local (Pass &amp; Play)</button>
       <button class="btn secondary" onclick="showRulesMenu()" style="background:transparent;box-shadow:none;border:2px solid var(--border)">📖 How to Play</button>
@@ -365,9 +369,16 @@
    shape as Skyjo below. The hub never needs to change.
    ==================================================================== */
 const PARTYKIT_HOST = location.host; // served by the same Worker
+const BUILD_VERSION = "2026-06-07-flip7-vfx"; // bump on each change; shown on the menu
 
 const $=id=>document.getElementById(id);
-function showScreen(id){document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));$(id).classList.add('active');if(id==='joinSetup')connectLobby();}
+function showScreen(id){
+  // Leaving the game screen? Tear down any body-level game widgets (Flip 7 controls/dealer)
+  // so Hit/Stay etc. can never linger over a menu.
+  if(id!=='gameScreen'){const f7=$('f7Controls');if(f7)f7.remove();const dw=$('f7DealerWrap');if(dw)dw.remove();}
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));$(id).classList.add('active');
+  if(id==='joinSetup')connectLobby();
+}
 function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
 function toast(m,ms=2600){const t=$('toast');t.textContent=m;t.classList.remove('hidden');clearTimeout(t._h);t._h=setTimeout(()=>t.classList.add('hidden'),ms);}
 function getPid(){let p=localStorage.getItem('hub_pid');if(!p){p='p_'+Math.random().toString(36).slice(2,10)+Date.now().toString(36);localStorage.setItem('hub_pid',p);}return p;}
@@ -578,8 +589,9 @@ function renderRoom(m){
   $('guestArea').classList.toggle('hidden',m.isHost);
   if(m.isHost) renderTiles('hostTiles',gid=>net.send({type:'launch_game',gameId:gid}), m.members.length);
 }
-function leaveOnline(){if(net.ws){try{net.ws.close();}catch(e){}net.ws=null;}net.room=null;net.isHost=false;net.spectating=false;$('overlay').classList.add('hidden');showScreen('onlineSetup');}
-function leaveGameToRoom(){ // back arrow in game: host returns the whole group to the room lobby; others just confirm leave
+function leaveOnline(){if(net.ws){try{net.ws.close();}catch(e){}net.ws=null;}net.room=null;net.isHost=false;net.spectating=false;resetGameUi();showScreen('onlineSetup');}
+function leaveGameToRoom(){ // back arrow in game
+  if(mode==='local'){ if(confirm('Leave the game?')){ resetGameUi(); showScreen('menuScreen'); } return; }
   if(net.isHost){ if(confirm('Return everyone to the room lobby?')) net.send({type:'to_room'}); }
   else { if(confirm('Leave the game?')) leaveOnline(); }
 }
@@ -657,7 +669,7 @@ function startLocalGame(){
 function renderLocal(){const v=localEngine.viewFor(localEngine.actor());dispatchView(v);}
 function localAct(seat,msg){localEngine.apply(seat,msg);renderLocal();}
 function localNext(){localEngine.next();resetGameUi();renderLocal();}
-function quitLocal(){$('overlay').classList.add('hidden');showScreen('menuScreen');}
+function quitLocal(){resetGameUi();showScreen('menuScreen');}
 
 /* ====================== GAME CLIENTS REGISTRY ====================== */
 window.GameClients={};
@@ -1038,6 +1050,7 @@ class Flip7Engine{
 }
 
 /* ====================== INIT ====================== */
+{const v=$('verStamp');if(v)v.textContent='build '+BUILD_VERSION;}
 renderTiles('quickTiles',quickPlay); // quick play: no size filter (matchmaking fills the room)
 refreshLocalTiles();
 if(SFX.muted){const b=$('soundBtn');if(b){b.textContent='🔇';b.classList.add('off');}}
