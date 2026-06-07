@@ -107,7 +107,7 @@ const checkGameOver = (state: QwixxState) => {
 };
 
 // --- GAME DEFINITION EXPORT ---
-export const qwixxDef: GameDef<QwixxState, QwixxMove> = {
+export const Qwixx: GameDef<QwixxState, QwixxMove> = {
   name: 'Qwixx',
   minPlayers: 2,
   maxPlayers: 5,
