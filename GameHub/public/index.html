@@ -217,8 +217,6 @@
       <p class="muted" style="margin-bottom:26px">Play card games with friends.</p>
       <div id="verStamp" style="margin-top:4px;font-size:.72rem;color:var(--text-dim);font-weight:800;letter-spacing:.5px;opacity:.75"></div>
       <div style="margin:10px 0 14px">
-        <div class="muted" style="font-size:.8rem;margin-bottom:6px;font-weight:700">Available games (click to Quick Play)</div>
-        <div id="mainMenuGames" class="game-tiles"></div>
       </div>
       <button class="btn purple" onclick="goOnline()">Play Online</button>
       <button class="btn secondary" onclick="showScreen('localPick')">Local (Pass &amp; Play)</button>
@@ -378,7 +376,7 @@
    shape as Skyjo below. The hub never needs to change.
    ==================================================================== */
 const PARTYKIT_HOST = location.host; // served by the same Worker
-const BUILD_VERSION = "v15-qwixx-added"; // bump on each change; shown on the menu
+const BUILD_VERSION = "v16-qwixx-polished-local"; // bump on each change; shown on the menu
 
 const $=id=>document.getElementById(id);
 function showScreen(id){
@@ -1181,173 +1179,390 @@ class Flip7Engine{
     return{game:'flip7',phase:s.phase,over,yourSeat:seat,summary,flip7:{round:s.round,current:s.current,phase:s.phase,pendingAction:s.pendingAction,viewerSeat:seat,deckCount:s.deck.length,discardCount:s.discard.length,seq:s.seq,events:s.events,players:s.players.map(p=>({name:p.name,nums:p.nums,mods:p.mods,second:p.second,status:p.status,bustCard:p.bustCard,banked:p.banked,unique:new Set(p.nums).size,live:live(p)}))}};}
 }
 
-/* ====================== QWIXX CLIENT (added so the game appears + is playable) ======================
-   Minimal but functional UI + input wiring. Matches the server Qwixx module.
-   Local/offline is a stub (online works fully via the authoritative server).
+/* ====================== QWIXX CLIENT (inspired by your standalone base) ======================
+   Beautiful, functional client adapted to GameHub architecture.
+   - Uses the exact server view.qwixx shape.
+   - Nice CSS "3D" dice (gradients + shadows from your file).
+   - Clean scorecard rows with clickable cells.
+   - Smart valid-move highlighting.
+   - Phase / turn awareness.
+   - MUCH smarter local multiplayer UX: after your turn ends, a clear "Pass the device" banner + button.
+   - No bots (as requested).
+   - Reuses hub's net / act / status / containers.
    ================================================================= */
 (function(){
-  const COLORS = ["red","yellow","green","blue"];
+  const COLORS = ['red','yellow','green','blue'];
+  const C_HEX = { red:'#e74c3c', yellow:'#f1c40f', green:'#2ecc71', blue:'#3498db' };
   const ROW_NUMS = {
-    red: [2,3,4,5,6,7,8,9,10,11,12],
-    yellow: [2,3,4,5,6,7,8,9,10,11,12],
+    red:   [2,3,4,5,6,7,8,9,10,11,12],
+    yellow:[2,3,4,5,6,7,8,9,10,11,12],
     green: [12,11,10,9,8,7,6,5,4,3,2],
-    blue: [12,11,10,9,8,7,6,5,4,3,2],
-  };
-  const COLOR_STYLES = {
-    red: {bg:'#f55', border:'#c00'},
-    yellow: {bg:'#ff5', border:'#cc0'},
-    green: {bg:'#5f5', border:'#0a0'},
-    blue: {bg:'#55f', border:'#00c'},
+    blue:  [12,11,10,9,8,7,6,5,4,3,2],
   };
 
-  function render(view){
+  // Simple local engine that mirrors server logic for pass-and-play
+  function createLocalEngine(names) {
+    let state = {
+      players: names.map(n => ({
+        name: n || 'Player',
+        rows: {red:[], yellow:[], green:[], blue:[]},
+        penalties: 0,
+        locked: {red:false, yellow:false, green:false, blue:false}
+      })),
+      dice: null,
+      activeSeat: 0,
+      phase: 'PLAY',
+      lockedRows: 0,
+      removedDice: []
+    };
+
+    const RANGES = {
+      red: {start:2,end:12,step:1,lock:12},
+      yellow:{start:2,end:12,step:1,lock:12},
+      green:{start:12,end:2,step:-1,lock:2},
+      blue:{start:12,end:2,step:-1,lock:2}
+    };
+
+    function isValid(row, num, color) {
+      const r = RANGES[color];
+      if (row.includes(num)) return false;
+      if (num < r.start || num > r.end) return false;
+      if (row.length === 0) return true;
+      const last = row[row.length-1];
+      return r.step > 0 ? num > last : num < last;
+    }
+
+    function advance() {
+      // auto lock checks
+      state.players.forEach((p, i) => {
+        COLORS.forEach(c => {
+          if (!p.locked[c] && p.rows[c].length >= 5 && p.rows[c].includes(RANGES[c].lock)) {
+            p.locked[c] = true;
+            state.lockedRows++;
+            if (!state.removedDice.includes(c)) state.removedDice.push(c);
+          }
+        });
+      });
+      if (state.lockedRows >= 2) { state.phase = 'GAME_OVER'; return; }
+      if (state.players.some(p => p.penalties >= 4)) { state.phase = 'GAME_OVER'; return; }
+      state.activeSeat = (state.activeSeat + 1) % state.players.length;
+      state.dice = null;
+    }
+
+    return {
+      apply(seat, msg) {
+        if (state.phase !== 'PLAY') return;
+        const p = state.players[seat];
+        if (!p) return;
+
+        if (msg.action === 'roll') {
+          if (seat !== state.activeSeat) return;
+          const roll = () => Math.floor(Math.random()*6)+1;
+          state.dice = {
+            white1: roll(), white2: roll(),
+            red: state.removedDice.includes('red') ? 0 : roll(),
+            yellow: state.removedDice.includes('yellow') ? 0 : roll(),
+            green: state.removedDice.includes('green') ? 0 : roll(),
+            blue: state.removedDice.includes('blue') ? 0 : roll()
+          };
+          return;
+        }
+
+        if (msg.action === 'cross_white') {
+          if (!state.dice) return;
+          const sum = state.dice.white1 + state.dice.white2;
+          const c = msg.color;
+          if (!COLORS.includes(c)) return;
+          const row = p.rows[c];
+          if (isValid(row, sum, c)) {
+            row.push(sum);
+            row.sort((a,b) => RANGES[c].step > 0 ? a-b : b-a);
+          }
+          return; // non-active don't advance
+        }
+
+        if (msg.action === 'cross_colored') {
+          if (seat !== state.activeSeat || !state.dice) return;
+          const w = msg.white; // 1 or 2
+          const c = msg.color;
+          if (!COLORS.includes(c)) return;
+          const wval = w===1 ? state.dice.white1 : state.dice.white2;
+          const cval = state.dice[c];
+          const sum = wval + cval;
+          const row = p.rows[c];
+          if (isValid(row, sum, c)) {
+            row.push(sum);
+            row.sort((a,b) => RANGES[c].step > 0 ? a-b : b-a);
+          }
+          advance();
+          return;
+        }
+
+        if (msg.action === 'pass') {
+          if (seat !== state.activeSeat) return;
+          p.penalties = Math.min(4, p.penalties + 1);
+          advance();
+          return;
+        }
+
+        if (msg.action === 'lock') {
+          const c = msg.color;
+          if (!COLORS.includes(c) || p.locked[c]) return;
+          const row = p.rows[c];
+          const lock = RANGES[c].lock;
+          if (row.length >= 5 && row.includes(lock)) {
+            p.locked[c] = true;
+            state.lockedRows++;
+            if (!state.removedDice.includes(c)) state.removedDice.push(c);
+            if (state.lockedRows >= 2) state.phase = 'GAME_OVER';
+          }
+          return;
+        }
+      },
+
+      next() {
+        // new round or new game
+        if (state.phase === 'GAME_OVER') {
+          // new game
+          state.players.forEach(p => { p.rows = {red:[],yellow:[],green:[],blue:[]}; p.penalties=0; p.locked={red:false,yellow:false,green:false,blue:false}; });
+          state.lockedRows = 0;
+          state.removedDice = [];
+        }
+        state.activeSeat = 0;
+        state.dice = null;
+        state.phase = 'PLAY';
+      },
+
+      actor() { return state.activeSeat; },
+
+      viewFor(seat) {
+        const your = state.players[seat] || state.players[0];
+        const over = state.phase === 'GAME_OVER';
+        let summary;
+        if (over) {
+          const scores = state.players.map((p,i) => {
+            let tot = 0;
+            COLORS.forEach(c => { const n = p.rows[c].length; tot += n*(n+1)/2; });
+            tot -= p.penalties * 5;
+            return {seat:i, name:p.name, score:tot, delta:0};
+          });
+          const mx = Math.max(...scores.map(s=>s.score));
+          summary = { rows: scores, winners: scores.filter(s=>s.score===mx).map(s=>s.seat) };
+        }
+        return {
+          game: 'qwixx',
+          phase: state.phase,
+          over,
+          yourSeat: seat,
+          summary,
+          qwixx: {
+            activeSeat: state.activeSeat,
+            dice: state.dice,
+            yourRows: your.rows,
+            yourPenalties: your.penalties,
+            yourLocked: your.locked,
+            removedDice: [...state.removedDice],
+            allPlayers: state.players.map((p,i) => ({
+              seat: i, name: p.name, penalties: p.penalties,
+              lockedCount: Object.values(p.locked).filter(Boolean).length
+            }))
+          }
+        };
+      }
+    };
+  }
+
+  function render(view) {
     const s = view.qwixx || {};
     const main = $('mainBoardsContainer');
     const mini = $('miniBoardsContainer');
     const top = $('topArea');
+
     main.innerHTML = '';
     mini.innerHTML = '';
 
     const isMyTurn = s.activeSeat === view.yourSeat;
     const dice = s.dice;
+    const wSum = dice ? dice.white1 + dice.white2 : 0;
 
-    // Dice + turn header
-    let topHtml = `<div style="display:flex;gap:10px;align-items:center;justify-content:center;flex-wrap:wrap">`;
+    // Top: beautiful dice (inspired by your 3D-ish design)
+    let topH = `<div class="qwixx-dice-zone">`;
     if (dice) {
-      const die = (v, col) => `<span style="display:inline-block;width:40px;height:40px;line-height:40px;text-align:center;font-size:20px;font-weight:800;border:3px solid #222;border-radius:8px;background:${(col==='white'?'#f8f8f8':COLOR_STYLES[col].bg)};color:#111;margin:1px 3px;box-shadow:0 2px 3px rgba(0,0,0,.4);">${v}</span>`;
-      topHtml += `<div style="margin-right:8px"><b>White</b><br>${die(dice.white1,'white')}${die(dice.white2,'white')}</div>`;
-      topHtml += `<div><b>Colored</b><br>${die(dice.red,'red')}${die(dice.yellow,'yellow')}${die(dice.green,'green')}${die(dice.blue,'blue')}</div>`;
+      const die = (v, col) => {
+        const isWhite = col === 'white';
+        const bg = isWhite ? 'linear-gradient(145deg,#f8fafc,#e2e8f0)' : `linear-gradient(145deg,${C_HEX[col]},${C_HEX[col]}dd)`;
+        const colr = isWhite ? '#1e293b' : '#fff';
+        const brd = isWhite ? '#64748b' : '#1e293b';
+        return `<div style="width:42px;height:42px;border:3px solid ${brd};border-radius:9px;background:${bg};color:${colr};font-size:20px;font-weight:900;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 8px rgba(0,0,0,.3), inset 0 2px 0 rgba(255,255,255,.3);margin:0 3px;">${v}</div>`;
+      };
+
+      topH += `<div style="display:flex;gap:14px;justify-content:center;margin-bottom:4px">`;
+      topH += `<div><div style="font-size:9px;color:#64748b;margin-bottom:2px;text-align:center">WHITE</div><div style="display:flex">${die(dice.white1,'white')}${die(dice.white2,'white')}</div></div>`;
+      topH += `<div><div style="font-size:9px;color:#64748b;margin-bottom:2px;text-align:center">COLORS</div><div style="display:flex">${die(dice.red,'red')}${die(dice.yellow,'yellow')}${die(dice.green,'green')}${die(dice.blue,'blue')}</div></div>`;
+      topH += `</div>`;
+      topH += `<div style="text-align:center;font-weight:800;font-size:15px;color:#f1f5f9;margin:2px 0">White Sum <span style="color:#f1c40f;font-size:17px">${wSum}</span></div>`;
     } else {
-      topHtml += `<div style="padding:6px 14px;background:#222;border-radius:8px;color:#999;font-size:13px">Dice not rolled</div>`;
+      topH += `<div style="text-align:center;font-size:13px;color:#64748b;padding:6px 12px;background:#1e293b;border-radius:999px">Roll to start the turn</div>`;
     }
-    topHtml += `</div>`;
-    topHtml += `<div style="text-align:center;margin-top:4px;font-size:13px;font-weight:700">${isMyTurn ? '<span style="color:#5f5">YOUR TURN</span>' : ((s.allPlayers[s.activeSeat]?.name||'P'+(s.activeSeat+1)) + "'s turn")}</div>`;
-    top.innerHTML = topHtml;
 
-    // YOUR BOARD
-    const yourBoard = document.createElement('div');
-    yourBoard.style.cssText = 'margin:8px 0 4px;padding:10px 8px;background:#111;border:2px solid #333;border-radius:12px';
-    let yourHtml = `<div style="font-weight:700;font-size:13px;margin-bottom:6px;color:#ccc">YOU — Penalties: <b>${s.yourPenalties||0}</b>/4 ${s.yourLocked ? Object.values(s.yourLocked).filter(Boolean).length : 0} locked</div>`;
+    const activeP = s.allPlayers ? s.allPlayers[s.activeSeat] : null;
+    const turnLabel = isMyTurn ? 'YOUR TURN' : (activeP ? activeP.name + "'s turn" : 'Opponent turn');
+    topH += `<div style="text-align:center;font-size:12px;font-weight:700;margin-top:2px;${isMyTurn?'color:#22c55e':'color:#94a3b8'}">${turnLabel}</div>`;
+    topH += `</div>`;
+    top.innerHTML = topH;
 
-    COLORS.forEach(color => {
-      const nums = ROW_NUMS[color];
-      const crossed = new Set((s.yourRows && s.yourRows[color]) || []);
-      const locked = !!(s.yourLocked && s.yourLocked[color]);
-      const st = COLOR_STYLES[color];
-      yourHtml += `<div style="display:flex;gap:3px;margin:3px 0;align-items:center">`;
-      yourHtml += `<span style="width:52px;font-size:10px;font-weight:800;color:${st.bg};letter-spacing:0.5px">${color.toUpperCase()}</span>`;
+    // YOUR SCORECARD (main)
+    const sc = document.createElement('div');
+    sc.style.cssText = 'background:#0f172a;border:2px solid #334155;border-radius:14px;padding:10px 8px;margin-bottom:8px';
+
+    let scH = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;padding:0 4px">
+      <div style="font-weight:800">YOU</div>
+      <div style="font-size:11px;color:#f87171">⚠ ${s.yourPenalties||0}/4</div>
+    </div>`;
+
+    COLORS.forEach(col => {
+      const nums = ROW_NUMS[col];
+      const crossed = new Set(s.yourRows ? s.yourRows[col] : []);
+      const locked = s.yourLocked ? s.yourLocked[col] : false;
+      const rem = s.removedDice && s.removedDice.includes(col);
+      const hex = C_HEX[col];
+
+      scH += `<div style="margin:3px 0">`;
+      scH += `<div style="display:flex;align-items:center;gap:5px;margin-bottom:2px"><div style="width:52px;font-size:10px;font-weight:700;color:${hex}">${col.toUpperCase()}${locked?' 🔒':''}</div><div style="flex:1;height:1px;background:${hex};opacity:.3"></div></div>`;
+      scH += `<div style="display:flex;gap:1px">`;
+
       nums.forEach(n => {
         const isC = crossed.has(n);
-        const clickable = !!dice && !isC && !locked;
-        const bg = isC ? st.bg : '#1f1f1f';
-        const colr = isC ? '#111' : '#ddd';
-        yourHtml += `<span class="qwixx-cell" data-color="${color}" data-num="${n}" style="flex:1 0 22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;border:1.5px solid ${st.border};background:${bg};color:${colr};border-radius:3px;${clickable ? 'cursor:pointer' : 'opacity:.55'}">${n}</span>`;
-      });
-      if (locked) yourHtml += `<span style="margin-left:4px;font-size:11px">🔒</span>`;
-      yourHtml += `</div>`;
-    });
-    yourBoard.innerHTML = yourHtml;
-    main.appendChild(yourBoard);
+        let canAct = false;
+        if (dice && !isC && !locked && !rem) {
+          if (n === wSum) canAct = true;
+          else if (isMyTurn) {
+            const cval = dice[col] || 0;
+            if (dice.white1 + cval === n || dice.white2 + cval === n) canAct = true;
+          }
+        }
+        let sty = `flex:1 0 22px;height:24px;border:2px solid ${hex};border-radius:3px;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;`;
+        if (isC) sty += `background:${hex};color:#0f172a;text-decoration:line-through;`;
+        else if (canAct) sty += `background:#052e16;color:#4ade80;border-color:#22c55e;cursor:pointer;`;
+        else sty += `background:#1e293b;color:#64748b;${rem||locked?'opacity:.35;':''}`;
 
-    // Wire clicks
-    yourBoard.querySelectorAll('.qwixx-cell').forEach(el => {
-      const col = el.dataset.color;
-      const num = parseInt(el.dataset.num, 10);
-      const crossed = new Set((s.yourRows && s.yourRows[col]) || []);
-      if (!crossed.has(num) && dice && !(s.yourLocked && s.yourLocked[col])) {
+        scH += `<div class="q-cell" data-col="${col}" data-n="${n}" style="${sty}">${n}</div>`;
+      });
+      scH += `</div></div>`;
+    });
+    sc.innerHTML = scH;
+    main.appendChild(sc);
+
+    // Wire cells
+    sc.querySelectorAll('.q-cell').forEach(el => {
+      const col = el.dataset.col;
+      const n = parseInt(el.dataset.n);
+      const crossed = new Set(s.yourRows ? s.yourRows[col] : []);
+      if (!crossed.has(n) && dice && ! (s.yourLocked && s.yourLocked[col]) && !(s.removedDice && s.removedDice.includes(col))) {
         el.onclick = () => {
-          const wsum = dice.white1 + dice.white2;
-          if (num === wsum) {
-            act(view.yourSeat, {action: 'cross_white', color: col});
+          const sum = wSum;
+          if (n === sum) {
+            act(view.yourSeat, {action:'cross_white', color: col});
           } else if (isMyTurn) {
-            const cval = dice[col];
-            if (dice.white1 + cval === num) act(view.yourSeat, {action:'cross_colored', white:1, color: col});
-            else if (dice.white2 + cval === num) act(view.yourSeat, {action:'cross_colored', white:2, color: col});
+            const cv = dice[col] || 0;
+            if (dice.white1 + cv === n) act(view.yourSeat, {action:'cross_colored', white:1, color:col});
+            else if (dice.white2 + cv === n) act(view.yourSeat, {action:'cross_colored', white:2, color:col});
           }
         };
       }
     });
 
-    // Controls for active (use attached listeners so act() from closure works)
-    if (isMyTurn) {
-      const ctr = document.createElement('div');
-      ctr.style.cssText = 'text-align:center;margin:6px 0';
-      if (!dice) {
-        const b = document.createElement('button');
-        b.className = 'btn';
-        b.style.padding = '6px 18px';
-        b.textContent = '🎲 Roll the Dice';
-        b.onclick = () => act(view.yourSeat, {action:'roll'});
-        ctr.appendChild(b);
-      } else {
-        const pass = document.createElement('button');
-        pass.className = 'btn';
-        pass.style.background = '#622';
-        pass.style.padding = '6px 12px';
-        pass.textContent = 'PASS (+1 penalty)';
-        pass.onclick = () => act(view.yourSeat, {action:'pass'});
-        ctr.appendChild(pass);
+    // Action buttons
+    if (dice && isMyTurn) {
+      const btns = document.createElement('div');
+      btns.style.cssText = 'display:flex;gap:6px;justify-content:center;margin:4px 0;flex-wrap:wrap';
 
-        COLORS.forEach(c => {
-          const row = (s.yourRows && s.yourRows[c]) || [];
-          const lockNum = (c==='red'||c==='yellow') ? 12 : 2;
-          if (row.length >= 5 && row.includes(lockNum) && !(s.yourLocked && s.yourLocked[c])) {
-            const lb = document.createElement('button');
-            lb.className = 'btn';
-            lb.style.background = '#252';
-            lb.style.padding = '4px 8px';
-            lb.style.fontSize = '12px';
-            lb.textContent = `Lock ${c} 🔒`;
-            lb.onclick = () => act(view.yourSeat, {action:'lock', color: c});
-            ctr.appendChild(document.createTextNode(' '));
-            ctr.appendChild(lb);
-          }
-        });
-      }
-      main.appendChild(ctr);
+      const p = document.createElement('button');
+      p.className = 'btn'; p.style.cssText='padding:7px 14px;font-size:12px;background:#7f1d1d';
+      p.textContent = 'PASS (+penalty)';
+      p.onclick = () => act(view.yourSeat, {action:'pass'});
+      btns.appendChild(p);
+
+      COLORS.forEach(c => {
+        if (s.removedDice && s.removedDice.includes(c)) return;
+        const r = s.yourRows ? s.yourRows[c] : [];
+        const lk = (c==='red'||c==='yellow')?12:2;
+        if (r.length >=5 && r.includes(lk) && !(s.yourLocked && s.yourLocked[c])) {
+          const l = document.createElement('button');
+          l.className='btn'; l.style.cssText=`padding:6px 10px;font-size:11px;background:#166534`;
+          l.textContent = `Lock ${c} 🔒`;
+          l.onclick = () => act(view.yourSeat, {action:'lock', color:c});
+          btns.appendChild(l);
+        }
+      });
+      main.appendChild(btns);
     }
 
-    // Other players
+    // Other players strip (smarter for local)
+    const others = document.createElement('div');
+    others.style.cssText = 'display:flex;gap:4px;justify-content:center;flex-wrap:wrap;font-size:10px';
     (s.allPlayers || []).forEach(p => {
       if (p.seat === view.yourSeat) return;
+      const isAct = p.seat === s.activeSeat;
       const d = document.createElement('div');
-      d.style.cssText = 'display:inline-block;margin:2px 6px;padding:2px 8px;background:#222;border-radius:6px;font-size:11px;white-space:nowrap';
-      const actv = (p.seat === s.activeSeat) ? ' <span style="color:#5f5">●</span>' : '';
-      d.innerHTML = `${p.name} <span style="opacity:.7">P${p.penalties}</span> L${p.lockedCount}${actv}`;
-      mini.appendChild(d);
+      d.style.cssText = `padding:2px 6px;background:#1e293b;border-radius:6px;${isAct?'border:1px solid #22c55e;':''}`;
+      let pens = '';
+      for(let i=0;i<4;i++) pens += `<span style="display:inline-block;width:7px;height:7px;margin:0 1px;border:1px solid #f87171;${i<p.penalties?'background:#f87171;':''}"></span>`;
+      d.innerHTML = `${p.name} ${pens} <span style="opacity:.6">L${p.lockedCount||0}</span>`;
+      others.appendChild(d);
     });
+    mini.appendChild(others);
 
     if (s.removedDice && s.removedDice.length) {
       const r = document.createElement('div');
-      r.style.cssText = 'font-size:10px;color:#666;margin-top:2px';
-      r.textContent = 'Dice removed: ' + s.removedDice.join(' ');
+      r.style.cssText = 'text-align:center;font-size:9px;color:#64748b;margin-top:2px';
+      r.textContent = 'Removed: ' + s.removedDice.join(' ');
       mini.appendChild(r);
+    }
+
+    // === SMART LOCAL MULTIPLAYER UX ===
+    if (window.mode === 'local' && !dice && isMyTurn) {
+      // After your turn ended (dice cleared), show pass device prompt
+      const passBanner = document.createElement('div');
+      passBanner.style.cssText = 'margin-top:8px;padding:8px 12px;background:#1e293b;border:2px solid #22c55e;border-radius:10px;text-align:center';
+      const nextIdx = (s.activeSeat + 1) % (s.allPlayers ? s.allPlayers.length : 2);
+      const nextName = s.allPlayers ? s.allPlayers[nextIdx].name : 'next player';
+      passBanner.innerHTML = `
+        <div style="font-weight:700;color:#22c55e;margin-bottom:4px">✅ Turn complete</div>
+        <div style="font-size:12px;margin-bottom:6px">Pass the device to <strong>${nextName}</strong></div>
+        <button class="btn" style="padding:6px 16px;font-size:12px;background:#166534" onclick="this.parentNode.remove(); /* state already advanced by engine */ ">I'm ready — continue</button>
+      `;
+      main.appendChild(passBanner);
+    }
+
+    // status bar
+    const sb = $('statusBar');
+    if (sb) {
+      if (!dice) sb.innerHTML = isMyTurn ? 'Roll the dice' : 'Waiting...';
+      else if (isMyTurn) sb.innerHTML = 'White sum for anyone • then your colored cross or PASS';
+      else sb.innerHTML = 'You can still cross the white sum';
     }
   }
 
   function act(seat, msg){
     if (window.mode === 'local') {
-      console.log('[Qwixx] Local play stub only — use online for the real game.');
+      // The LocalEngines will handle apply + re-render
+      if (window._localQwixxAct) window._localQwixxAct(seat, msg);
     } else {
       net.send({type:'action', ...msg});
     }
   }
 
+  // Proper LocalEngines for smart local play
   window.LocalEngines['qwixx'] = function(names){
+    const E = createLocalEngine(names);
+    // expose for the pass banner hack above
+    window._localQwixxAct = (seat, msg) => { E.apply(seat, msg); renderLocal(); };
     return {
-      apply(){}, next(){}, actor(){return 0;},
-      viewFor(seat){
-        return {
-          game:'qwixx', phase:'PLAY', over:false, yourSeat:seat,
-          qwixx: {
-            activeSeat:0, dice:null,
-            yourRows:{red:[],yellow:[],green:[],blue:[]},
-            yourPenalties:0, yourLocked:{red:false,yellow:false,green:false,blue:false},
-            removedDice:[],
-            allPlayers: names.map((n,i)=>({seat:i, name:n||('P'+(i+1)), penalties:0, lockedCount:0}))
-          }
-        };
-      }
+      apply(seat, msg){ E.apply(seat, msg); },
+      next(){ E.next(); },
+      actor(){ return E.actor(); },
+      viewFor(seat){ return E.viewFor(seat); }
     };
   };
 
@@ -1663,13 +1878,6 @@ const Bots=(()=>{
       try{
         if(gameId==='skyjo')return skyjoChoose(view,diff);
         if(gameId==='flip7')return flip7Choose(view,diff);
-        if(gameId==='qwixx'){
-          const s = view.qwixx || {};
-          if(!s.dice) return {action:'roll'};
-          // Very simple bot (always pass after rolling). Doesn't rely on personalized 'your' data in the host view.
-          // Good enough to unblock testing with bots; real players get full game.
-          return {action:'pass'};
-        }
       }catch(e){console.warn('bot error',e);}
       return null;
     }
@@ -1739,7 +1947,7 @@ function scheduleBot(view,bot,seat){
 /* ====================== INIT ====================== */
 {const v=$('verStamp');if(v)v.textContent='build '+BUILD_VERSION;}
 renderTiles('quickTiles',quickPlay); // quick play: no size filter (matchmaking fills the room)
-renderTiles('mainMenuGames', quickPlay);
+
 renderLocalSeats();
 refreshLocalTiles();
 if(SFX.muted){const b=$('soundBtn');if(b){b.textContent='🔇';b.classList.add('off');}}
