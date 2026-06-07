@@ -70,9 +70,9 @@ window.GameClients['hearts'] = {
 window.LocalEngines['hearts'] = function(names){ return { apply, next, actor, viewFor }; };
 ```
 
-Then add it to the catalogue tile list in `public/index.html` (the `catalogue=[...]` array near the top of the script).  
-The server also sends its `catalogue` (from `GAME_CATALOGUE` in the registry) to the client on room join (overwriting the client list), so your game appears in the Quick Play and room pickers.  
-**You must update both** the client `catalogue` array (for initial Quick Play / Local pick renders before any server message) **and** the server registry (so `getGame`, launch, quick-start, and the sent catalogue all know about it). The MD used to say you don't need the client list, but that's only partially true after the server override.
+Then add it to the catalogue tile list — actually you don't need to: the server sends
+its `catalogue` (from `GAME_CATALOGUE`) to the client, so your game appears in the
+Quick Play and room pickers automatically once it's in `GAMES`.
 
 ## Hub features your game gets for free
 - **Group-size filter** — set `minPlayers`/`maxPlayers` in `meta`; the hub greys out

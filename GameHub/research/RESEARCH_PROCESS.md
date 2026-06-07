@@ -9,7 +9,7 @@ This file replaces the many raw experiment logs that were generated during resea
 Build in `public/index.html`:
 
 ```text
-v14-skyjo-polished
+v18-skyjo-directional-6p
 ```
 
 ### Flip 7 hard
@@ -65,24 +65,35 @@ training/skyjo_solo_params.json
 ```
 
 ```json
-[2.925,3.717,3.222,2.816,3.552,3.377,1.422,3.281,1.41,3.035,0.877,7.546]
+{
+  "n4": [2.378,4.014,4.331,0.545,4.536,2.491,2.225,3.738,0.933,2.367,0.599,7.451,-0.752,4.416,0.846],
+  "n6": [0.226,3.681,4.473,1.26,3.561,3.644,1.055,3.053,0.92,2.271,0.443,7.775,0.702,4.319,1.951,-1.058,0.989,-0.089,0.764,0.681]
+}
 ```
+
+The client uses `n4` for 2–4 players and `n6` for 5+ players.
 
 Param layout:
 
 ```text
 [lowKeep,takeScore,beatWorst,deckSwapScore,tripletW,pairW,hiddenPenalty,
- revealSpreadW,revealHighW,revealPairPenalty,turnPenalty,highDiscard]
+ revealSpreadW,revealHighW,revealPairPenalty,turnPenalty,highDiscard,
+ lowHiddenValMax,lowHiddenWorstCap,lowHiddenBonus]
+
+The last three params in the 2–4p bucket are trained, not hand-fixed. They answer: if the drawn card is low enough and the revealed board is not bad enough, how much should the bot prefer putting that card into an unrevealed slot to remove hidden-card risk?
+
+The 5+ player bucket additionally includes a trained directional opponent component:
+`nextTripletFeedPenalty`, `nextImproveFeedPenalty`, `nextDangerFeedPenalty`, `prevSupplyBonus`, and `anchorPreserveWeight`. These model the player before as a likely source of useful discards and the next player as the recipient of your discards.
 ```
 
 Final eval snapshot vs previous uploaded-v3 production policy:
 
-| Players | New solo-polished | Previous prod v3 | Result |
+| Players | New trained low-hidden policy | Previous prod v3 | Result |
 |---:|---:|---:|---|
-| 2 | 55.55% | 44.45% | big gain |
-| 4 | 48.33% | 29.65% | huge gain |
-| 6 | 38.90% | 22.53% | huge gain |
-| 8 | 27.09% | 15.83% | huge gain |
+| 2 | 58.77% (`n4`) | 41.23% | big gain |
+| 4 | 50.76% (`n4`) | 28.26% | huge gain |
+| 6 | 40.06% (`n6` directional) | 23.72% | huge gain |
+| 8 | 26.30% (`n6` directional) | 17.98% | huge gain |
 
 Note: these evals include fillers such as medium/easy where relevant; see previous commits if raw logs are needed.
 
@@ -152,9 +163,18 @@ Note: these evals include fillers such as medium/easy where relevant; see previo
    - Added explicit features for low cards, high discard discipline, reveal geometry, triplet opportunities, and unsafe close penalty.
    - Direct multiplayer tuning over these features became the strongest Skyjo bot.
 
-6. **Polish run from current solo policy**
+6. **Polish runs from current solo policy**
    - Further improved the solo-inspired policy.
-   - Promoted as final v14.
+   - Separate polish runs found that 2–4p and 5+p prefer slightly different risk/tempo settings.
+
+7. **Trained low-card-to-hidden behavior**
+   - Human review caught a design flaw: low deck draws were overused to polish revealed cards rather than remove hidden risk.
+   - Added trainable params for low-card hidden placement and reran multiplayer CEM.
+
+8. **Directional opponent component**
+   - Added previous-player supply and next-player feed-denial features.
+   - 4p directional training was only marginal, so the simpler 2–4p bucket was kept.
+   - 6p directional training improved over the previous 5+ bucket, so it was promoted for 5+ players as final v18.
 
 ---
 

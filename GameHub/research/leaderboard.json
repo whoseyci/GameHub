@@ -1,6 +1,6 @@
 {
   "updated": "2026-06-07",
-  "productionBuild": "v14-skyjo-polished",
+  "productionBuild": "v18-skyjo-directional-6p",
   "flip7": {
     "productionHard": {
       "policy": "EV/card-counting hit-stay + threat action targeting",
@@ -13,28 +13,35 @@
       }
     },
     "notableFindings": [
-      "V2 learned hit/stay plus threat targeting was strong, but uploaded EV hit/stay was a small improvement when fused with our threat targeting.",
+      "Uploaded EV/card-counting hit-stay was a small improvement when fused with our threat targeting.",
       "Hidden-state target rollout oracle showed large upside, but deployable belief rollout did not beat hand threat targeting.",
       "Fresh win/loss-only league CEM learned nontrivial play but did not beat engineered production policy in multiplayer pools."
     ]
   },
   "skyjo": {
     "productionHard": {
-      "policy": "Solo-inspired board-efficiency / reveal-geometry / triplet policy",
+      "policy": "Bucketed solo-inspired board-efficiency / reveal-geometry / triplet policy; directional opponent component for 5+ players",
       "paramsFile": "training/skyjo_solo_params.json",
       "promotionEvalVsPreviousV3": {
-        "n2": { "soloPolished": 0.5555, "previousV3": 0.4445 },
-        "n4": { "soloPolished": 0.48333333333333334, "previousV3": 0.2964583333333333 },
-        "n6": { "soloPolished": 0.389, "previousV3": 0.22533333333333333 },
-        "n8": { "soloPolished": 0.2709375, "previousV3": 0.15828125 }
-      }
+        "n2": { "trainedLowHidden": 0.5876666666666667, "previousV3": 0.41233333333333333 },
+        "n4": { "trainedLowHidden": 0.507625, "previousV3": 0.282625 },
+        "n6": { "directional": 0.40055555555555555, "previousV3": 0.23722222222222222 },
+        "n8": { "directional": 0.26296875, "previousV3": 0.17984375 }
+      },
+      "directionalEvalVsPreviousBucket": {
+        "n4": { "directional": 0.444375, "previousBucket": 0.443625, "decision": "not enough; kept simpler n4" },
+        "n6": { "directional": 0.3605555555555556, "previousBucket": 0.3426666666666667, "decision": "promoted for 5+ players" }
+      },
+      "note": "Directional features model next-player discard feeding and previous-player supply. They helped meaningfully in 5+ player games but not in 2–4p."
     },
     "notableFindings": [
       "The original 4-threshold policy saturated quickly.",
       "Column/triplet/end-risk V2 improved substantially over threshold bots.",
       "The uploaded strategy policy was stronger than V2 in multiplayer and was temporarily promoted.",
-      "Solo board-efficiency and reveal-geometry training transferred extremely well to multiplayer and produced the final hard bot.",
-      "A polishing multi-player run from the solo-inspired policy improved it further."
+      "Solo board-efficiency and reveal-geometry training transferred extremely well to multiplayer.",
+      "Bucketed polish showed that 2–4p and 5+p prefer different tempo/risk settings.",
+      "Training the low-card-to-hidden behavior improved over the hand patch and fixed the observed strategic flaw.",
+      "Directional opponent modeling is useful in larger games; the 5+ bucket now includes it."
     ]
   }
 }

@@ -4,12 +4,10 @@
 import type { GameModule } from "./types";
 import { Skyjo, skyjoCompleteTurnEnd } from "./skyjo";
 import { Flip7 } from "./flip7";
-import { Qwixx } from "./qwixx";
 
 export const GAMES: Record<string, GameModule> = {
   [Skyjo.meta.id]: Skyjo,
   [Flip7.meta.id]: Flip7,
-  [Qwixx.meta.id]: Qwixx,
 };
 
 // Public catalogue for the hub UI (no logic, just metadata).

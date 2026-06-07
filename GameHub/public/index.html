@@ -216,8 +216,6 @@
       <h1 class="logo">GAME HUB</h1>
       <p class="muted" style="margin-bottom:26px">Play card games with friends.</p>
       <div id="verStamp" style="margin-top:4px;font-size:.72rem;color:var(--text-dim);font-weight:800;letter-spacing:.5px;opacity:.75"></div>
-      <div style="margin:10px 0 14px">
-      </div>
       <button class="btn purple" onclick="goOnline()">Play Online</button>
       <button class="btn secondary" onclick="showScreen('localPick')">Local (Pass &amp; Play)</button>
       <button class="btn secondary" onclick="showRulesMenu()" style="background:transparent;box-shadow:none;border:2px solid var(--border)">📖 How to Play</button>
@@ -376,7 +374,7 @@
    shape as Skyjo below. The hub never needs to change.
    ==================================================================== */
 const PARTYKIT_HOST = location.host; // served by the same Worker
-const BUILD_VERSION = "v16-qwixx-polished-local"; // bump on each change; shown on the menu
+const BUILD_VERSION = "v18-skyjo-directional-6p"; // bump on each change; shown on the menu
 
 const $=id=>document.getElementById(id);
 function showScreen(id){
@@ -486,7 +484,6 @@ function goOnline(){showScreen('onlineSetup');}
 catalogue=[
   {id:'skyjo',name:'Skyjo',minPlayers:2,maxPlayers:8,description:'Lowest score wins.',emoji:'🃏'},
   {id:'flip7',name:'Flip 7',minPlayers:2,maxPlayers:8,description:'Push your luck to 200.',emoji:'🎴'},
-  {id:'qwixx',name:'Qwixx',minPlayers:2,maxPlayers:5,description:'Cross numbers left-to-right in colored rows using dice sums.',emoji:'🎲'},
 ];
 
 /* ---- Rulebooks (accessible from menu, pickers, and inside a game) ---- */
@@ -510,17 +507,6 @@ const RULES={
       'Round ends when all players bust/stay or someone Flip 7s. First to 200 wins.',
     ],
     tip:'High numbers are riskier (more copies in the deck). The 0 is always safe.'},
-  qwixx:{title:'🎲 Qwixx',quick:'Cross numbers using dice sums (2–12).',
-    steps:[
-      'Everyone sees the same dice roll (2 white + 4 colored).',
-      'On your turn (active player): first optionally cross the white sum in any row; then cross a colored die + one white in that color\'s row (or pass).',
-      'Non-active players may cross the white sum in any row.',
-      'Numbers must be crossed left-to-right (increasing for red/yellow, decreasing for green/blue).',
-      'Lock a row (and remove its die) once you have 5+ crosses including the lock number (12 or 2).',
-      'Game ends when 2+ rows locked, or anyone reaches 4 penalties (–5 each).',
-      'Score: sum of (crosses × (crosses+1)/2) per row minus 5×penalties. Highest wins.',
-    ],
-    tip:'The active player gets two crosses per turn (white + colored). Everyone can take the white sum.'},
 };
 function openRules(gameId){
   const r=RULES[gameId];if(!r){showRulesMenu();return;}
@@ -1179,396 +1165,6 @@ class Flip7Engine{
     return{game:'flip7',phase:s.phase,over,yourSeat:seat,summary,flip7:{round:s.round,current:s.current,phase:s.phase,pendingAction:s.pendingAction,viewerSeat:seat,deckCount:s.deck.length,discardCount:s.discard.length,seq:s.seq,events:s.events,players:s.players.map(p=>({name:p.name,nums:p.nums,mods:p.mods,second:p.second,status:p.status,bustCard:p.bustCard,banked:p.banked,unique:new Set(p.nums).size,live:live(p)}))}};}
 }
 
-/* ====================== QWIXX CLIENT (inspired by your standalone base) ======================
-   Beautiful, functional client adapted to GameHub architecture.
-   - Uses the exact server view.qwixx shape.
-   - Nice CSS "3D" dice (gradients + shadows from your file).
-   - Clean scorecard rows with clickable cells.
-   - Smart valid-move highlighting.
-   - Phase / turn awareness.
-   - MUCH smarter local multiplayer UX: after your turn ends, a clear "Pass the device" banner + button.
-   - No bots (as requested).
-   - Reuses hub's net / act / status / containers.
-   ================================================================= */
-(function(){
-  const COLORS = ['red','yellow','green','blue'];
-  const C_HEX = { red:'#e74c3c', yellow:'#f1c40f', green:'#2ecc71', blue:'#3498db' };
-  const ROW_NUMS = {
-    red:   [2,3,4,5,6,7,8,9,10,11,12],
-    yellow:[2,3,4,5,6,7,8,9,10,11,12],
-    green: [12,11,10,9,8,7,6,5,4,3,2],
-    blue:  [12,11,10,9,8,7,6,5,4,3,2],
-  };
-
-  // Simple local engine that mirrors server logic for pass-and-play
-  function createLocalEngine(names) {
-    let state = {
-      players: names.map(n => ({
-        name: n || 'Player',
-        rows: {red:[], yellow:[], green:[], blue:[]},
-        penalties: 0,
-        locked: {red:false, yellow:false, green:false, blue:false}
-      })),
-      dice: null,
-      activeSeat: 0,
-      phase: 'PLAY',
-      lockedRows: 0,
-      removedDice: []
-    };
-
-    const RANGES = {
-      red: {start:2,end:12,step:1,lock:12},
-      yellow:{start:2,end:12,step:1,lock:12},
-      green:{start:12,end:2,step:-1,lock:2},
-      blue:{start:12,end:2,step:-1,lock:2}
-    };
-
-    function isValid(row, num, color) {
-      const r = RANGES[color];
-      if (row.includes(num)) return false;
-      if (num < r.start || num > r.end) return false;
-      if (row.length === 0) return true;
-      const last = row[row.length-1];
-      return r.step > 0 ? num > last : num < last;
-    }
-
-    function advance() {
-      // auto lock checks
-      state.players.forEach((p, i) => {
-        COLORS.forEach(c => {
-          if (!p.locked[c] && p.rows[c].length >= 5 && p.rows[c].includes(RANGES[c].lock)) {
-            p.locked[c] = true;
-            state.lockedRows++;
-            if (!state.removedDice.includes(c)) state.removedDice.push(c);
-          }
-        });
-      });
-      if (state.lockedRows >= 2) { state.phase = 'GAME_OVER'; return; }
-      if (state.players.some(p => p.penalties >= 4)) { state.phase = 'GAME_OVER'; return; }
-      state.activeSeat = (state.activeSeat + 1) % state.players.length;
-      state.dice = null;
-    }
-
-    return {
-      apply(seat, msg) {
-        if (state.phase !== 'PLAY') return;
-        const p = state.players[seat];
-        if (!p) return;
-
-        if (msg.action === 'roll') {
-          if (seat !== state.activeSeat) return;
-          const roll = () => Math.floor(Math.random()*6)+1;
-          state.dice = {
-            white1: roll(), white2: roll(),
-            red: state.removedDice.includes('red') ? 0 : roll(),
-            yellow: state.removedDice.includes('yellow') ? 0 : roll(),
-            green: state.removedDice.includes('green') ? 0 : roll(),
-            blue: state.removedDice.includes('blue') ? 0 : roll()
-          };
-          return;
-        }
-
-        if (msg.action === 'cross_white') {
-          if (!state.dice) return;
-          const sum = state.dice.white1 + state.dice.white2;
-          const c = msg.color;
-          if (!COLORS.includes(c)) return;
-          const row = p.rows[c];
-          if (isValid(row, sum, c)) {
-            row.push(sum);
-            row.sort((a,b) => RANGES[c].step > 0 ? a-b : b-a);
-          }
-          return; // non-active don't advance
-        }
-
-        if (msg.action === 'cross_colored') {
-          if (seat !== state.activeSeat || !state.dice) return;
-          const w = msg.white; // 1 or 2
-          const c = msg.color;
-          if (!COLORS.includes(c)) return;
-          const wval = w===1 ? state.dice.white1 : state.dice.white2;
-          const cval = state.dice[c];
-          const sum = wval + cval;
-          const row = p.rows[c];
-          if (isValid(row, sum, c)) {
-            row.push(sum);
-            row.sort((a,b) => RANGES[c].step > 0 ? a-b : b-a);
-          }
-          advance();
-          return;
-        }
-
-        if (msg.action === 'pass') {
-          if (seat !== state.activeSeat) return;
-          p.penalties = Math.min(4, p.penalties + 1);
-          advance();
-          return;
-        }
-
-        if (msg.action === 'lock') {
-          const c = msg.color;
-          if (!COLORS.includes(c) || p.locked[c]) return;
-          const row = p.rows[c];
-          const lock = RANGES[c].lock;
-          if (row.length >= 5 && row.includes(lock)) {
-            p.locked[c] = true;
-            state.lockedRows++;
-            if (!state.removedDice.includes(c)) state.removedDice.push(c);
-            if (state.lockedRows >= 2) state.phase = 'GAME_OVER';
-          }
-          return;
-        }
-      },
-
-      next() {
-        // new round or new game
-        if (state.phase === 'GAME_OVER') {
-          // new game
-          state.players.forEach(p => { p.rows = {red:[],yellow:[],green:[],blue:[]}; p.penalties=0; p.locked={red:false,yellow:false,green:false,blue:false}; });
-          state.lockedRows = 0;
-          state.removedDice = [];
-        }
-        state.activeSeat = 0;
-        state.dice = null;
-        state.phase = 'PLAY';
-      },
-
-      actor() { return state.activeSeat; },
-
-      viewFor(seat) {
-        const your = state.players[seat] || state.players[0];
-        const over = state.phase === 'GAME_OVER';
-        let summary;
-        if (over) {
-          const scores = state.players.map((p,i) => {
-            let tot = 0;
-            COLORS.forEach(c => { const n = p.rows[c].length; tot += n*(n+1)/2; });
-            tot -= p.penalties * 5;
-            return {seat:i, name:p.name, score:tot, delta:0};
-          });
-          const mx = Math.max(...scores.map(s=>s.score));
-          summary = { rows: scores, winners: scores.filter(s=>s.score===mx).map(s=>s.seat) };
-        }
-        return {
-          game: 'qwixx',
-          phase: state.phase,
-          over,
-          yourSeat: seat,
-          summary,
-          qwixx: {
-            activeSeat: state.activeSeat,
-            dice: state.dice,
-            yourRows: your.rows,
-            yourPenalties: your.penalties,
-            yourLocked: your.locked,
-            removedDice: [...state.removedDice],
-            allPlayers: state.players.map((p,i) => ({
-              seat: i, name: p.name, penalties: p.penalties,
-              lockedCount: Object.values(p.locked).filter(Boolean).length
-            }))
-          }
-        };
-      }
-    };
-  }
-
-  function render(view) {
-    const s = view.qwixx || {};
-    const main = $('mainBoardsContainer');
-    const mini = $('miniBoardsContainer');
-    const top = $('topArea');
-
-    main.innerHTML = '';
-    mini.innerHTML = '';
-
-    const isMyTurn = s.activeSeat === view.yourSeat;
-    const dice = s.dice;
-    const wSum = dice ? dice.white1 + dice.white2 : 0;
-
-    // Top: beautiful dice (inspired by your 3D-ish design)
-    let topH = `<div class="qwixx-dice-zone">`;
-    if (dice) {
-      const die = (v, col) => {
-        const isWhite = col === 'white';
-        const bg = isWhite ? 'linear-gradient(145deg,#f8fafc,#e2e8f0)' : `linear-gradient(145deg,${C_HEX[col]},${C_HEX[col]}dd)`;
-        const colr = isWhite ? '#1e293b' : '#fff';
-        const brd = isWhite ? '#64748b' : '#1e293b';
-        return `<div style="width:42px;height:42px;border:3px solid ${brd};border-radius:9px;background:${bg};color:${colr};font-size:20px;font-weight:900;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 8px rgba(0,0,0,.3), inset 0 2px 0 rgba(255,255,255,.3);margin:0 3px;">${v}</div>`;
-      };
-
-      topH += `<div style="display:flex;gap:14px;justify-content:center;margin-bottom:4px">`;
-      topH += `<div><div style="font-size:9px;color:#64748b;margin-bottom:2px;text-align:center">WHITE</div><div style="display:flex">${die(dice.white1,'white')}${die(dice.white2,'white')}</div></div>`;
-      topH += `<div><div style="font-size:9px;color:#64748b;margin-bottom:2px;text-align:center">COLORS</div><div style="display:flex">${die(dice.red,'red')}${die(dice.yellow,'yellow')}${die(dice.green,'green')}${die(dice.blue,'blue')}</div></div>`;
-      topH += `</div>`;
-      topH += `<div style="text-align:center;font-weight:800;font-size:15px;color:#f1f5f9;margin:2px 0">White Sum <span style="color:#f1c40f;font-size:17px">${wSum}</span></div>`;
-    } else {
-      topH += `<div style="text-align:center;font-size:13px;color:#64748b;padding:6px 12px;background:#1e293b;border-radius:999px">Roll to start the turn</div>`;
-    }
-
-    const activeP = s.allPlayers ? s.allPlayers[s.activeSeat] : null;
-    const turnLabel = isMyTurn ? 'YOUR TURN' : (activeP ? activeP.name + "'s turn" : 'Opponent turn');
-    topH += `<div style="text-align:center;font-size:12px;font-weight:700;margin-top:2px;${isMyTurn?'color:#22c55e':'color:#94a3b8'}">${turnLabel}</div>`;
-    topH += `</div>`;
-    top.innerHTML = topH;
-
-    // YOUR SCORECARD (main)
-    const sc = document.createElement('div');
-    sc.style.cssText = 'background:#0f172a;border:2px solid #334155;border-radius:14px;padding:10px 8px;margin-bottom:8px';
-
-    let scH = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;padding:0 4px">
-      <div style="font-weight:800">YOU</div>
-      <div style="font-size:11px;color:#f87171">⚠ ${s.yourPenalties||0}/4</div>
-    </div>`;
-
-    COLORS.forEach(col => {
-      const nums = ROW_NUMS[col];
-      const crossed = new Set(s.yourRows ? s.yourRows[col] : []);
-      const locked = s.yourLocked ? s.yourLocked[col] : false;
-      const rem = s.removedDice && s.removedDice.includes(col);
-      const hex = C_HEX[col];
-
-      scH += `<div style="margin:3px 0">`;
-      scH += `<div style="display:flex;align-items:center;gap:5px;margin-bottom:2px"><div style="width:52px;font-size:10px;font-weight:700;color:${hex}">${col.toUpperCase()}${locked?' 🔒':''}</div><div style="flex:1;height:1px;background:${hex};opacity:.3"></div></div>`;
-      scH += `<div style="display:flex;gap:1px">`;
-
-      nums.forEach(n => {
-        const isC = crossed.has(n);
-        let canAct = false;
-        if (dice && !isC && !locked && !rem) {
-          if (n === wSum) canAct = true;
-          else if (isMyTurn) {
-            const cval = dice[col] || 0;
-            if (dice.white1 + cval === n || dice.white2 + cval === n) canAct = true;
-          }
-        }
-        let sty = `flex:1 0 22px;height:24px;border:2px solid ${hex};border-radius:3px;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;`;
-        if (isC) sty += `background:${hex};color:#0f172a;text-decoration:line-through;`;
-        else if (canAct) sty += `background:#052e16;color:#4ade80;border-color:#22c55e;cursor:pointer;`;
-        else sty += `background:#1e293b;color:#64748b;${rem||locked?'opacity:.35;':''}`;
-
-        scH += `<div class="q-cell" data-col="${col}" data-n="${n}" style="${sty}">${n}</div>`;
-      });
-      scH += `</div></div>`;
-    });
-    sc.innerHTML = scH;
-    main.appendChild(sc);
-
-    // Wire cells
-    sc.querySelectorAll('.q-cell').forEach(el => {
-      const col = el.dataset.col;
-      const n = parseInt(el.dataset.n);
-      const crossed = new Set(s.yourRows ? s.yourRows[col] : []);
-      if (!crossed.has(n) && dice && ! (s.yourLocked && s.yourLocked[col]) && !(s.removedDice && s.removedDice.includes(col))) {
-        el.onclick = () => {
-          const sum = wSum;
-          if (n === sum) {
-            act(view.yourSeat, {action:'cross_white', color: col});
-          } else if (isMyTurn) {
-            const cv = dice[col] || 0;
-            if (dice.white1 + cv === n) act(view.yourSeat, {action:'cross_colored', white:1, color:col});
-            else if (dice.white2 + cv === n) act(view.yourSeat, {action:'cross_colored', white:2, color:col});
-          }
-        };
-      }
-    });
-
-    // Action buttons
-    if (dice && isMyTurn) {
-      const btns = document.createElement('div');
-      btns.style.cssText = 'display:flex;gap:6px;justify-content:center;margin:4px 0;flex-wrap:wrap';
-
-      const p = document.createElement('button');
-      p.className = 'btn'; p.style.cssText='padding:7px 14px;font-size:12px;background:#7f1d1d';
-      p.textContent = 'PASS (+penalty)';
-      p.onclick = () => act(view.yourSeat, {action:'pass'});
-      btns.appendChild(p);
-
-      COLORS.forEach(c => {
-        if (s.removedDice && s.removedDice.includes(c)) return;
-        const r = s.yourRows ? s.yourRows[c] : [];
-        const lk = (c==='red'||c==='yellow')?12:2;
-        if (r.length >=5 && r.includes(lk) && !(s.yourLocked && s.yourLocked[c])) {
-          const l = document.createElement('button');
-          l.className='btn'; l.style.cssText=`padding:6px 10px;font-size:11px;background:#166534`;
-          l.textContent = `Lock ${c} 🔒`;
-          l.onclick = () => act(view.yourSeat, {action:'lock', color:c});
-          btns.appendChild(l);
-        }
-      });
-      main.appendChild(btns);
-    }
-
-    // Other players strip (smarter for local)
-    const others = document.createElement('div');
-    others.style.cssText = 'display:flex;gap:4px;justify-content:center;flex-wrap:wrap;font-size:10px';
-    (s.allPlayers || []).forEach(p => {
-      if (p.seat === view.yourSeat) return;
-      const isAct = p.seat === s.activeSeat;
-      const d = document.createElement('div');
-      d.style.cssText = `padding:2px 6px;background:#1e293b;border-radius:6px;${isAct?'border:1px solid #22c55e;':''}`;
-      let pens = '';
-      for(let i=0;i<4;i++) pens += `<span style="display:inline-block;width:7px;height:7px;margin:0 1px;border:1px solid #f87171;${i<p.penalties?'background:#f87171;':''}"></span>`;
-      d.innerHTML = `${p.name} ${pens} <span style="opacity:.6">L${p.lockedCount||0}</span>`;
-      others.appendChild(d);
-    });
-    mini.appendChild(others);
-
-    if (s.removedDice && s.removedDice.length) {
-      const r = document.createElement('div');
-      r.style.cssText = 'text-align:center;font-size:9px;color:#64748b;margin-top:2px';
-      r.textContent = 'Removed: ' + s.removedDice.join(' ');
-      mini.appendChild(r);
-    }
-
-    // === SMART LOCAL MULTIPLAYER UX ===
-    if (window.mode === 'local' && !dice && isMyTurn) {
-      // After your turn ended (dice cleared), show pass device prompt
-      const passBanner = document.createElement('div');
-      passBanner.style.cssText = 'margin-top:8px;padding:8px 12px;background:#1e293b;border:2px solid #22c55e;border-radius:10px;text-align:center';
-      const nextIdx = (s.activeSeat + 1) % (s.allPlayers ? s.allPlayers.length : 2);
-      const nextName = s.allPlayers ? s.allPlayers[nextIdx].name : 'next player';
-      passBanner.innerHTML = `
-        <div style="font-weight:700;color:#22c55e;margin-bottom:4px">✅ Turn complete</div>
-        <div style="font-size:12px;margin-bottom:6px">Pass the device to <strong>${nextName}</strong></div>
-        <button class="btn" style="padding:6px 16px;font-size:12px;background:#166534" onclick="this.parentNode.remove(); /* state already advanced by engine */ ">I'm ready — continue</button>
-      `;
-      main.appendChild(passBanner);
-    }
-
-    // status bar
-    const sb = $('statusBar');
-    if (sb) {
-      if (!dice) sb.innerHTML = isMyTurn ? 'Roll the dice' : 'Waiting...';
-      else if (isMyTurn) sb.innerHTML = 'White sum for anyone • then your colored cross or PASS';
-      else sb.innerHTML = 'You can still cross the white sum';
-    }
-  }
-
-  function act(seat, msg){
-    if (window.mode === 'local') {
-      // The LocalEngines will handle apply + re-render
-      if (window._localQwixxAct) window._localQwixxAct(seat, msg);
-    } else {
-      net.send({type:'action', ...msg});
-    }
-  }
-
-  // Proper LocalEngines for smart local play
-  window.LocalEngines['qwixx'] = function(names){
-    const E = createLocalEngine(names);
-    // expose for the pass banner hack above
-    window._localQwixxAct = (seat, msg) => { E.apply(seat, msg); renderLocal(); };
-    return {
-      apply(seat, msg){ E.apply(seat, msg); },
-      next(){ E.next(); },
-      actor(){ return E.actor(); },
-      viewFor(seat){ return E.viewFor(seat); }
-    };
-  };
-
-  window.GameClients['qwixx'] = {render};
-})();
-
 /* ====================== BOTS ======================
    Bots "think" on the host's client (online) or the local device (offline) so the
    server spends ~0 compute. Easy/Medium are heuristics; Hard uses compact
@@ -1597,7 +1193,9 @@ const Bots=(()=>{
   const SKYJO_U6=[6.153,1.281,4.075,0.824,6.178,2.09];
   // Skyjo hard V4: solo board-efficiency policy fine-tuned in multiplayer.
   // [lowKeep,takeScore,beatWorst,deckSwapScore,tripletW,pairW,hiddenPenalty,revealSpreadW,revealHighW,revealPairPenalty,turnPenalty,highDiscard]
-  const SKYJO_SOLO=[2.925,3.717,3.222,2.816,3.552,3.377,1.422,3.281,1.41,3.035,0.877,7.546];
+  // Bucketed polish: <=4p and >=5p prefer slightly different risk/tempo.
+  const SKYJO_SOLO4=[2.378,4.014,4.331,0.545,4.536,2.491,2.225,3.738,0.933,2.367,0.599,7.451,-0.752,4.416,0.846];
+  const SKYJO_SOLO6=[0.226,3.681,4.473,1.26,3.561,3.644,1.055,3.053,0.92,2.271,0.443,7.775,0.702,4.319,1.951,-1.058,0.989,-0.089,0.764,0.681];
 
   /* ---------- FLIP 7 ---------- */
   // Estimate true bust probability from the view. We know our own numbers; the
@@ -1800,14 +1398,41 @@ const Bots=(()=>{
     const best=Math.min(...s.players.map((p,i)=>i===me?Infinity:skyVisibleScore(p)+skyHidden(p).length*2.5));
     return mine<=best?0:8;
   }
+  function skyPrevSupply(s,me,val){
+    if(s.players.length<=1)return 0;
+    const prev=s.players[(me-1+s.players.length)%s.players.length],w=skyWorst(prev).val;
+    let has=0;for(const i of skyRevealed(prev))if(prev.board[i].value===val)has++;
+    const high=Math.max(0,(val-4)/8);
+    return (has?0.5*has:0)+(w===val?1:0)+high*(w>=val?0.5:0);
+  }
+  function skyNextDanger(s,me){
+    if(s.players.length<=1)return 0;
+    const nx=s.players[(me+1)%s.players.length];
+    return Math.max(0,(20-skyVisibleScore(nx))/20)+(12-skyHidden(nx).length)/12;
+  }
+  function skyNextFeed(s,me,val,P){
+    if(s.players.length<=1)return 0;
+    const nx=s.players[(me+1)%s.players.length];let trip=0;
+    for(let c=0;c<4;c++){const rev=skyCol(c).map(i=>nx.board[i]).filter(x=>x.revealed&&!x.cleared);if(rev.length>=2&&rev[0].value===rev[1].value&&rev[0].value===val)trip=1;}
+    const improve=Math.max(0,skyWorst(nx).val-val)/12;
+    return (P[15]||0)*trip+(P[16]||0)*improve+(P[17]||0)*skyNextDanger(s,me)*(trip+improve>0?1:0);
+  }
+  function skyAnchorValue(s,me,idx,oldVal){
+    const p=s.players[me];
+    const same=skyCol(idx%4).filter(i=>i!==idx).map(i=>p.board[i]).filter(c=>c.revealed&&!c.cleared&&c.value===oldVal).length;
+    return same*(1+skyPrevSupply(s,me,oldVal));
+  }
   function skyBestSwapSolo(s,me,val,P){
-    const p=s.players[me],cands=[...skyRevealed(p),...skyHidden(p)];
+    const p=s.players[me],cands=[...skyRevealed(p),...skyHidden(p)],w=skyWorst(p);
     let best=cands[0]??0,bestScore=-1e9;
     for(const idx of cands){
       const c=p.board[idx],oldKnown=(c.revealed&&!c.cleared)?c.value:5.2;
       const tg=skyTripSolo(p,idx,val),complete=(tg!==0&&Math.abs(tg)>1)?tg:0,pair=(tg>0&&tg<=2)?tg:0;
       const wouldEnd=skyHidden(p).length===1&&!c.revealed;
-      const score=(oldKnown-val)+P[4]*complete+P[5]*pair-(c.revealed?0:P[6])-(wouldEnd?skyEndRiskSolo(s,me):0);
+      const lowHidden=(!c.revealed&&val<=P[12]&&w.val<=P[13]&&!wouldEnd)?P[14]:0;
+      const supply=(P[18]||0)*skyPrevSupply(s,me,val)*(pair>0?1:0);
+      const preserve=(c.revealed&&!c.cleared)?(P[19]||0)*skyAnchorValue(s,me,idx,c.value):0;
+      const score=(oldKnown-val)+P[4]*complete+P[5]*pair-(c.revealed?0:P[6])+lowHidden+supply-preserve-(wouldEnd?skyEndRiskSolo(s,me):0);
       if(score>bestScore){bestScore=score;best=idx;}
     }
     return {idx:best,score:bestScore};
@@ -1823,16 +1448,23 @@ const Bots=(()=>{
     return best;
   }
   function skyjoChooseSolo(view){
-    const s=view.skyjo,me=s.currentPlayer,p=s.players[me],P=SKYJO_SOLO,hid=skyHidden(p);
+    const s=view.skyjo,me=s.currentPlayer,p=s.players[me],P=s.players.length<=4?SKYJO_SOLO4:SKYJO_SOLO6,hid=skyHidden(p);
     if(s.phase==='REVEAL')return {action:(s.tiebreakerPlayers&&s.tiebreakerPlayers.length)?'tiebreaker':'reveal',index:skyRevealSolo(s,me,P)};
     const w=skyWorst(p);
     if(s.turnAction===null){const dt=s.discardTop;if(dt==null)return {action:'draw_deck'};const b=skyBestSwapSolo(s,me,dt,P);return (dt<=P[0]||b.score>=P[1]||(w.val-dt)>=P[2])?{action:'take_discard'}:{action:'draw_deck'};}
     const val=s.myDrawnCard;
     if(s.turnAction==='deck'){
       if(val==null)return {action:'discard_drawn'};
-      const b=skyBestSwapSolo(s,me,val,P);
-      if(val>=P[11]&&b.score<P[1]+2&&hid.length)return {action:'discard_drawn'};
-      return (b.score>=P[3]||val<=P[0])?{action:'swap',index:b.idx}:{action:'discard_drawn'};
+      const w=skyWorst(p);
+      // Human/solo insight: very low deck draws should often be used to remove
+      // unknown risk, not only to polish an already-good visible board. If there
+      // is no genuinely bad revealed card, lock the low card into a hidden slot.
+      if(val<=0&&hid.length&&w.val<=(P[12]??4.5)&&!(hid.length===1&&skyEndRiskSolo(s,me))){
+        return {action:'swap',index:skyRevealSolo(s,me,P)};
+      }
+      const b=skyBestSwapSolo(s,me,val,P),feed=skyNextFeed(s,me,val,P);
+      if(val>=P[11]&&b.score+feed<P[1]+2&&hid.length)return {action:'discard_drawn'};
+      return (b.score+feed>=P[3]||val<=P[0])?{action:'swap',index:b.idx}:{action:'discard_drawn'};
     }
     if(s.turnAction==='discard'){const b=skyBestSwapSolo(s,me,val,P);return {action:'swap',index:b.idx};}
     if(s.turnAction==='must_reveal')return {action:'reveal_after_discard',index:skyRevealSolo(s,me,P)};
@@ -1933,9 +1565,18 @@ function scheduleBot(view,bot,seat){
     const gid=v.game;
     // recompute "current" so we act on fresh state
     const gv=v[gid];
-    // build a view object the bot expects (currentPlayer/current = seat)
+    // Build a view object the bot expects (currentPlayer/current = seat).
+    // Online views are personalized for the HOST seat, but the host drives bot
+    // seats. Skyjo deck draws are public (`publicDrawn`), while discard takes can
+    // be recovered from `lastAction`; without this patch online bots would see
+    // `myDrawnCard=null` and discard every deck draw, including negatives.
     let vv=v;
-    if(gid==='skyjo'){ vv={...v,skyjo:{...gv,currentPlayer:seat}}; }
+    if(gid==='skyjo'){
+      const sg={...gv,currentPlayer:seat};
+      if(sg.myDrawnCard==null && sg.turnAction==='deck' && sg.publicDrawn!=null) sg.myDrawnCard=sg.publicDrawn;
+      if(sg.myDrawnCard==null && sg.turnAction==='discard' && sg.lastAction&&sg.lastAction.type==='take_discard'&&sg.lastAction.player===seat) sg.myDrawnCard=sg.lastAction.value;
+      vv={...v,skyjo:sg};
+    }
     const msg=Bots.choose(gid,vv,bot.difficulty);
     _botBusy=false;
     if(!msg){return;}
@@ -1947,7 +1588,6 @@ function scheduleBot(view,bot,seat){
 /* ====================== INIT ====================== */
 {const v=$('verStamp');if(v)v.textContent='build '+BUILD_VERSION;}
 renderTiles('quickTiles',quickPlay); // quick play: no size filter (matchmaking fills the room)
-
 renderLocalSeats();
 refreshLocalTiles();
 if(SFX.muted){const b=$('soundBtn');if(b){b.textContent='🔇';b.classList.add('off');}}
