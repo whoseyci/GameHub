@@ -1,0 +1,40 @@
+{
+  "updated": "2026-06-07",
+  "productionBuild": "v15-skyjo-bucketed-polish",
+  "flip7": {
+    "productionHard": {
+      "policy": "EV/card-counting hit-stay + threat action targeting",
+      "paramsFile": "training/flip7_ev_params.json",
+      "promotionEval": {
+        "n2": { "evThreat": 0.5075, "previousV2": 0.4925 },
+        "n4": { "evThreat": 0.31425, "previousV2": 0.3085 },
+        "n6": { "evThreat": 0.2258888888888889, "previousV2": 0.22277777777777777 },
+        "n8": { "evThreat": 0.186625, "previousV2": 0.172875 }
+      }
+    },
+    "notableFindings": [
+      "Uploaded EV/card-counting hit-stay was a small improvement when fused with our threat targeting.",
+      "Hidden-state target rollout oracle showed large upside, but deployable belief rollout did not beat hand threat targeting.",
+      "Fresh win/loss-only league CEM learned nontrivial play but did not beat engineered production policy in multiplayer pools."
+    ]
+  },
+  "skyjo": {
+    "productionHard": {
+      "policy": "Bucketed solo-inspired board-efficiency / reveal-geometry / triplet policy",
+      "paramsFile": "training/skyjo_solo_params.json",
+      "promotionEvalVsPreviousV3": {
+        "n2": { "bucketedPolish": 0.58625, "previousV3": 0.41375 },
+        "n4": { "bucketedPolish": 0.49541666666666667, "previousV3": 0.29333333333333333 },
+        "n6": { "bucketedPolish": 0.4088333333333333, "previousV3": 0.22183333333333333 },
+        "n8": { "bucketedPolish": 0.265625, "previousV3": 0.1765625 }
+      }
+    },
+    "notableFindings": [
+      "The original 4-threshold policy saturated quickly.",
+      "Column/triplet/end-risk V2 improved substantially over threshold bots.",
+      "The uploaded strategy policy was stronger than V2 in multiplayer and was temporarily promoted.",
+      "Solo board-efficiency and reveal-geometry training transferred extremely well to multiplayer.",
+      "Bucketed polish showed that 2–4p and 5+p prefer different tempo/risk settings."
+    ]
+  }
+}
