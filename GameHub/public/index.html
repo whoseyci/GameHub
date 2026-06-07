@@ -374,7 +374,7 @@
    shape as Skyjo below. The hub never needs to change.
    ==================================================================== */
 const PARTYKIT_HOST = location.host; // served by the same Worker
-const BUILD_VERSION = "v8-trained-bots"; // bump on each change; shown on the menu
+const BUILD_VERSION = "v14-skyjo-polished"; // bump on each change; shown on the menu
 
 const $=id=>document.getElementById(id);
 function showScreen(id){
@@ -484,7 +484,6 @@ function goOnline(){showScreen('onlineSetup');}
 catalogue=[
   {id:'skyjo',name:'Skyjo',minPlayers:2,maxPlayers:8,description:'Lowest score wins.',emoji:'🃏'},
   {id:'flip7',name:'Flip 7',minPlayers:2,maxPlayers:8,description:'Push your luck to 200.',emoji:'🎴'},
-  {id:'qwixx',name:'Qwixx',minPlayers:2,maxPlayers:5,description:'Cross numbers left-to-right using dice.',emoji:'🎲'},
 ];
 
 /* ---- Rulebooks (accessible from menu, pickers, and inside a game) ---- */
@@ -1115,111 +1114,6 @@ class SkyjoEngine{
   window._flip7ResetSeq=function(){lastSeq=-1;};
   window.GameClients['flip7']={render};
 
-/* -------------------- QWIXX client (basic functional) -------------------- */
-(function(){
-  function render(view){
-    const s = view.qwixx;
-    $('topArea').style.display = 'none';
-    $('miniBoardsContainer').innerHTML = '';
-    const main = $('mainBoardsContainer');
-    main.innerHTML = '';
-    const COLORS = ['red','yellow','green','blue'];
-    const RANGES = {red:[2,12,1,12], yellow:[2,12,1,12], green:[12,2,-1,2], blue:[12,2,-1,2]};
-
-    // dice display + controls
-    const diceDiv = document.createElement('div');
-    diceDiv.style.cssText = 'display:flex;gap:8px;justify-content:center;margin:10px 0;flex-wrap:wrap';
-    if(s.dice){
-      const d = s.dice;
-      const labels = ['W1','W2','R','Y','G','B'];
-      const vals = [d.white1,d.white2,d.red,d.yellow,d.green,d.blue];
-      vals.forEach((v,i)=>{ const el=document.createElement('div'); el.style.cssText='width:42px;height:42px;border:2px solid #fff;border-radius:8px;background:#fff;color:#111;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:1.4rem'; el.textContent=v; diceDiv.appendChild(el); });
-    }
-    main.appendChild(diceDiv);
-
-    // status
-    const sb = $('statusBar');
-    const myTurn = s.activeSeat === view.yourSeat && view.yourSeat >=0;
-    if(myTurn && !s.dice) sb.innerHTML = `<button class="btn green" style="margin:0;padding:8px 18px" onclick="net.send({type:'action',action:'roll'})">Roll Dice</button>`;
-    else if(myTurn && s.dice) sb.innerHTML = `<span style="color:#10b981">Your turn — choose crosses or Pass</span>`;
-    else sb.textContent = `Waiting for P${s.activeSeat+1}...`;
-
-    // player boards
-    s.allPlayers.forEach((pl,i) => {
-      const wrap = document.createElement('div');
-      wrap.className = 'player-board' + (i===s.activeSeat ? ' active-turn' : '') + (i===view.yourSeat ? ' me' : '');
-      const header = document.createElement('div'); header.className='board-header';
-      header.innerHTML = `<span>${pl.name}</span><span class="score-badge">Pen: ${pl.penalties}</span>`;
-      wrap.appendChild(header);
-
-      const grid = document.createElement('div'); grid.style.cssText='display:grid;grid-template-columns:repeat(4,1fr);gap:4px';
-      COLORS.forEach((c,ci) => {
-        const col = document.createElement('div'); col.style.cssText='display:flex;flex-direction:column;gap:2px';
-        const r = RANGES[c];
-        const nums = [];
-        for(let n=r[0]; r[2]>0 ? n<=r[1] : n>=r[1]; n+=r[2]) nums.push(n);
-        nums.forEach(n => {
-          const cell = document.createElement('div');
-          cell.style.cssText = `width:32px;height:32px;border:1px solid #64748b;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:0.85rem;font-weight:700;${s.yourRows && s.yourRows[c] && s.yourRows[c].includes(n) ? 'background:#22c55e;color:#fff' : 'background:#334155'}`;
-          cell.textContent = n;
-          if(i===view.yourSeat && myTurn && s.dice){
-            const sumW = s.dice.white1 + s.dice.white2;
-            const canW = sumW === n;
-            const canC = false; // colored handled separately
-            if(canW) { cell.style.border='2px solid #eab308'; cell.onclick=()=>net.send({type:'action',action:'cross_white',color:c}); }
-          }
-          col.appendChild(cell);
-        });
-        grid.appendChild(col);
-      });
-      wrap.appendChild(grid);
-
-      // action buttons for active
-      if(i===view.yourSeat && myTurn && s.dice){
-        const acts = document.createElement('div'); acts.style.cssText='margin-top:6px;display:flex;gap:6px;flex-wrap:wrap';
-        // white already clickable on cells
-        COLORS.forEach(c=>{
-          const b=document.createElement('button'); b.className='btn secondary'; b.style.cssText='padding:4px 8px;font-size:0.75rem;margin:0'; b.textContent = 'W+'+c[0];
-          b.onclick = () => {
-            const w = prompt('Which white? 1 or 2')|0;
-            net.send({type:'action',action:'cross_colored',white:w,color:c});
-          };
-          acts.appendChild(b);
-        });
-        const pass = document.createElement('button'); pass.className='btn'; pass.style.cssText='padding:4px 8px;font-size:0.75rem;margin:0;background:#ef4444'; pass.textContent='Pass (-5)';
-        pass.onclick=()=>net.send({type:'action',action:'pass'});
-        acts.appendChild(pass);
-        wrap.appendChild(acts);
-      }
-      main.appendChild(wrap);
-    });
-    if(view.over && view.summary && !document.getElementById('overlay').classList.contains('hidden')){} else if(view.over){ /* handled by hub */ }
-    prevView = view; curView = view;
-  }
-  window.GameClients['qwixx'] = {render};
-
-  // Minimal local engine so Qwixx appears in offline play
-  window.LocalEngines['qwixx'] = function(names) {
-    // Very simple pass-through that just uses the server module logic via a fake state
-    let state = null;
-    return {
-      apply(seat, msg) {
-        if (!state) {
-          // lazy init
-          const mod = window.GameClients['qwixx']; // not ideal but works for demo
-        }
-        // For a proper implementation we'd need a full client-side engine.
-        // For now just show the game tile.
-      },
-      next() {},
-      actor() { return 0; },
-      viewFor(seat) {
-        return { game: 'qwixx', phase: 'PLAY', over: false, yourSeat: seat, qwixx: { activeSeat: 0, dice: null, yourRows: {red:[],yellow:[],green:[],blue:[]}, yourPenalties:0, yourLocked:{}, removedDice:[], allPlayers: names.map((n,i)=>({seat:i,name:n,penalties:0,lockedCount:0})) } };
-      }
-    };
-  };
-})();
-
   // local engine wrapper
   window.LocalEngines['flip7']=function(names){
     const E=new Flip7Engine(names);
@@ -1273,18 +1167,33 @@ class Flip7Engine{
 
 /* ====================== BOTS ======================
    Bots "think" on the host's client (online) or the local device (offline) so the
-   server spends ~0 compute. Each game exposes a strategy: Easy/Medium are
-   heuristics; Hard uses Monte-Carlo rollouts via the local engine classes.
+   server spends ~0 compute. Easy/Medium are heuristics; Hard uses compact
+   self-play-trained feature policies plus game-specific tactical heuristics.
    Interface: Bots.choose(gameId, view, difficulty) -> action msg (or null).
    ================================================================= */
 const Bots=(()=>{
   function rint(n){return Math.floor(Math.random()*n);}
 
   /* ===== Trained policies (learned via self-play CEM in /training) ===== */
-  // Flip 7 hit/stay: linear policy over features; HIT if dot(W,f) > 0.
-  const FLIP7_W=[0.9529,-5.7442,-3.9162,2.4365,2.4865,6.4455,-6.6279];
-  // Skyjo turn params: [thrTakeDiscard, thrBeat, thrSwapMargin, thrLockLow].
+  // Flip 7 hard legacy V2 hit/stay: linear policy over V2 observation features.
+  const FLIP7_W=[1.2192,-4.6204,-4.0534,2.0874,6.5815,5.9684,-6.6861,-0.0642,-0.0056,-0.8209,-0.1052,0.3775,0.0651,-0.6054,-0.1983];
+  // Flip 7 hard v13: uploaded exact-EV/card-counting hit-stay with our threat targeting.
+  const FLIP7_EV2=[-0.0164,0.0027,0.0493,3.4614];
+  const FLIP7_EV4=[-0.0197,0.0375,0.1339,3.5668];
+  const FLIP7_EV6=[-0.1253,0.0464,0.0475,5.2227];
+  // Skyjo legacy turn params: [thrTakeDiscard, thrBeat, thrSwapMargin, thrLockLow].
   const SKYJO_P=[1.962,8.261,1.71,2.796];
+  // Skyjo hard V2: column/triplet/end-risk scorer trained in /research.
+  // [lowKeep, takeScore, beatWorst, deckSwapScore, tripletWeight, unused, hiddenPenalty, endRisk]
+  const SKYJO_V2=[3.763,2.727,2.81,3.792,2.268,-0.705,0.663,8.267];
+  // Skyjo hard V3: uploaded strategy-policy tuned by player-count buckets.
+  // [keepThreshold, takeDiscardMax, beatMargin, lockLowMax, closeAheadMargin, tripletMinVal]
+  const SKYJO_U2=[7.444,1.726,2.616,1.505,6.745,1.604];
+  const SKYJO_U4=[7.783,1.212,3.783,1.384,5.841,1.816];
+  const SKYJO_U6=[6.153,1.281,4.075,0.824,6.178,2.09];
+  // Skyjo hard V4: solo board-efficiency policy fine-tuned in multiplayer.
+  // [lowKeep,takeScore,beatWorst,deckSwapScore,tripletW,pairW,hiddenPenalty,revealSpreadW,revealHighW,revealPairPenalty,turnPenalty,highDiscard]
+  const SKYJO_SOLO=[2.925,3.717,3.222,2.816,3.552,3.377,1.422,3.281,1.41,3.035,0.877,7.546];
 
   /* ---------- FLIP 7 ---------- */
   // Estimate true bust probability from the view. We know our own numbers; the
@@ -1305,9 +1214,39 @@ const Bots=(()=>{
     const p=gv.players[me];
     const bp=flip7BustProb(gv,me);
     const u=p.unique;
-    return [1, bp, p.live/40, u/7, p.second?1:0, (7-u)/7, bp*p.live/40];
+    const others=gv.players.filter((_,i)=>i!==me);
+    const bestOppBanked=Math.max(...others.map(o=>o.banked));
+    const bestOppLive=Math.max(...others.map(o=>o.live));
+    const active=gv.players.filter(q=>q.status==='active').length;
+    const stayed=gv.players.filter(q=>q.status==='stayed').length;
+    const leaderGap=p.banked-bestOppBanked;
+    return [
+      1,
+      bp,
+      p.live/40,
+      u/7,
+      p.second?1:0,
+      (7-u)/7,
+      bp*p.live/40,
+      p.banked/200,
+      (200-p.banked)/200,
+      leaderGap/200,
+      bestOppBanked/200,
+      bestOppLive/40,
+      active/gv.players.length,
+      stayed/gv.players.length,
+      bp*Math.max(0,200-p.banked)/200,
+    ];
   }
-  function flip7Hit(gv,me){let s=0;for(let i=0;i<FLIP7_W.length;i++)s+=FLIP7_W[i]*flip7Features(gv,me)[i];return s>0;}
+  function flip7Hit(gv,me){const f=flip7Features(gv,me);let z=0;for(let i=0;i<FLIP7_W.length;i++)z+=FLIP7_W[i]*(f[i]||0);return z>0;}
+  function f7FullCounts(){const m={0:1};for(let v=1;v<=12;v++)m[v]=v;for(const k of ['+2','+4','+6','+8','+10','x2'])m[k]=1;for(const k of ['freeze','flip3','second'])m[k]=3;return m;}
+  function f7Dec(m,k){if(m[k]!=null)m[k]=Math.max(0,m[k]-1);}
+  function f7Remaining(gv){const m=f7FullCounts();for(const p of gv.players){for(const n of p.nums)f7Dec(m,String(n));for(const md of p.mods)f7Dec(m,md);if(p.second)f7Dec(m,'second');if(p.bustCard!=null)f7Dec(m,String(p.bustCard));}return m;}
+  function f7ModAdd(p){let a=0;for(const md of p.mods)if(md[0]==='+')a+=parseInt(md.slice(1));return a;}
+  function f7HasX2(p){return p.mods.includes('x2');}
+  function f7BankedValue(p){let s=p.nums.reduce((a,b)=>a+b,0);if(f7HasX2(p))s*=2;s+=f7ModAdd(p);if(new Set(p.nums).size>=7)s+=15;return s;}
+  function flip7EvHitValue(gv,me){const p=gv.players[me],held=new Set(p.nums),m=f7Remaining(gv);let total=0;for(const k in m)total+=m[k];if(total<=0)total=1;const x2=f7HasX2(p)?2:1,add=f7ModAdd(p),cur=p.nums.reduce((a,b)=>a+b,0),uniq=held.size;let ev=0;for(const k in m){const c=m[k];if(c<=0)continue;const pr=c/total;let out;const asNum=Number(k),isNum=k==='0'||(Number.isInteger(asNum)&&asNum>=1&&asNum<=12);if(isNum){const v=k==='0'?0:asNum;if(held.has(v)){out=p.second?cur*x2+add:0;}else{let base=(cur+v)*x2+add;if(uniq+1>=7)base+=15;out=base;}}else if(k==='x2')out=cur*2+add;else if(k[0]==='+')out=cur*x2+add+parseInt(k.slice(1));else out=cur*x2+add+(k==='second'?2:0);ev+=pr*out;}return ev;}
+  function flip7EvHit(gv,me){const P=gv.players.length<=2?FLIP7_EV2:gv.players.length<=4?FLIP7_EV4:FLIP7_EV6;const p=gv.players[me];let ev=flip7EvHitValue(gv,me);if(p.second)ev+=P[3];const stay=f7BankedValue(p);const others=gv.players.filter((_,i)=>i!==me);const bestOpp=Math.min(...others.map(o=>o.banked));const behind=p.banked-bestOpp;let mult=1+P[0];if(behind>15)mult-=P[1];if(behind<-15)mult+=P[2];return ev>stay*mult||stay===0;}
   function flip7HeuristicHit(p,bp){return bp<0.30||p.live<14;}      // Medium
   function flip7RecklessHit(p){return p.live<20;}                    // Easy
 
@@ -1316,30 +1255,193 @@ const Bots=(()=>{
     if(s.pendingAction && s.pendingAction.from===me){
       const k=s.pendingAction.kind;
       const others=s.players.map((q,i)=>i).filter(i=>i!==me&&s.players[i].status==='active');
-      if(k==='give_second')return {action:'target',target:others[0]!=null?others[0]:me};
       let target=me;
       if(others.length){
-        if(k==='freeze') target=others.reduce((a,b)=>s.players[b].live>s.players[a].live?b:a,others[0]);
-        else target=others.reduce((a,b)=>s.players[b].unique>s.players[a].unique?b:a,others[0]);
+        if(diff==='hard'){
+          if(k==='give_second'){
+            // Forced to give away a Second Chance: give it to the lowest-threat
+            // active opponent who doesn't already have one if possible.
+            const elig=others.filter(i=>!s.players[i].second);
+            const pool=elig.length?elig:others;
+            target=pool.reduce((a,b)=>(s.players[b].banked+s.players[b].live)<(s.players[a].banked+s.players[a].live)?b:a,pool[0]);
+          }else if(k==='freeze'){
+            // Freeze denies future upside but locks current live points. Prefer
+            // freezing a low-live leader/threat, not the biggest live score.
+            target=others.reduce((a,b)=>{
+              const sa=-s.players[a].live+0.12*s.players[a].banked;
+              const sb=-s.players[b].live+0.12*s.players[b].banked;
+              return sb>sa?b:a;
+            },others[0]);
+          }else{
+            // Flip Three: attack high bust-risk / high live / no-second targets.
+            const score=i=>{const q=s.players[i],bp=flip7BustProb(s,i),bust3=1-Math.pow(1-bp,3);return bust3*(20+q.live)+4*q.unique+(q.second?-12:0)+0.03*q.banked;};
+            target=others.reduce((a,b)=>score(b)>score(a)?b:a,others[0]);
+          }
+        }else{
+          if(k==='give_second')target=others[0];
+          else if(k==='freeze') target=others.reduce((a,b)=>s.players[b].live>s.players[a].live?b:a,others[0]);
+          else target=others.reduce((a,b)=>s.players[b].unique>s.players[a].unique?b:a,others[0]);
+        }
       }
       return {action:'target',target};
     }
     const bp=flip7BustProb(s,me);
     let hit;
-    if(diff==='hard') hit=flip7Hit(s,me);
+    if(diff==='hard') hit=flip7EvHit(s,me);
     else if(diff==='easy') hit=(p.live<18||Math.random()<0.5);
     else hit=flip7HeuristicHit(p,bp);   // medium
     return hit?{action:'hit'}:{action:'stay'};
   }
 
   /* ---------- SKYJO ---------- */
+  function skyHidden(p){return p.board.map((c,i)=>!c.revealed&&!c.cleared?i:-1).filter(i=>i>=0);}
+  function skyRevealed(p){return p.board.map((c,i)=>c.revealed&&!c.cleared?i:-1).filter(i=>i>=0);}
+  function skyCol(col){return [col,col+4,col+8];}
+  function skyVisibleScore(p){return p.board.filter(c=>c.revealed&&!c.cleared).reduce((a,c)=>a+c.value,0);}
+  function skyTripletGain(p,idx,val){
+    const others=skyCol(idx%4).filter(i=>i!==idx).map(i=>p.board[i]);
+    if(others.every(c=>c.revealed&&!c.cleared&&c.value===val))return Math.max(-6,val+others[0].value+others[1].value);
+    const matches=others.filter(c=>c.revealed&&!c.cleared&&c.value===val).length;
+    return matches?1.5*matches:0;
+  }
+  function skyEndRisk(s,me,P){
+    const mine=skyVisibleScore(s.players[me]);
+    const bestOpp=Math.min(...s.players.map((p,i)=>i===me?Infinity:skyVisibleScore(p)+skyHidden(p).length*2.5));
+    return mine<=bestOpp?0:P[7];
+  }
+  function skyRevealChoice(s,me,P){
+    const p=s.players[me],hid=skyHidden(p); if(!hid.length)return 0;
+    let best=hid[0],bestScore=-1e9;
+    for(const idx of hid){
+      const rev=skyCol(idx%4).map(i=>p.board[i]).filter(c=>c.revealed&&!c.cleared);
+      const colHigh=rev.reduce((a,c)=>a+Math.max(0,c.value),0);
+      const pair=rev.length>=2&&rev[0].value===rev[1].value?1:0;
+      const score=colHigh-2*pair+Math.random()*0.01;
+      if(score>bestScore){bestScore=score;best=idx;}
+    }
+    return best;
+  }
+  function skyBestSwap(s,me,val,P,allowHidden=true){
+    const p=s.players[me],cands=[...skyRevealed(p),...(allowHidden?skyHidden(p):[])];
+    let best=cands[0]??0,bestScore=-1e9;
+    for(const idx of cands){
+      const c=p.board[idx],oldKnown=(c.revealed&&!c.cleared)?c.value:5.2;
+      const immediate=oldKnown-val, tg=skyTripletGain(p,idx,val), hiddenPenalty=c.revealed?0:P[6];
+      const wouldEnd=skyHidden(p).length===1&&!c.revealed;
+      const score=immediate+P[4]*tg-hiddenPenalty-(wouldEnd?skyEndRisk(s,me,P):0);
+      if(score>bestScore){bestScore=score;best=idx;}
+    }
+    return {idx:best,score:bestScore};
+  }
+  function skyjoChooseV2(view){
+    const s=view.skyjo, me=s.currentPlayer, p=s.players[me], P=SKYJO_V2;
+    if(s.phase==='REVEAL')return {action:(s.tiebreakerPlayers&&s.tiebreakerPlayers.length)?'tiebreaker':'reveal',index:skyRevealChoice(s,me,P)};
+    const revealed=skyRevealed(p), worst=revealed.length?Math.max(...revealed.map(i=>p.board[i].value)):-99, ta=s.turnAction;
+    if(ta===null){const dt=s.discardTop;if(dt==null)return {action:'draw_deck'};const best=skyBestSwap(s,me,dt,P,true);return (dt<=P[0]||best.score>=P[1]||(worst-dt)>=P[2])?{action:'take_discard'}:{action:'draw_deck'};}
+    const drawn=s.myDrawnCard;
+    if(ta==='deck'){if(drawn==null)return {action:'discard_drawn'};const best=skyBestSwap(s,me,drawn,P,true);return (best.score>=P[3]||drawn<=P[0])?{action:'swap',index:best.idx}:{action:'discard_drawn'};}
+    if(ta==='discard'){const best=skyBestSwap(s,me,drawn,P,true);return {action:'swap',index:best.idx};}
+    if(ta==='must_reveal')return {action:'reveal_after_discard',index:skyRevealChoice(s,me,P)};
+    return null;
+  }
+  function skyWorst(p){const rv=skyRevealed(p);if(!rv.length)return {idx:-1,val:-99};let idx=rv[0],val=p.board[idx].value;for(const i of rv)if(p.board[i].value>val){idx=i;val=p.board[i].value;}return {idx,val};}
+  function skyCompletesUpload(p,idx,val){const cells=skyCol(idx%4).filter(i=>i!==idx).map(i=>p.board[i]);return cells.every(c=>c.revealed&&!c.cleared&&c.value===val);}
+  function skyAheadUpload(s,me,margin){const mine=skyVisibleScore(s.players[me]);const bestOpp=Math.min(...s.players.map((p,i)=>i===me?Infinity:skyVisibleScore(p)));return mine<=bestOpp-margin;}
+  function skyPlaceUpload(s,me,val,P){
+    const p=s.players[me],hid=skyHidden(p),w=skyWorst(p);
+    const open=p.board.map((c,i)=>!c.cleared?i:-1).filter(i=>i>=0);
+    for(const bi of open)if(skyCompletesUpload(p,bi,val)&&val>=P[5])return {action:'swap',index:bi};
+    if(w.idx>=0&&val<w.val-P[2])return {action:'swap',index:w.idx};
+    if(val<=P[3]&&hid.length){if(hid.length===1&&!skyAheadUpload(s,me,P[4]))return null;return {action:'swap',index:hid[0]};}
+    if(w.idx>=0&&val<w.val)return {action:'swap',index:w.idx};
+    return null;
+  }
+  function skyjoChooseUpload(view){
+    const s=view.skyjo,me=s.currentPlayer,p=s.players[me],P=s.players.length<=2?SKYJO_U2:s.players.length<=4?SKYJO_U4:SKYJO_U6;
+    const hid=skyHidden(p);
+    if(s.phase==='REVEAL')return {action:(s.tiebreakerPlayers&&s.tiebreakerPlayers.length)?'tiebreaker':'reveal',index:hid[rint(hid.length)]};
+    if(s.turnAction===null){
+      const dt=s.discardTop,w=skyWorst(p);
+      let useful=false;
+      if(dt!=null){
+        useful=dt<=P[1]||(w.val-dt)>=P[2]||p.board.some((c,i)=>!c.cleared&&skyCompletesUpload(p,i,dt)&&dt>=P[5]);
+      }
+      return useful?{action:'take_discard'}:{action:'draw_deck'};
+    }
+    const drawn=s.myDrawnCard;
+    if(s.turnAction==='deck'){
+      if(drawn==null)return {action:'discard_drawn'};
+      if(drawn>=P[0]){
+        for(let i=0;i<p.board.length;i++)if(!p.board[i].cleared&&skyCompletesUpload(p,i,drawn)&&drawn>=P[5])return {action:'swap',index:i};
+        if(hid.length)return {action:'discard_drawn'};
+      }
+      const a=skyPlaceUpload(s,me,drawn,P); if(a)return a;
+      const w=skyWorst(p); return hid.length?{action:'discard_drawn'}:{action:'swap',index:w.idx>=0?w.idx:0};
+    }
+    if(s.turnAction==='discard'){
+      const a=skyPlaceUpload(s,me,drawn,P); if(a)return a;
+      const w=skyWorst(p); return {action:'swap',index:w.idx>=0?w.idx:(hid[0]??0)};
+    }
+    if(s.turnAction==='must_reveal')return {action:'reveal_after_discard',index:hid[rint(hid.length)]};
+    return null;
+  }
+  function skyTripSolo(p,idx,val){
+    const cells=skyCol(idx%4).filter(i=>i!==idx).map(i=>p.board[i]);
+    if(cells.every(c=>c.revealed&&!c.cleared&&c.value===val))return Math.max(-8,val+cells[0].value+cells[1].value);
+    return cells.filter(c=>c.revealed&&!c.cleared&&c.value===val).length;
+  }
+  function skyEndRiskSolo(s,me){
+    if(s.players.length<=1)return 0;
+    const mine=skyVisibleScore(s.players[me]);
+    const best=Math.min(...s.players.map((p,i)=>i===me?Infinity:skyVisibleScore(p)+skyHidden(p).length*2.5));
+    return mine<=best?0:8;
+  }
+  function skyBestSwapSolo(s,me,val,P){
+    const p=s.players[me],cands=[...skyRevealed(p),...skyHidden(p)];
+    let best=cands[0]??0,bestScore=-1e9;
+    for(const idx of cands){
+      const c=p.board[idx],oldKnown=(c.revealed&&!c.cleared)?c.value:5.2;
+      const tg=skyTripSolo(p,idx,val),complete=(tg!==0&&Math.abs(tg)>1)?tg:0,pair=(tg>0&&tg<=2)?tg:0;
+      const wouldEnd=skyHidden(p).length===1&&!c.revealed;
+      const score=(oldKnown-val)+P[4]*complete+P[5]*pair-(c.revealed?0:P[6])-(wouldEnd?skyEndRiskSolo(s,me):0);
+      if(score>bestScore){bestScore=score;best=idx;}
+    }
+    return {idx:best,score:bestScore};
+  }
+  function skyRevealSolo(s,me,P){
+    const p=s.players[me],hid=skyHidden(p); if(!hid.length)return 0;
+    let best=hid[0],bestScore=-1e9;
+    for(const idx of hid){
+      const rev=skyCol(idx%4).map(i=>p.board[i]).filter(c=>c.revealed&&!c.cleared);
+      const score=P[7]*(rev.length===0?1:0)+P[8]*rev.reduce((a,c)=>a+Math.max(0,c.value),0)-P[9]*(rev.length>=2&&rev[0].value===rev[1].value?1:0)+Math.random()*0.01;
+      if(score>bestScore){bestScore=score;best=idx;}
+    }
+    return best;
+  }
+  function skyjoChooseSolo(view){
+    const s=view.skyjo,me=s.currentPlayer,p=s.players[me],P=SKYJO_SOLO,hid=skyHidden(p);
+    if(s.phase==='REVEAL')return {action:(s.tiebreakerPlayers&&s.tiebreakerPlayers.length)?'tiebreaker':'reveal',index:skyRevealSolo(s,me,P)};
+    const w=skyWorst(p);
+    if(s.turnAction===null){const dt=s.discardTop;if(dt==null)return {action:'draw_deck'};const b=skyBestSwapSolo(s,me,dt,P);return (dt<=P[0]||b.score>=P[1]||(w.val-dt)>=P[2])?{action:'take_discard'}:{action:'draw_deck'};}
+    const val=s.myDrawnCard;
+    if(s.turnAction==='deck'){
+      if(val==null)return {action:'discard_drawn'};
+      const b=skyBestSwapSolo(s,me,val,P);
+      if(val>=P[11]&&b.score<P[1]+2&&hid.length)return {action:'discard_drawn'};
+      return (b.score>=P[3]||val<=P[0])?{action:'swap',index:b.idx}:{action:'discard_drawn'};
+    }
+    if(s.turnAction==='discard'){const b=skyBestSwapSolo(s,me,val,P);return {action:'swap',index:b.idx};}
+    if(s.turnAction==='must_reveal')return {action:'reveal_after_discard',index:skyRevealSolo(s,me,P)};
+    return null;
+  }
   function skyjoChoose(view,diff){
+    if(diff==='hard')return skyjoChooseSolo(view);
     const s=view.skyjo, me=s.currentPlayer, p=s.players[me];
     if(s.phase==='REVEAL'){
       const idxs=p.board.map((c,i)=>i).filter(i=>!p.board[i].revealed&&!p.board[i].cleared);
       return {action:(s.tiebreakerPlayers&&s.tiebreakerPlayers.length)?'tiebreaker':'reveal',index:idxs[rint(idxs.length)]};
     }
-    const P = diff==='hard'?SKYJO_P : diff==='easy'?[6,2,0,4] : [3,5,2,2];
+    const P = diff==='easy'?[6,2,0,4] : [3,5,2,2];
     const revealed=p.board.filter(c=>c.revealed&&!c.cleared).map(c=>c.value);
     const worst=revealed.length?Math.max(...revealed):-99;
     const worstIdx=p.board.findIndex(c=>c.revealed&&!c.cleared&&c.value===worst);
