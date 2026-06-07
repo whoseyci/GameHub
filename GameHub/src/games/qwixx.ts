@@ -1,52 +1,96 @@
 // games/qwixx.ts — Qwixx dice game implementation
 import type { GameModule, GameView, SummaryRow } from "./types";
 
+export interface QwixxRow {
+  nums: number[];
+  cellColors: string[];
+  doubles: number[];
+  marks: number[]; // indices of crossed numbers
+}
+
+export interface QwixxPlayer {
+  name: string;
+  rows: { [color: string]: QwixxRow };
+  penalties: number;
+}
+
 export interface QwixxState {
-  players: Array<{
-    name: string;
-    rows: { [color: string]: number[] }; // indices crossed in each row
-    penalties: number;
-    locked: { [color: string]: boolean };
-  }>;
-  dice: { white1: number; white2: number; red: number; yellow: number; green: number; blue: number } | null;
+  players: QwixxPlayer[];
+  dice: { w: number[]; r: number; y: number; g: number; b: number } | null;
   activeSeat: number;
-  phase: "PLAY" | "GAME_OVER";
-  lockedRows: number;
-  removedDice: string[];
+  phase: "ACTIVE" | "OTHERS_WHITE" | "GAME_OVER";
+  expansion: string;
+  locked: string[];
+  pendingLocks: string[];
+  activeMarks: { c: string; i: number; n: number; reqColor: string }[];
+  playerTurnMarks: { [seat: number]: { c: string; i: number; n: number }[] };
+  round: number;
+  mc: number;
 }
 
 const COLORS = ["red", "yellow", "green", "blue"] as const;
 type Color = typeof COLORS[number];
 
-const ROW_RANGES: { [c in Color]: { start: number; end: number; step: number; lock: number } } = {
-  red: { start: 2, end: 12, step: 1, lock: 12 },
-  yellow: { start: 2, end: 12, step: 1, lock: 12 },
-  green: { start: 12, end: 2, step: -1, lock: 2 },
-  blue: { start: 12, end: 2, step: -1, lock: 2 },
+const EXPANSIONS = {
+  standard: { rowMax: 12, dieMax: 6 },
+  longo: { rowMax: 16, dieMax: 8 },
+  num_mixx: { rowMax: 12, dieMax: 6 },
+  col_mixx: { rowMax: 12, dieMax: 6 },
+  double: { rowMax: 12, dieMax: 6 },
 };
 
-function createEmptyRows() {
-  return {
-    red: [] as number[],
-    yellow: [] as number[],
-    green: [] as number[],
-    blue: [] as number[],
-  };
+function makeRow(color: Color, expansion: string) {
+  const isAsc = color === "red" || color === "yellow";
+  const rowMax = EXPANSIONS[expansion as keyof typeof EXPANSIONS]?.rowMax || 12;
+  
+  let nums: number[] = [];
+  if (isAsc) {
+    for (let i = 2; i <= rowMax; i++) nums.push(i);
+  } else {
+    for (let i = rowMax; i >= 2; i--) nums.push(i);
+  }
+  
+  if (expansion === "num_mixx") {
+    nums.sort(() => Math.random() - 0.5);
+  }
+  
+  let cellColors = nums.map(() => color);
+  if (expansion === "col_mixx") {
+    cellColors = nums.map(() => COLORS[Math.floor(Math.random() * COLORS.length)]);
+  }
+  
+  let doubles: number[] = [];
+  if (expansion === "double") {
+    while (doubles.length < 2) {
+      let r = Math.floor(Math.random() * nums.length);
+      if (!doubles.includes(r)) doubles.push(r);
+    }
+  }
+  
+  return { nums, cellColors, doubles, marks: [] };
 }
 
-function isValidCross(row: number[], num: number, color: Color): boolean {
-  const r = ROW_RANGES[color];
-  if (row.includes(num)) return false;
-  if (num < r.start || num > r.end) return false; // though dice sums are 2-12
-  // must be to the "right" of all crossed (higher index in direction)
-  if (row.length === 0) return true;
-  const last = row[row.length - 1];
-  if (r.step > 0) return num > last;
-  return num < last;
-}
-
-function canLock(row: number[], color: Color): boolean {
-  return row.length >= 5;
+function isValidActivePlayerMarks(marks: { c: string; i: number; n: number; reqColor: string }[], dice: { w: number[]; r: number; y: number; g: number; b: number }) {
+  if (marks.length === 0) return true;
+  if (marks.length > 2) return false;
+  
+  const wSum = dice.w[0] + dice.w[1];
+  const isW = (m: any) => m.n === wSum;
+  const isC = (m: any) => m.n === dice.w[0] + dice[m.reqColor as keyof typeof dice] || m.n === dice.w[1] + dice[m.reqColor as keyof typeof dice];
+  
+  if (marks.length === 1) return isW(marks[0]) || isC(marks[0]);
+  
+  if (marks.length === 2) {
+    let m1 = marks[0], m2 = marks[1];
+    if (m1.c === m2.c) {
+      let left = m1.i < m2.i ? m1 : m2;
+      let right = m1.i < m2.i ? m2 : m1;
+      return isW(left) && isC(right);
+    } else {
+      return (isW(m1) && isC(m2)) || (isC(m1) && isW(m2));
+    }
+  }
+  return false;
 }
 
 export const Qwixx: GameModule = {
@@ -54,131 +98,170 @@ export const Qwixx: GameModule = {
     id: "qwixx",
     name: "Qwixx",
     minPlayers: 2,
-    maxPlayers: 5,
-    description: "Cross numbers left-to-right in colored rows using dice sums.",
+    maxPlayers: 8,
+    description: "Cross numbers left-to-right in colored rows using dice sums. Support for Longo, Number Mixx, etc.",
     emoji: "🎲",
   },
 
   create(names) {
-    const state: QwixxState = {
-      players: names.map((name) => ({
-        name: name || "",
-        rows: createEmptyRows(),
-        penalties: 0,
-        locked: { red: false, yellow: false, green: false, blue: false },
-      })),
+    const expansion = "standard";
+    const players = names.map((name) => ({
+      name: name || "Player",
+      rows: {} as { [color: string]: QwixxRow },
+      penalties: 0,
+    }));
+
+    players.forEach(p => {
+      COLORS.forEach(c => { p.rows[c] = makeRow(c, expansion); });
+    });
+
+    return {
+      players,
       dice: null,
       activeSeat: 0,
-      phase: "PLAY",
-      lockedRows: 0,
-      removedDice: [],
-    };
-    return state;
+      phase: "ACTIVE",
+      expansion,
+      locked: [],
+      pendingLocks: [],
+      activeMarks: [],
+      playerTurnMarks: {},
+      round: 1,
+      mc: 0,
+    } as QwixxState;
   },
 
   applyAction(state: QwixxState, seat: number, msg: any) {
-    if (state.phase !== "PLAY") return;
+    if (state.phase === "GAME_OVER") return;
 
-    const p = state.players[seat];
-    if (!p) return;
+    if (msg.action === "setExpansion") {
+      const exp = msg.expansion as string;
+      if (!EXPANSIONS[exp as keyof typeof EXPANSIONS]) return;
+      state.expansion = exp;
+      state.players.forEach(p => {
+        COLORS.forEach(c => { p.rows[c] = makeRow(c, exp); });
+      });
+      return;
+    }
 
     if (msg.action === "roll") {
       if (seat !== state.activeSeat) return;
-      // roll dice
-      const roll = () => Math.floor(Math.random() * 6) + 1;
+      const dieMax = EXPANSIONS[state.expansion as keyof typeof EXPANSIONS].dieMax;
+      const rnd = () => Math.floor(Math.random() * dieMax) + 1;
       state.dice = {
-        white1: roll(),
-        white2: roll(),
-        red: roll(),
-        yellow: roll(),
-        green: roll(),
-        blue: roll(),
+        w: [rnd(), rnd()],
+        r: rnd(),
+        y: rnd(),
+        g: rnd(),
+        b: rnd(),
       };
+      state.activeMarks = [];
+      state.playerTurnMarks = {};
+      state.phase = "ACTIVE";
       return;
     }
 
-    if (msg.action === "cross_white") {
-      if (!state.dice) return;
-      const sum = state.dice.white1 + state.dice.white2;
-      const color = msg.color as Color;
-      if (!COLORS.includes(color)) return;
-      const row = p.rows[color];
-      if (isValidCross(row, sum, color)) {
-        row.push(sum);
-        row.sort((a, b) => ROW_RANGES[color].step > 0 ? a - b : b - a);
+    if (msg.action === "mark") {
+      const { c, i } = msg;
+      const p = state.players[seat];
+      if (!p) return;
+      const row = p.rows[c];
+      if (!row || row.marks.includes(i)) return;
+      
+      const last = row.marks.length > 0 ? row.marks[row.marks.length - 1] : -1;
+      if (i <= last) return;
+      
+      const endIdx = row.nums.length - 1;
+      if (i === endIdx && row.marks.length < 5) return;
+      
+      const isAct = seat === state.activeSeat;
+      
+      if (state.phase === "ACTIVE") {
+        if (!isAct) {
+          // Non-active: only white sum
+          const wSum = state.dice!.w[0] + state.dice!.w[1];
+          if (row.nums[i] !== wSum) return;
+          if (p.turnMarks[seat] && p.turnMarks[seat].length >= 1) return;
+          
+          if (!state.playerTurnMarks[seat]) state.playerTurnMarks[seat] = [];
+          state.playerTurnMarks[seat].push({ c, i, n: row.nums[i] });
+          row.marks.push(i);
+          row.marks.sort((a,b)=>a-b);
+          state.mc++;
+        } else {
+          // Active: White or Color sum
+          const reqColor = row.cellColors[i];
+          const newMark = { c, i, n: row.nums[i], reqColor };
+          const proposed = [...state.activeMarks, newMark];
+          if (proposed.length > 2) return;
+          if (!isValidActivePlayerMarks(proposed, state.dice!)) return;
+          
+          state.activeMarks = proposed;
+          row.marks.push(i);
+          row.marks.sort((a,b)=>a-b);
+          state.mc++;
+        }
+      } else if (state.phase === "OTHERS_WHITE") {
+        if (isAct) return;
+        const wSum = state.dice!.w[0] + state.dice!.w[1];
+        if (row.nums[i] !== wSum) return;
+        if (!state.playerTurnMarks[seat]) state.playerTurnMarks[seat] = [];
+        if (state.playerTurnMarks[seat].length >= 1) return;
+        
+        state.playerTurnMarks[seat].push({ c, i, n: row.nums[i] });
+        row.marks.push(i);
+        row.marks.sort((a,b)=>a-b);
+        state.mc++;
       }
-      // non-active can choose not to
-      return;
-    }
 
-    if (msg.action === "cross_colored") {
-      if (seat !== state.activeSeat || !state.dice) return;
-      const white = msg.white as 1 | 2;
-      const color = msg.color as Color;
-      if (!COLORS.includes(color)) return;
-      const wval = white === 1 ? state.dice.white1 : state.dice.white2;
-      const cval = state.dice[color];
-      const sum = wval + cval;
-      const row = p.rows[color];
-      if (isValidCross(row, sum, color)) {
-        row.push(sum);
-        row.sort((a, b) => ROW_RANGES[color].step > 0 ? a - b : b - a);
+      // Handle Lock
+      if (i === endIdx && row.marks.length >= 5 && !state.locked.includes(c)) {
+        state.pendingLocks.push(c);
       }
-      // after active player's second action, advance turn
-      advanceTurn(state);
-      return;
     }
 
-    if (msg.action === "pass") {
+    if (msg.action === "finishActiveTurn") {
       if (seat !== state.activeSeat) return;
-      p.penalties = Math.min(4, p.penalties + 1);
-      advanceTurn(state);
+      if (state.activeMarks.length === 0) {
+        state.players[state.activeSeat].penalties++;
+      }
+      
+      // Finalize locks
+      state.pendingLocks.forEach(c => {
+        if (!state.locked.includes(c)) state.locked.push(c);
+      });
+      state.pendingLocks = [];
+      
+      // End check
+      if (state.locked.length >= 2 || state.players.some(p => p.penalties >= 4)) {
+        state.phase = "GAME_OVER";
+      } else {
+        state.phase = "OTHERS_WHITE";
+      }
       return;
     }
 
-    if (msg.action === "lock") {
-      // optional explicit lock if possible
-      const color = msg.color as Color;
-      if (!COLORS.includes(color) || p.locked[color]) return;
-      const row = p.rows[color];
-      const r = ROW_RANGES[color];
-      if (row.length >= 5 && row.includes(r.lock)) {
-        p.locked[color] = true;
-        state.lockedRows++;
-        if (!state.removedDice.includes(color)) state.removedDice.push(color);
-        if (state.lockedRows >= 2) state.phase = "GAME_OVER";
-      }
+    if (msg.action === "advanceTurn") {
+      // Only called by hub or through specific logic to move to next active player
+      state.activeSeat = (state.activeSeat + 1) % state.players.length;
+      state.phase = "ACTIVE";
+      state.dice = null;
+      state.round++;
       return;
     }
   },
 
   viewFor(state: QwixxState, seat: number): GameView {
-    const your = state.players[seat] || { rows: createEmptyRows(), penalties: 0, locked: {} };
-    const viewState = {
-      activeSeat: state.activeSeat,
-      dice: state.dice,
-      yourRows: your.rows,
-      yourPenalties: your.penalties,
-      yourLocked: your.locked,
-      removedDice: state.removedDice,
-      allPlayers: state.players.map((p, i) => ({
-        seat: i,
-        name: p.name || `P${i + 1}`,
-        penalties: p.penalties,
-        lockedCount: Object.values(p.locked).filter(Boolean).length,
-      })),
-    };
-
+    const p = state.players[seat];
     let summary;
     if (state.phase === "GAME_OVER") {
-      const scores = state.players.map((p, i) => {
+      const scores = state.players.map((pl, i) => {
         let total = 0;
-        for (const c of COLORS) {
-          const n = p.rows[c].length;
-          total += (n * (n + 1)) / 2;
-        }
-        total -= p.penalties * 5;
-        return { seat: i, name: p.name || `P${i+1}`, score: total, delta: 0 };
+        COLORS.forEach(c => {
+          const m = pl.rows[c].marks.length;
+          total += (m * (m + 1)) / 2;
+        });
+        total -= pl.penalties * 5;
+        return { seat: i, name: pl.name, score: total, delta: 0 };
       });
       const max = Math.max(...scores.map(s => s.score));
       summary = {
@@ -193,7 +276,21 @@ export const Qwixx: GameModule = {
       over: state.phase === "GAME_OVER",
       yourSeat: seat,
       summary,
-      qwixx: viewState,
+      state: {
+        dice: state.dice,
+        activeSeat: state.activeSeat,
+        expansion: state.expansion,
+        locked: state.locked,
+        yourRows: p ? p.rows : {},
+        yourPenalties: p ? p.penalties : 0,
+        allPlayers: state.players.map((pl, i) => ({
+          seat: i,
+          name: pl.name,
+          penalties: pl.penalties,
+        })),
+        phase: state.phase,
+        round: state.round,
+      },
     };
   },
 
@@ -201,30 +298,3 @@ export const Qwixx: GameModule = {
     return state.phase === "GAME_OVER";
   },
 };
-
-function advanceTurn(state: QwixxState) {
-  // check for locks that happened
-  for (let i = 0; i < state.players.length; i++) {
-    const p = state.players[i];
-    for (const c of COLORS) {
-      if (!p.locked[c] && canLock(p.rows[c], c) && p.rows[c].includes(ROW_RANGES[c].lock)) {
-        p.locked[c] = true;
-        state.lockedRows++;
-        if (!state.removedDice.includes(c)) state.removedDice.push(c);
-      }
-    }
-  }
-  if (state.lockedRows >= 2) {
-    state.phase = "GAME_OVER";
-    return;
-  }
-  // check penalties end
-  for (const p of state.players) {
-    if (p.penalties >= 4) {
-      state.phase = "GAME_OVER";
-      return;
-    }
-  }
-  state.activeSeat = (state.activeSeat + 1) % state.players.length;
-  state.dice = null;
-}
