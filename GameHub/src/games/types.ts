@@ -40,7 +40,8 @@ export interface GameView {
   [k: string]: unknown;
 }
 
-export interface SummaryRow { seat: number; name: string; score: number; }
+// `score` = cumulative total. `delta` (optional) = points gained this round.
+export interface SummaryRow { seat: number; name: string; score: number; delta?: number; }
 
 // `nextScores` lets the hub seat late-joiners fairly when a new game/round
 // starts (e.g. average of current totals). Optional.

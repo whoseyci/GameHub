@@ -74,6 +74,17 @@ Then add it to the catalogue tile list — actually you don't need to: the serve
 its `catalogue` (from `GAME_CATALOGUE`) to the client, so your game appears in the
 Quick Play and room pickers automatically once it's in `GAMES`.
 
+## Hub features your game gets for free
+- **Group-size filter** — set `minPlayers`/`maxPlayers` in `meta`; the hub greys out
+  your game in the picker when the group doesn't fit, and blocks launching it.
+- **Rulebook** — add an entry to the `RULES` object in `public/index.html`
+  (`{title, quick, steps[], tip}`). It appears via the `?` on the game tile, the menu's
+  "How to Play", and the 📖 button inside the game.
+- **Round-by-round scores** — include `delta` on each `SummaryRow` (points this round)
+  and the shared results table shows a Round column automatically.
+- **Quick Play sharding** — solo matchmaking + auto-roll to a new room when one fills.
+- **Host max-players** — respected automatically; clamp is enforced server-side.
+
 ## Why existing games are safe
 - Each game's logic lives in its own file; the hub only calls the interface methods.
 - The registry is additive. Removing or breaking a game you didn't touch is impossible

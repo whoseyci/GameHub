@@ -3,9 +3,11 @@
 // Existing games are untouched, so a new game can't break them.
 import type { GameModule } from "./types";
 import { Skyjo, skyjoCompleteTurnEnd } from "./skyjo";
+import { Flip7 } from "./flip7";
 
 export const GAMES: Record<string, GameModule> = {
   [Skyjo.meta.id]: Skyjo,
+  [Flip7.meta.id]: Flip7,
 };
 
 // Public catalogue for the hub UI (no logic, just metadata).

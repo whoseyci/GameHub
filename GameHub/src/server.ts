@@ -170,6 +170,7 @@ export class Room extends Server<Env> {
         code: this.name,
         isPublic: this.isPublic,
         quickGame: this.quickGame,
+        maxPlayers: this.maxPlayers,
         catalogue: GAME_CATALOGUE,
         members: this.members.map((m) => ({ id: m.id, name: m.name })),
       }));
@@ -200,7 +201,8 @@ export class Room extends Server<Env> {
           this.pending.push({ id: pid, name });
           conn.send(JSON.stringify({ type: "spectating", message: "Game in progress — you'll join next round." }));
         } else if (this.members.length + this.pending.length >= this.maxPlayers) {
-          conn.send(JSON.stringify({ type: "error", message: "Room is full." }));
+          // `room_full` lets Quick Play roll to the next shard automatically.
+          conn.send(JSON.stringify({ type: "room_full", message: "Room is full." }));
           return;
         }
       } else {
@@ -208,9 +210,10 @@ export class Room extends Server<Env> {
           this.hostId = pid;
           this.isPublic = !!msg.isPublic;
           this.quickGame = msg.quickGame ?? null;
-          this.maxPlayers = msg.maxPlayers || 8;
+          // Host may cap below 8; clamp to [2, 8]. (Per-game max enforced at launch.)
+          this.maxPlayers = Math.max(2, Math.min(8, msg.maxPlayers || 8));
         }
-        if (this.members.length >= this.maxPlayers) { conn.send(JSON.stringify({ type: "error", message: "Room is full." })); return; }
+        if (this.members.length >= this.maxPlayers) { conn.send(JSON.stringify({ type: "room_full", message: "Room is full." })); return; }
         this.members.push({ id: pid, name });
       }
       await this.persistMeta();
@@ -229,7 +232,8 @@ export class Room extends Server<Env> {
 
     /* ---- host: launch a game from the room lobby ---- */
     if (msg.type === "launch_game" && isHost && !this.gameId) {
-      this.startGame(msg.gameId);
+      const err = this.startGame(msg.gameId);
+      if (err) { conn.send(JSON.stringify({ type: "error", message: err })); return; }
       await this.persistMeta(); await this.persistGame(); await this.lobbyUpdate();
       this.broadcastState();
       return;
@@ -279,14 +283,16 @@ export class Room extends Server<Env> {
     }
   }
 
-  private startGame(gameId: string) {
+  private startGame(gameId: string): string | null {
     const g = getGame(gameId);
-    if (!g) return;
-    if (this.members.length < g.meta.minPlayers) return;
+    if (!g) return "Unknown game.";
+    if (this.members.length < g.meta.minPlayers) return `${g.meta.name} needs at least ${g.meta.minPlayers} players.`;
+    if (this.members.length > g.meta.maxPlayers) return `${g.meta.name} supports at most ${g.meta.maxPlayers} players.`;
     this.touch();
     this.gameId = gameId;
     this.gameState = g.create(this.members.map((m) => m.name));
     this.scheduleTick();
+    return null;
   }
 
   private maybeQuickStart() {

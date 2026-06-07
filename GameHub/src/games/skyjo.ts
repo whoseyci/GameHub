@@ -72,7 +72,7 @@ export const Skyjo: GameModule = {
     if (g.phase === "ROUND_END" || g.phase === "GAME_OVER") {
       const min = Math.min(...g.players.map((p) => p.totalScore));
       summary = {
-        rows: g.players.map((p, i) => ({ seat: i, name: p.name, score: p.totalScore })),
+        rows: g.players.map((p, i) => ({ seat: i, name: p.name, score: p.totalScore, delta: p.roundScore })),
         winners: g.players.map((p, i) => (p.totalScore === min ? i : -1)).filter((i) => i >= 0),
       };
     }

@@ -71,13 +71,19 @@
 
   /* game tiles (hub picker + quick play) */
   .game-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px;margin:8px 0}
-  .game-tile{background:var(--bg);border:2px solid var(--border);border-radius:16px;padding:16px 12px;cursor:pointer;
-    text-align:center;transition:transform .18s var(--spring),border-color .2s}
+  .game-tile{position:relative;background:var(--bg);border:2px solid var(--border);border-radius:16px;padding:16px 12px;cursor:pointer;
+    text-align:center;transition:transform .18s var(--spring),border-color .2s,opacity .2s}
   .game-tile:hover{transform:translateY(-4px) scale(1.03);border-color:var(--accent)}
   .game-tile:active{transform:scale(.95)}
+  .game-tile.disabled{opacity:.4;filter:grayscale(.7);cursor:not-allowed}
+  .game-tile.disabled:hover{transform:none;border-color:var(--border)}
   .game-tile .emoji{font-size:2.4rem;line-height:1}
   .game-tile .gname{font-weight:900;margin-top:6px}
   .game-tile .gdesc{font-size:.78rem;color:var(--text-dim);font-weight:700;margin-top:4px}
+  .game-tile .gsize{font-size:.72rem;color:var(--accent);font-weight:800;margin-top:6px}
+  .tile-help{position:absolute;top:6px;right:6px;width:24px;height:24px;border-radius:50%;border:2px solid var(--border);
+    background:var(--surface);color:var(--text-dim);font-weight:900;font-size:.85rem;cursor:pointer;display:flex;align-items:center;justify-content:center;font-family:inherit}
+  .tile-help:hover{border-color:var(--accent);color:var(--text)}
 
   .room-list{text-align:left;margin-top:10px;max-height:260px;overflow:auto}
   .room-row{display:flex;justify-content:space-between;align-items:center;gap:10px;background:var(--bg);border:2px solid var(--border);
@@ -160,6 +166,20 @@
   .status-bar{position:fixed;bottom:calc(16px + env(safe-area-inset-bottom,0px));left:50%;transform:translateX(-50%);background:rgba(30,41,59,.95);backdrop-filter:blur(10px);padding:13px 26px;border-radius:30px;font-weight:800;font-size:1.05rem;box-shadow:0 10px 30px rgba(0,0,0,.5);border:2px solid var(--border);z-index:100;text-align:center;color:var(--text);max-width:92vw;transition:transform .3s var(--spring)}
   .status-bar.bump{animation:popIn .4s var(--spring)}
 
+  /* ---- Flip 7 specific ---- */
+  .f7-row{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:6px}
+  .f7-card{width:clamp(38px,11vw,52px);height:clamp(54px,15vw,74px);border-radius:10px;display:flex;align-items:center;justify-content:center;
+    font-weight:900;font-size:clamp(1.1rem,4vw,1.6rem);background:#fff;box-shadow:0 3px 6px rgba(0,0,0,.3);border:2px solid #fff;animation:popReveal .4s var(--spring) both}
+  .f7-card.mod{background:#fde68a;border-color:#f59e0b;color:#92400e;font-size:1rem}
+  .f7-card.act{background:#c7d2fe;border-color:#6366f1;color:#3730a3;font-size:.8rem;text-align:center;line-height:1}
+  .f7-card.second{background:#bbf7d0;border-color:#10b981;color:#065f46}
+  .f7-status{font-weight:800;font-size:.85rem;padding:3px 10px;border-radius:10px;margin-left:6px}
+  .f7-status.active{background:rgba(59,130,246,.2);color:#60a5fa}
+  .f7-status.stayed{background:rgba(16,185,129,.2);color:#10b981}
+  .f7-status.busted{background:rgba(239,68,68,.2);color:#ef4444}
+  .f7-controls{position:fixed;bottom:calc(70px + env(safe-area-inset-bottom,0px));left:50%;transform:translateX(-50%);display:flex;gap:12px;z-index:110}
+  .f7-controls .btn{margin:0;width:auto;padding:14px 28px}
+  .f7-empty{color:var(--text-dim);font-weight:700;font-size:.85rem}
   @media(max-width:600px){.overlay-box{padding:22px}.score-table th,.score-table td{padding:8px 6px;font-size:.95rem}}
   @media(min-width:760px){:root{--slot-w:84px;--bcard-w:74px}.top-area{margin-top:18px}}
 </style>
@@ -174,6 +194,7 @@
       <p class="muted" style="margin-bottom:26px">Play card games with friends.</p>
       <button class="btn purple" onclick="goOnline()">Play Online</button>
       <button class="btn secondary" onclick="showScreen('localPick')">Local (Pass &amp; Play)</button>
+      <button class="btn secondary" onclick="showRulesMenu()" style="background:transparent;box-shadow:none;border:2px solid var(--border)">📖 How to Play</button>
     </div>
   </div>
 
@@ -212,6 +233,12 @@
       <div class="seg" id="visSeg">
         <button class="on" data-vis="public" onclick="setVis('public')">🌍 Public</button>
         <button data-vis="private" onclick="setVis('private')">🔒 Private</button>
+      </div>
+      <label class="label">Max players <span class="muted" style="font-weight:600">(4 is a sweet spot)</span></label>
+      <div style="display:flex;align-items:center;gap:12px;margin:0 0 16px;justify-content:center">
+        <button class="icon-btn" onclick="bumpMax(-1)">−</button>
+        <div id="maxVal" style="font-weight:900;font-size:1.5rem;min-width:28px;text-align:center">8</div>
+        <button class="icon-btn" onclick="bumpMax(1)">+</button>
       </div>
       <label class="label">Room Code</label>
       <div style="display:flex;gap:8px">
@@ -274,6 +301,7 @@
       <div id="gameRoomTag" class="room-tag hidden"></div>
       <div class="topbar-spacer"></div>
       <div id="spectateTag" class="spectate-tag hidden">👁 Spectating</div>
+      <button id="rulesBtn" class="icon-btn" onclick="openRules(curView&&curView.game)" title="Rules">📖</button>
       <button id="soundBtn" class="icon-btn" onclick="toggleSound()" title="Sound">🔊</button>
     </div>
     <div id="miniBoardsContainer" class="mini-boards-container"></div>
@@ -299,6 +327,7 @@
   </div>
 
   <div id="overlay" class="overlay hidden"><div id="overlayBox" class="overlay-box"></div></div>
+  <div id="rulesOverlay" class="overlay hidden"><div id="rulesBox" class="overlay-box"></div></div>
   <div id="toast" class="toast hidden"></div>
   <div id="investigateOverlay" class="overlay hidden" onclick="this.classList.add('hidden')">
     <div class="boards-container" id="investigateBox" onclick="event.stopPropagation()"></div>
@@ -408,38 +437,102 @@ let summaryShown=false,lastRoundShown=false;
 
 const net={ws:null,room:null,isHost:false,spectating:false,lobbyWs:null,
   send(o){if(this.ws&&this.ws.readyState===1)this.ws.send(JSON.stringify(o));}};
-let _vis='public';
+let _vis='public',_maxPlayers=8;
 function setVis(v){_vis=v;document.querySelectorAll('#visSeg button').forEach(b=>b.classList.toggle('on',b.dataset.vis===v));}
+function bumpMax(d){_maxPlayers=Math.max(2,Math.min(8,_maxPlayers+d));$('maxVal').textContent=_maxPlayers;}
 function randomCode(){const w=['CREW','SKY','BLUE','STAR','MOON','FOX','PEAR','WAVE','GOLD','NEON'];$('hostRoom').value=w[Math.floor(Math.random()*w.length)]+Math.floor(Math.random()*90+10);}
 function ensureName(){myName=$('onlineName').value.trim();if(!myName){myName='Player_'+Math.floor(Math.random()*1000);$('onlineName').value=myName;}return myName;}
 function goOnline(){showScreen('onlineSetup');}
 
 /* ====================== CATALOGUE (defaults; server confirms) ====================== */
-catalogue=[{id:'skyjo',name:'Skyjo',minPlayers:2,maxPlayers:8,description:'Lowest score wins.',emoji:'🃏'}];
-function renderTiles(containerId,onPick){
-  const el=$(containerId);el.innerHTML=catalogue.map(g=>`<div class="game-tile" data-g="${g.id}"><div class="emoji">${g.emoji}</div><div class="gname">${g.name}</div><div class="gdesc">${g.description}</div></div>`).join('');
-  el.querySelectorAll('.game-tile').forEach(t=>t.onclick=()=>onPick(t.dataset.g));
+catalogue=[
+  {id:'skyjo',name:'Skyjo',minPlayers:2,maxPlayers:8,description:'Lowest score wins.',emoji:'🃏'},
+  {id:'flip7',name:'Flip 7',minPlayers:2,maxPlayers:8,description:'Push your luck to 200.',emoji:'🎴'},
+];
+
+/* ---- Rulebooks (accessible from menu, pickers, and inside a game) ---- */
+const RULES={
+  skyjo:{title:'🃏 Skyjo',quick:'Get the LOWEST score.',
+    steps:[
+      'Each player has a 4×3 grid of face-down cards. Flip 2 to start.',
+      'On your turn: take the <b>Deck</b> card or the <b>Discard</b> top, then either swap it onto your grid (discarding the old card) — or, if from the deck, discard it and flip one face-down card.',
+      'Three of the same number in a column clear (count as 0).',
+      'When someone reveals their whole grid, everyone else gets one last turn.',
+      'Lowest total wins the round. First to 100 ends the game — lowest total wins.',
+    ],
+    tip:'Dump high cards, keep low/negative ones. Watch for column triplets!'},
+  flip7:{title:'🎴 Flip 7',quick:'Push your luck — race to 200.',
+    steps:[
+      'On your turn choose <b>Hit</b> (draw a card) or <b>Stay</b> (bank your points, you’re out for the round).',
+      'Number cards: there’s one 0, two 2s, three 3s … twelve 12s. Draw a <b>duplicate number → BUST</b> (score 0 this round).',
+      'Get <b>7 unique numbers → Flip 7!</b> +15 bonus and the round ends instantly.',
+      'Modifiers (+2…+10, ×2) boost your score; ×2 doubles numbers first, then + adds on.',
+      'Action cards: <b>Freeze</b> (target banks &amp; is out), <b>Flip Three</b> (target draws 3), <b>Second Chance</b> (saves you from one bust).',
+      'Round ends when all players bust/stay or someone Flip 7s. First to 200 wins.',
+    ],
+    tip:'High numbers are riskier (more copies in the deck). The 0 is always safe.'},
+};
+function openRules(gameId){
+  const r=RULES[gameId];if(!r){showRulesMenu();return;}
+  $('rulesBox').innerHTML=`<h2 style="margin:0 0 4px">${r.title}</h2><div class="muted" style="margin-bottom:10px">${r.quick}</div>
+    <ol style="text-align:left;line-height:1.55;font-weight:600;padding-left:20px;margin:0 0 12px">${r.steps.map(s=>`<li style="margin-bottom:7px">${s}</li>`).join('')}</ol>
+    <div style="background:var(--bg);border:2px solid var(--border);border-radius:12px;padding:10px;font-weight:700;text-align:left">💡 ${r.tip}</div>
+    <button class="btn" style="margin-top:16px" onclick="$('rulesOverlay').classList.add('hidden')">Got it</button>`;
+  $('rulesOverlay').classList.remove('hidden');
+}
+function showRulesMenu(){
+  $('rulesBox').innerHTML=`<h2 style="margin:0 0 12px">📖 How to Play</h2>
+    <div class="game-tiles">${catalogue.map(g=>`<div class="game-tile" onclick="openRules('${g.id}')"><div class="emoji">${g.emoji}</div><div class="gname">${g.name}</div></div>`).join('')}</div>
+    <button class="btn secondary" style="margin-top:14px" onclick="$('rulesOverlay').classList.add('hidden')">Close</button>`;
+  $('rulesOverlay').classList.remove('hidden');
+}
+
+// Tiles, with a group-size filter: games that don't fit `n` players are greyed out.
+// `n` null = no filter (menus/quick play). Each tile has a ? for its rulebook.
+function renderTiles(containerId,onPick,n=null){
+  const el=$(containerId);
+  el.innerHTML=catalogue.map(g=>{
+    const fits = n==null || (n>=g.minPlayers && n<=g.maxPlayers);
+    const why = n!=null && !fits ? (n<g.minPlayers?`Needs ${g.minPlayers}+`:`Max ${g.maxPlayers}`) : `${g.minPlayers}–${g.maxPlayers} players`;
+    return `<div class="game-tile${fits?'':' disabled'}" data-g="${g.id}" data-fits="${fits}">
+      <button class="tile-help" data-help="${g.id}" title="Rules">?</button>
+      <div class="emoji">${g.emoji}</div><div class="gname">${g.name}</div>
+      <div class="gdesc">${g.description}</div><div class="gsize">${why}</div></div>`;
+  }).join('');
+  el.querySelectorAll('.tile-help').forEach(b=>b.onclick=e=>{e.stopPropagation();openRules(b.dataset.help);});
+  el.querySelectorAll('.game-tile').forEach(t=>t.onclick=()=>{ if(t.dataset.fits==='true') onPick(t.dataset.g); else toast('Not playable with this group size.'); });
 }
 
 /* ====================== NETWORK ====================== */
 function wsUrl(party,room){const p=location.protocol==='https:'?'wss':'ws';return `${p}://${PARTYKIT_HOST}/parties/${party}/${encodeURIComponent(room)}`;}
-function connectRoom(code,{isPublic=false,quickGame=null}={}){
+let _joinAttempt=null; // remembers join params so we can roll quick-play shards on "full"
+function connectRoom(code,{isPublic=false,quickGame=null,maxPlayers=8,shard=null}={}){
   mode='online';net.room=code;net.isHost=false;net.spectating=false;
+  _joinAttempt={code,isPublic,quickGame,maxPlayers,shard};
   if(net.ws){try{net.ws.close();}catch(e){}}
   resetGameUi();
   const ws=new WebSocket(wsUrl('room',code));net.ws=ws;
-  ws.onopen=()=>ws.send(JSON.stringify({type:'join',pid:getPid(),name:myName,isPublic,quickGame,maxPlayers:8}));
+  ws.onopen=()=>ws.send(JSON.stringify({type:'join',pid:getPid(),name:myName,isPublic,quickGame,maxPlayers}));
   ws.onmessage=ev=>{let m;try{m=JSON.parse(ev.data);}catch(e){return;}handleNet(m);};
   ws.onerror=()=>toast('Connection error');
 }
-function hostRoom(){ensureName();const c=$('hostRoom').value.trim().toUpperCase();if(!c)return toast('Enter a room code');connectRoom(c,{isPublic:_vis==='public'});}
+function hostRoom(){ensureName();const c=$('hostRoom').value.trim().toUpperCase();if(!c)return toast('Enter a room code');connectRoom(c,{isPublic:_vis==='public',maxPlayers:_maxPlayers});}
 function joinByCode(){ensureName();const c=$('joinRoom').value.trim().toUpperCase();if(!c)return toast('Enter a room code');connectRoom(c,{});}
 function joinPublic(code){ensureName();connectRoom(code,{});}
-function quickPlay(gameId){ensureName();const code='quick-'+gameId;connectRoom(code,{isPublic:true,quickGame:gameId});}
+// Quick Play uses sharded room codes: quick-<game>-1, -2, … On "full" we roll to
+// the next shard so players pool together until a room fills, then overflow opens a new one.
+function quickPlay(gameId,shard=1){ensureName();connectRoom('quick-'+gameId+'-'+shard,{isPublic:true,quickGame:gameId,shard});}
 
 function handleNet(m){
   if(m.type==='hello')return;
   if(m.type==='error'){toast(m.message);return;}
+  if(m.type==='room_full'){
+    if(_joinAttempt&&_joinAttempt.shard){ // quick play: try the next shard
+      const next=_joinAttempt.shard+1;
+      if(next<=20){toast('Room full — finding another table…',1800);quickPlay(_joinAttempt.quickGame,next);return;}
+    }
+    toast('That room is full.');leaveOnline();return;
+  }
   if(m.type==='spectating'){net.spectating=true;toast('👁 '+m.message,3600);return;}
   if(m.type==='room'){
     net.isHost=m.isHost;net.spectating=false;
@@ -463,7 +556,7 @@ function renderRoom(m){
   $('roomMembers').innerHTML=m.members.map(p=>`<span class="chip">${p.name}${p.id===getPid()?' (You)':''}</span>`).join('')||'<span class="muted">Just you so far…</span>';
   $('hostArea').classList.toggle('hidden',!m.isHost);
   $('guestArea').classList.toggle('hidden',m.isHost);
-  if(m.isHost) renderTiles('hostTiles',gid=>net.send({type:'launch_game',gameId:gid}));
+  if(m.isHost) renderTiles('hostTiles',gid=>net.send({type:'launch_game',gameId:gid}), m.members.length);
 }
 function leaveOnline(){if(net.ws){try{net.ws.close();}catch(e){}net.ws=null;}net.room=null;net.isHost=false;net.spectating=false;$('overlay').classList.add('hidden');showScreen('onlineSetup');}
 function leaveGameToRoom(){ // back arrow in game: host returns the whole group to the room lobby; others just confirm leave
@@ -498,7 +591,7 @@ function dispatchView(view){
   client.render(view);
 }
 function flushView(){if(pendingView){const v=pendingView;pendingView=null;dispatchView(v);}}
-function resetGameUi(){curView=null;prevView=null;animating=false;pendingView=null;summaryShown=false;lastRoundShown=false;$('overlay').classList.add('hidden');$('overlay').style.opacity='';}
+function resetGameUi(){curView=null;prevView=null;animating=false;pendingView=null;summaryShown=false;lastRoundShown=false;$('overlay').classList.add('hidden');$('overlay').style.opacity='';const f7=$('f7Controls');if(f7)f7.remove();$('topArea').style.display='';}
 function hideOverlay(){const o=$('overlay');if(o.classList.contains('hidden'))return;o.style.opacity='0';setTimeout(()=>{o.classList.add('hidden');o.style.opacity='';},220);}
 function bumpStatus(){const sb=$('statusBar');sb.classList.remove('bump');void sb.offsetWidth;sb.classList.add('bump');}
 
@@ -507,31 +600,42 @@ function showSummary(view){
   const sm=view.summary;if(!sm)return;
   const overlay=$('overlay'),box=$('overlayBox');
   const isOver=view.over;
-  const rows=sm.rows.map(r=>{const w=isOver&&sm.winners.includes(r.seat);return `<tr class="${w?'winner-row':''}"><td>${r.name}${w?' <span class="crown">🏆</span>':''}</td><td>${r.score}</td></tr>`;}).join('');
+  const hasDelta=sm.rows.some(r=>r.delta!=null);
+  const head=`<tr><th>Player</th>${hasDelta?'<th>Round</th>':''}<th>Total</th></tr>`;
+  const rows=sm.rows.map(r=>{const w=isOver&&sm.winners.includes(r.seat);const d=r.delta!=null?`<td>${r.delta>=0?'+':''}${r.delta}</td>`:'';return `<tr class="${w?'winner-row':''}"><td>${r.name}${w?' <span class="crown">🏆</span>':''}</td>${d}<td>${r.score}</td></tr>`;}).join('');
   const wn=sm.winners.map(i=>{const r=sm.rows.find(x=>x.seat===i);return r?r.name:'';}).join(' & ');
   let foot=isOver?`<div style="font-size:1.4rem;font-weight:900;margin:16px 0;color:#10b981"><span class="crown">🏆</span> ${wn} ${sm.winners.length>1?'win':'wins'}!</div>`:'';
   let btns;
   if(mode==='local'){btns=isOver?`<button class="btn green" onclick="localNext()">Play Again</button><button class="btn secondary" onclick="quitLocal()">Menu</button>`:`<button class="btn" onclick="localNext()">Next Round</button>`;}
   else if(net.isHost){btns=`<div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center">${isOver?`<button class="btn green" onclick="net.send({type:'next_round'})">New Game</button><button class="btn secondary" onclick="net.send({type:'to_room'})">Back to Room</button>`:`<button class="btn" onclick="net.send({type:'next_round'})">Next Round</button>`}</div>`;}
   else btns='<div class="muted">Waiting for host…</div>';
-  box.innerHTML=`<h2 style="margin:0 0 6px;font-size:1.8rem">${isOver?'Game Over!':'Round Complete'}</h2><table class="score-table"><tr><th>Player</th><th>Total</th></tr>${rows}</table>${foot}<div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center">${btns}</div>`;
+  box.innerHTML=`<h2 style="margin:0 0 6px;font-size:1.8rem">${isOver?'Game Over!':'Round Complete'}</h2><table class="score-table">${head}${rows}</table>${foot}<div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center">${btns}</div>`;
   overlay.classList.remove('hidden');overlay.style.opacity='';
   if(isOver){Kit.confetti();SFX.win();}else SFX.good();
 }
 
 /* ====================== LOCAL PLAY (offline, single-device) ====================== */
 let localEngine=null,localGameId=null,localActor=0;
-function addLocalPlayer(){const c=$('localPlayers').children.length;if(c>=8)return;const i=document.createElement('input');i.type='text';i.className='input';i.value='Player '+(c+1);$('localPlayers').appendChild(i);}
 let _localPick='skyjo';
+function localCount(){return $('localPlayers').children.length;}
+function refreshLocalTiles(){
+  renderTiles('localTiles',gid=>{_localPick=gid;markLocalPick();},localCount());
+  markLocalPick();
+}
+function markLocalPick(){document.querySelectorAll('#localTiles .game-tile').forEach(t=>{t.style.borderColor=(t.dataset.g===_localPick&&t.dataset.fits==='true')?'var(--accent)':'';});}
+function addLocalPlayer(){const c=localCount();if(c>=8)return;const i=document.createElement('input');i.type='text';i.className='input';i.value='Player '+(c+1);$('localPlayers').appendChild(i);refreshLocalTiles();}
 function startLocalGame(){
   const names=Array.from($('localPlayers').children).map(i=>i.value.trim()).filter(Boolean);
+  const g=catalogue.find(x=>x.id===_localPick);
+  if(g&&(names.length<g.minPlayers||names.length>g.maxPlayers))return toast(`${g.name} needs ${g.minPlayers}–${g.maxPlayers} players.`);
   if(names.length<2)return toast('Need at least 2 players');
+  if(!window.LocalEngines[_localPick])return toast('That game is online-only for now.');
   mode='local';localGameId=_localPick;localEngine=window.LocalEngines[_localPick](names);
   resetGameUi();showScreen('gameScreen');$('gameRoomTag').classList.add('hidden');$('spectateTag').classList.add('hidden');
   renderLocal();
 }
 function renderLocal(){const v=localEngine.viewFor(localEngine.actor());dispatchView(v);}
-function localAct(msg){localEngine.apply(localEngine.actor(),msg);renderLocal();}
+function localAct(seat,msg){localEngine.apply(seat,msg);renderLocal();}
 function localNext(){localEngine.next();resetGameUi();renderLocal();}
 function quitLocal(){$('overlay').classList.add('hidden');showScreen('menuScreen');}
 
@@ -546,6 +650,8 @@ window.LocalEngines={};
   function cardAt(pi,idx){const b=boardEl(pi);return b?b.querySelectorAll('.board-card')[idx]:null;}
 
   function render(view){
+    $('topArea').style.display=''; // Skyjo uses the deck/discard piles
+    const f7=$('f7Controls');if(f7)f7.innerHTML='';
     const s=view.skyjo; // engine state (personalized)
     const viewer=s.viewerIndex;
     const isPlay=s.phase==='PLAY'||s.phase==='FINAL_TURNS';
@@ -586,8 +692,8 @@ window.LocalEngines={};
     if(s.publicDrawn!=null){uiDeck.className='card-slot revealed';uiDeck.textContent=s.publicDrawn;uiDeck.style.color=C(s.publicDrawn);uiDeck.style.borderColor='#fff';uiDeck.innerHTML=s.publicDrawn+'<span id="deckCount" class="deck-count">'+(s.deckCount||'')+'</span>';}
     else{uiDeck.className='card-slot face-down';uiDeck.style.color='';uiDeck.style.borderColor='';uiDeck.innerHTML='<span id="deckCount" class="deck-count">'+(s.deckCount||'')+'</span>';}
 
-    if(myTurn&&ta===null){uiDeck.classList.add('pile-hint');uiDeck.onclick=()=>act({action:'draw_deck'});if(s.discardTop!==null){uiDiscard.classList.add('pile-hint');uiDiscard.onclick=()=>act({action:'take_discard'});}}
-    else if(myTurn&&ta==='deck'){uiDiscard.classList.add('pile-hint');uiDiscard.onclick=()=>act({action:'discard_drawn'});}
+    if(myTurn&&ta===null){uiDeck.classList.add('pile-hint');uiDeck.onclick=()=>act(s.currentPlayer,{action:'draw_deck'});if(s.discardTop!==null){uiDiscard.classList.add('pile-hint');uiDiscard.onclick=()=>act(s.currentPlayer,{action:'take_discard'});}}
+    else if(myTurn&&ta==='deck'){uiDiscard.classList.add('pile-hint');uiDiscard.onclick=()=>act(s.currentPlayer,{action:'discard_drawn'});}
 
     if(s.discardTop!==null){uiDiscard.className='card-slot revealed';uiDiscard.textContent=s.discardTop;uiDiscard.style.color=C(s.discardTop);uiDiscard.style.borderColor='#fff';if(myTurn&&ta==='deck')uiDiscard.classList.add('pile-hint');}
     else{uiDiscard.className='card-slot';uiDiscard.textContent='Empty';uiDiscard.style.color='';uiDiscard.style.borderColor='';}
@@ -655,11 +761,14 @@ window.LocalEngines={};
     if(s.turnAction==='must_reveal')return !c.revealed;return false;
   }
   function cardClick(s,pi,ci,c){
-    if(s.phase==='REVEAL'){act({action:s.tiebreakerPlayers.length?'tiebreaker':'reveal',index:ci});return;}
-    if(s.turnAction==='deck'||s.turnAction==='discard')act({action:'swap',index:ci});
-    else if(s.turnAction==='must_reveal'&&!c.revealed)act({action:'reveal_after_discard',index:ci});
+    if(s.phase==='REVEAL'){act(pi,{action:s.tiebreakerPlayers.length?'tiebreaker':'reveal',index:ci});return;}
+    if(s.turnAction==='deck'||s.turnAction==='discard')act(pi,{action:'swap',index:ci});
+    else if(s.turnAction==='must_reveal'&&!c.revealed)act(pi,{action:'reveal_after_discard',index:ci});
   }
-  function act(msg){ if(mode==='local')localAct(msg); else net.send({type:'action',...msg}); }
+  // seat = which player's board was acted on (needed for local pass-and-play REVEAL,
+  // where each player flips their OWN cards). Online ignores it (server uses the
+  // authenticated connection's seat).
+  function act(seat,msg){ if(mode==='local')localAct(seat,msg); else net.send({type:'action',...msg}); }
 
   async function runAnim(s,viewer){
     const a=s.lastAction;if(!a)return;
@@ -696,7 +805,7 @@ window.LocalEngines={};
       },
       next(){if(E.phase==='GAME_OVER')E.newGame();else E.nextRound();},
       actor(){return E.currentPlayer;},
-      viewFor(seat){const s=E.getStateFor(seat);const over=E.phase==='GAME_OVER';let summary;if(E.phase==='ROUND_END'||E.phase==='GAME_OVER'){const min=Math.min(...E.players.map(p=>p.totalScore));summary={rows:E.players.map((p,i)=>({seat:i,name:p.name,score:p.totalScore})),winners:E.players.map((p,i)=>p.totalScore===min?i:-1).filter(i=>i>=0)};}return{game:'skyjo',phase:E.phase,over,yourSeat:seat,summary,skyjo:s};}
+      viewFor(seat){const s=E.getStateFor(seat);const over=E.phase==='GAME_OVER';let summary;if(E.phase==='ROUND_END'||E.phase==='GAME_OVER'){const min=Math.min(...E.players.map(p=>p.totalScore));summary={rows:E.players.map((p,i)=>({seat:i,name:p.name,score:p.totalScore,delta:p.roundScore})),winners:E.players.map((p,i)=>p.totalScore===min?i:-1).filter(i=>i>=0)};}return{game:'skyjo',phase:E.phase,over,yourSeat:seat,summary,skyjo:s};}
     };
   };
 })();
@@ -722,10 +831,127 @@ class SkyjoEngine{
   getStateFor(viewer){const s={phase:this.phase,round:this.round,currentPlayer:this.currentPlayer,roundEnder:this.roundEnder,finalTurnsLeft:this.finalTurnsLeft,turnAction:this.turnAction,tiebreakerPlayers:[...this.tiebreakerPlayers],lastAction:this.lastAction,deckCount:this.deck.length,discardTop:this.discard.length?this.discard[this.discard.length-1]:null,players:this.players.map(p=>({name:p.name,totalScore:p.totalScore,roundScore:p.roundScore,revealCount:p.revealCount,board:p.board.map(c=>({value:(c.revealed||c.cleared)?c.value:null,revealed:c.revealed,cleared:c.cleared}))}))};s.myDrawnCard=(this.turnAction==='deck'||this.turnAction==='discard')?this.drawnCard:null;s.publicDrawn=this.turnAction==='deck'?this.drawnCard:null;s.viewerIndex=viewer;return s;}
 }
 
+/* -------------------- FLIP 7 client -------------------- */
+(function(){
+  function modText(m){return m==='x2'?'×2':m;}
+  function actText(a){return a==='freeze'?'❄ Freeze':a==='flip3'?'🔃 Flip 3':'🛟 2nd';}
+  function render(view){
+    const s=view.flip7,viewer=s.viewerSeat;
+    // Flip 7 doesn't use the deck/discard piles or held window — hide them.
+    $('topArea').style.display='none';$('miniBoardsContainer').innerHTML='';
+    const myTurn=s.phase==='PLAY'&&s.current===viewer&&s.players[viewer]&&s.players[viewer].status==='active'&&!s.pendingAction;
+    const pending=s.pendingAction&&s.pendingAction.from===viewer;
+
+    // animations / sounds from log
+    const prevLog=prevView&&prevView.flip7?prevView.flip7.log:null;
+    const log=s.log;
+    if(log&&JSON.stringify(log)!==JSON.stringify(prevLog)){
+      if(log.type==='got')SFX.flip();
+      else if(log.type==='bust')SFX.bad();
+      else if(log.type==='flip7'){SFX.win();Kit.confetti();}
+      else if(log.type==='stay')SFX.good();
+      else if(log.type==='freeze')SFX.discard();
+      else if(log.type==='second_used')SFX.good();
+    }
+    // turn banner
+    if(prevView&&prevView.flip7&&s.phase==='PLAY'&&s.current!==prevView.flip7.current){const mine=s.current===viewer;Kit.turnBanner(mine?'Your turn!':(s.players[s.current]?.name+"'s turn"),mine);bumpStatus();if(mine)SFX.yourTurn();}
+
+    // boards
+    const main=$('mainBoardsContainer');main.innerHTML='';
+    s.players.forEach((p,i)=>{
+      const wrap=document.createElement('div');
+      wrap.className='player-board'+(s.current===i&&s.phase==='PLAY'?' active-turn':'')+(i===viewer?' me':'');
+      wrap.style.minWidth='260px';
+      const head=document.createElement('div');head.className='board-header';
+      head.innerHTML=`<span>${p.name}${i===viewer?' (You)':''} <span class="f7-status ${p.status}">${p.status}</span></span><span class="score-badge">Now: ${p.live} · Total: ${p.banked}</span>`;
+      wrap.appendChild(head);
+      const row=document.createElement('div');row.className='f7-row';
+      if(!p.nums.length&&!p.mods.length&&!p.second){row.innerHTML='<span class="f7-empty">no cards yet</span>';}
+      p.nums.forEach(n=>{const c=document.createElement('div');c.className='f7-card';c.textContent=n;c.style.color=Kit.cardColor(n);row.appendChild(c);});
+      p.mods.forEach(m=>{const c=document.createElement('div');c.className='f7-card mod';c.textContent=modText(m);row.appendChild(c);});
+      if(p.second){const c=document.createElement('div');c.className='f7-card act second';c.textContent='🛟';c.title='Second Chance';row.appendChild(c);}
+      wrap.appendChild(row);
+      const meta=document.createElement('div');meta.className='muted';meta.style.cssText='margin-top:6px;font-size:.8rem';
+      meta.textContent=`${p.unique}/7 unique`;wrap.appendChild(meta);
+      // action targeting: clicking a board chooses the target
+      if(pending){const canTarget=(s.pendingAction.kind==='freeze')?p.status!=='busted':p.status==='active';if(canTarget){wrap.style.cursor='pointer';wrap.style.outline='2px dashed #f59e0b';wrap.onclick=()=>net.spectating?null:act(viewer,{action:'target',target:i});}}
+      main.appendChild(wrap);
+    });
+
+    // controls + status
+    let ctrl=$('f7Controls');if(!ctrl){ctrl=document.createElement('div');ctrl.id='f7Controls';ctrl.className='f7-controls';document.body.appendChild(ctrl);}
+    ctrl.innerHTML='';
+    const sb=$('statusBar');sb.style.color='var(--text)';
+    if(net.spectating){sb.innerHTML='<span style="color:#f59e0b">👁 Spectating — you\'ll join next round</span>';}
+    else if(s.phase==='ROUND_END'||s.phase==='GAME_OVER'){
+      if(mode==='local'||net.isHost)sb.innerHTML=`<button class="btn" style="margin:0;padding:10px 20px" onclick="${mode==='local'?'localNext()':"net.send({type:'next_round'})"}">${s.phase==='GAME_OVER'?(mode==='local'?'Play Again':'New Game'):'Next Round'}</button>`;
+      else sb.innerHTML='<span class="muted">Waiting for host…</span>';
+    }
+    else if(pending){sb.innerHTML=`<span style="color:#f59e0b">${s.pendingAction.kind==='freeze'?'❄ Choose who to Freeze':'🔃 Choose who flips 3'} (tap a player)</span>`;}
+    else if(myTurn){sb.innerHTML='<span style="color:#10b981">Your turn — Hit or Stay</span>';
+      const hit=document.createElement('button');hit.className='btn green';hit.textContent='Hit';hit.onclick=()=>act(viewer,{action:'hit'});
+      const stay=document.createElement('button');stay.className='btn secondary';stay.textContent='Stay';stay.onclick=()=>act(viewer,{action:'stay'});
+      ctrl.appendChild(hit);ctrl.appendChild(stay);
+    }
+    else if(mode==='local'){const cur=s.players[s.current];sb.innerHTML=`<span style="color:#10b981">${cur?cur.name:''}'s turn</span>`;
+      if(s.phase==='PLAY'&&cur&&cur.status==='active'&&!s.pendingAction){const hit=document.createElement('button');hit.className='btn green';hit.textContent='Hit';hit.onclick=()=>act(s.current,{action:'hit'});const stay=document.createElement('button');stay.className='btn secondary';stay.textContent='Stay';stay.onclick=()=>act(s.current,{action:'stay'});ctrl.appendChild(hit);ctrl.appendChild(stay);}
+      if(s.pendingAction){sb.innerHTML=`<span style="color:#f59e0b">${cur.name}: ${s.pendingAction.kind==='freeze'?'Freeze':'Flip 3'} — tap a player</span>`;document.querySelectorAll('#mainBoardsContainer .player-board').forEach((w,i)=>{const canT=(s.pendingAction.kind==='freeze')?s.players[i].status!=='busted':s.players[i].status==='active';if(canT){w.style.cursor='pointer';w.style.outline='2px dashed #f59e0b';w.onclick=()=>act(s.current,{action:'target',target:i});}});}
+    }
+    else sb.textContent='Waiting for '+(s.players[s.current]?.name||'…');
+
+    if(s.phase==='ROUND_END'||s.phase==='GAME_OVER'){if(!summaryShown){summaryShown=true;showSummary(view);}ctrl.innerHTML='';}
+    else{summaryShown=false;hideOverlay();}
+
+    prevView=view;curView=view;
+  }
+  function act(seat,msg){ if(mode==='local')localAct(seat,msg); else net.send({type:'action',...msg}); }
+  window.GameClients['flip7']={render};
+
+  // local engine wrapper
+  window.LocalEngines['flip7']=function(names){
+    const E=new Flip7Engine(names);
+    return {
+      apply(seat,msg){E.apply(seat,msg);},
+      next(){E.next();},
+      actor(){return E.s.current;},
+      viewFor(seat){return E.viewFor(seat);},
+    };
+  };
+})();
+
+/* ---- Flip 7 engine (client copy for local offline play; mirrors src/games/flip7.ts) ---- */
+class Flip7Engine{
+  constructor(names){this.s=this._fresh(names,names.map(()=>0));}
+  _buildDeck(){const d=[];d.push({kind:'num',v:0});for(let n=1;n<=12;n++)for(let i=0;i<n;i++)d.push({kind:'num',v:n});for(const m of['+2','+4','+6','+8','+10','x2'])d.push({kind:'mod',v:m});for(const a of['freeze','flip3','second'])for(let i=0;i<3;i++)d.push({kind:'act',v:a});for(let i=d.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[d[i],d[j]]=[d[j],d[i]];}return d;}
+  _fresh(names,banked){const s={players:names.map((n,i)=>({name:n,nums:[],mods:[],second:false,status:'active',banked:banked[i]||0,roundScore:0})),deck:this._buildDeck(),discard:[],current:0,phase:'PLAY',round:1,pendingAction:null,flip3Left:0,flip3Target:-1,log:null};for(let i=0;i<s.players.length;i++)this._give(s,i,this._draw(s),true);s.current=this._firstActive(s,0);return s;}
+  _draw(s){if(!s.deck.length){s.deck=s.discard;s.discard=[];for(let i=s.deck.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[s.deck[i],s.deck[j]]=[s.deck[j],s.deck[i]];}}return s.deck.pop();}
+  _firstActive(s,from){for(let k=0;k<s.players.length;k++){const i=(from+k)%s.players.length;if(s.players[i].status==='active')return i;}return from;}
+  _activeCount(s){return s.players.filter(p=>p.status==='active').length;}
+  _unique(p){return new Set(p.nums).size;}
+  _give(s,pi,card,initial=false){const p=s.players[pi];
+    if(card.kind==='num'){const n=card.v;if(p.nums.includes(n)){if(p.second){p.second=false;s.discard.push(card);s.log={type:'second_used',player:pi};return'ok';}p.status='busted';p.nums=[];p.mods=[];s.log={type:'bust',player:pi,value:n};return'bust';}p.nums.push(n);p.nums.sort((a,b)=>a-b);s.log={type:'got',player:pi,card};if(this._unique(p)>=7){p.status='stayed';s.log={type:'flip7',player:pi};return'flip7';}return'ok';}
+    if(card.kind==='mod'){p.mods.push(card.v);s.log={type:'got',player:pi,card};return'ok';}
+    const a=card.v;if(a==='second'){if(!p.second){p.second=true;s.log={type:'got',player:pi,card};return'ok';}const t=s.players.findIndex((q,i)=>i!==pi&&q.status==='active'&&!q.second);if(t>=0){s.players[t].second=true;s.log={type:'second_pass',from:pi,to:t};}else s.discard.push(card);return'ok';}
+    if(initial)return this._resolve(s,pi,a,pi);s.pendingAction={kind:a,from:pi};s.log={type:'await_target',kind:a,from:pi};return'action';}
+  _resolve(s,from,kind,target){s.pendingAction=null;const tp=s.players[target];if(kind==='freeze'){if(tp.status==='active')tp.status='stayed';s.log={type:'freeze',from,target};return'ok';}s.flip3Left=3;s.flip3Target=target;s.log={type:'flip3',from,target};this._runFlip3(s);return'ok';}
+  _runFlip3(s){while(s.flip3Left>0){const t=s.flip3Target,tp=s.players[t];if(tp.status!=='active'){s.flip3Left=0;break;}s.flip3Left--;const r=this._give(s,t,this._draw(s));if(r==='bust'||r==='flip7'){s.flip3Left=0;break;}if(r==='action'){const pa=s.pendingAction;this._resolve(s,pa.from,pa.kind,pa.from);}}}
+  _advance(s){if(this._activeCount(s)===0){this._score(s);return;}s.current=this._firstActive(s,(s.current+1)%s.players.length);}
+  _score(s){let f7=-1;for(const p of s.players){if(p.status==='busted'){p.roundScore=0;continue;}const u=new Set(p.nums).size;let base=p.nums.reduce((a,b)=>a+b,0);if(p.mods.includes('x2'))base*=2;for(const m of p.mods)if(m[0]==='+')base+=parseInt(m.slice(1));if(u>=7){base+=15;f7=1;}p.roundScore=base;p.banked+=base;}s.phase=s.players.some(p=>p.banked>=200)?'GAME_OVER':'ROUND_END';}
+  apply(seat,msg){const s=this.s;if(s.phase!=='PLAY')return;
+    if(s.pendingAction){if(msg.action==='target'&&s.pendingAction.from===seat){const t=msg.target|0;if(s.players[t].status==='active'||s.pendingAction.kind==='freeze'){this._resolve(s,seat,s.pendingAction.kind,t);this._advance(s);renderLocal();}}return;}
+    if(seat!==s.current||s.players[seat].status!=='active')return;
+    if(msg.action==='stay'){s.players[seat].status='stayed';s.log={type:'stay',player:seat};this._advance(s);}
+    else if(msg.action==='hit'){const r=this._give(s,seat,this._draw(s));if(r==='action'){renderLocal();return;}this._advance(s);}
+  }
+  next(){const s=this.s;const over=s.phase==='GAME_OVER';this.s=this._fresh(s.players.map(p=>p.name),over?s.players.map(()=>0):s.players.map(p=>p.banked));if(!over)this.s.round=s.round+1;}
+  viewFor(seat){const s=this.s;const over=s.phase==='GAME_OVER';let summary;if(s.phase==='ROUND_END'||s.phase==='GAME_OVER'){const mx=Math.max(...s.players.map(p=>p.banked));summary={rows:s.players.map((p,i)=>({seat:i,name:p.name,score:p.banked,delta:p.roundScore})),winners:s.players.map((p,i)=>p.banked===mx?i:-1).filter(i=>i>=0)};}
+    const live=p=>{if(p.status==='busted')return 0;let b=p.nums.reduce((a,c)=>a+c,0);if(p.mods.includes('x2'))b*=2;for(const m of p.mods)if(m[0]==='+')b+=parseInt(m.slice(1));if(new Set(p.nums).size>=7)b+=15;return b;};
+    return{game:'flip7',phase:s.phase,over,yourSeat:seat,summary,flip7:{round:s.round,current:s.current,phase:s.phase,pendingAction:s.pendingAction,viewerSeat:seat,deckCount:s.deck.length,players:s.players.map(p=>({name:p.name,nums:p.nums,mods:p.mods,second:p.second,status:p.status,banked:p.banked,unique:new Set(p.nums).size,live:live(p)})),log:s.log}};}
+}
+
 /* ====================== INIT ====================== */
-renderTiles('quickTiles',quickPlay);
-renderTiles('localTiles',gid=>{_localPick=gid;document.querySelectorAll('#localTiles .game-tile').forEach(t=>t.style.borderColor=t.dataset.g===gid?'var(--accent)':'');});
-setTimeout(()=>{const t=document.querySelector('#localTiles .game-tile');if(t)t.style.borderColor='var(--accent)';},0);
+renderTiles('quickTiles',quickPlay); // quick play: no size filter (matchmaking fills the room)
+refreshLocalTiles();
 if(SFX.muted){const b=$('soundBtn');if(b){b.textContent='🔇';b.classList.add('off');}}
 document.addEventListener('keydown',e=>{if(e.key==='Escape')$('investigateOverlay').classList.add('hidden');});
 </script>
