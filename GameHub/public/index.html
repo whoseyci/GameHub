@@ -484,6 +484,7 @@ function goOnline(){showScreen('onlineSetup');}
 catalogue=[
   {id:'skyjo',name:'Skyjo',minPlayers:2,maxPlayers:8,description:'Lowest score wins.',emoji:'🃏'},
   {id:'flip7',name:'Flip 7',minPlayers:2,maxPlayers:8,description:'Push your luck to 200.',emoji:'🎴'},
+  {id:'qwixx',name:'Qwixx',minPlayers:2,maxPlayers:5,description:'Cross numbers left-to-right using dice.',emoji:'🎲'},
 ];
 
 /* ---- Rulebooks (accessible from menu, pickers, and inside a game) ---- */
@@ -498,15 +499,6 @@ const RULES={
     ],
     tip:'Dump high cards, keep low/negative ones. Watch for column triplets!'},
   flip7:{title:'🎴 Flip 7',quick:'Push your luck — race to 200.',
-  qwixx:{title:'🎲 Qwixx',quick:'Cross numbers left-to-right using dice.',
-    steps:[
-      'Roll 2 white + 4 colored dice. Everyone can cross the white sum in any row.',
-      'Active player may also cross one white+colored sum in the matching color row.',
-      'Numbers must be crossed left→right in each row; skipping blocks earlier numbers.',
-      'Lock a row (remove die) by crossing 5+ numbers then the end lock number (12 red/yellow, 2 green/blue).',
-      'Game ends at 2 locked rows or 4 penalties (-5 each). Score = triangular numbers per row.',
-    ],
-    tip:'Lock rows early to force penalties on opponents. Balance multiple rows.'},
     steps:[
       'On your turn choose <b>Hit</b> (draw a card) or <b>Stay</b> (bank your points, you’re out for the round).',
       'Number cards: there’s one 0, two 2s, three 3s … twelve 12s. Draw a <b>duplicate number → BUST</b> (score 0 this round).',
