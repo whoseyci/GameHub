@@ -1,216 +1,326 @@
-import { GameDef } from './types';
+// src/games/qwixx.ts
+import type { GameModule, GameView } from "./types";
 
-export type Color = 'red' | 'yellow' | 'green' | 'blue';
-
-export interface QwixxPlayerState {
-  id: string;
-  name: string;
-  marks: Record<Color, number[]>; // Stores the indices (0-11) of marked cells
-  penalties: number;
-  score: number;
+export interface QwixxRow {
+  nums: number[];
+  cellColors: string[];
+  doubles: number[];
+  marks: number[]; // indices of crossed numbers
 }
 
-export interface DiceState {
-  w1: number; w2: number;
-  red: number; yellow: number;
-  green: number; blue: number;
+export interface QwixxPlayer {
+  name: string;
+  rows: Record<string, QwixxRow>;
+  penalties: number;
+  turnMarks: { c: string; i: number; n: number }[];
 }
 
 export interface QwixxState {
-  players: QwixxPlayerState[];
-  activePlayerIndex: number;
-  viewingPlayerIndex: number; // Who is currently acting in the 'others_white' cycle
-  phase: 'active_turn' | 'others_cycle' | 'game_over';
-  dice: DiceState;
-  lockedRows: Color[];
-  pendingLocks: Color[];
+  players: QwixxPlayer[];
+  dice: { w: number[]; r: number; y: number; g: number; b: number } | null;
+  activeSeat: number;
+  phase: "ACTIVE" | "OTHERS_WHITE" | "GAME_OVER";
+  expansion: string;
+  locked: string[];
+  pendingLocks: string[];
+  activeMarks: { c: string; i: number; n: number; reqColor: string }[];
+  playerTurnMarks: Record<number, { c: string; i: number; n: number }[]>;
+  round: number;
+  mc: number;
 }
 
-export type QwixxMove = 
-  | { type: 'ACTIVE_PLAY'; marks: { color: Color; index: number }[] } // 0-2 marks
-  | { type: 'CYCLE_PLAY'; mark: { color: Color; index: number } | null }; // 1 mark or null for skip
-
-// --- UTILS ---
-export const getFaceValue = (color: Color, index: number): number => {
-  if (index === 11) return 0; // Padlock has no face value
-  return (color === 'red' || color === 'yellow') ? index + 2 : 12 - index;
+const COLORS = ["red", "yellow", "green", "blue"] as const;
+const EXPANSIONS = {
+  standard: { rowMax: 12, dieMax: 6 },
+  longo: { rowMax: 16, dieMax: 8 },
+  num_mixx: { rowMax: 12, dieMax: 6 },
+  col_mixx: { rowMax: 12, dieMax: 6 },
+  double: { rowMax: 12, dieMax: 6 },
 };
 
-const rollD6 = () => Math.floor(Math.random() * 6) + 1;
-
-const calculateScore = (marksCount: number) => {
-  return marksCount === 0 ? 0 : (marksCount * (marksCount + 1)) / 2;
-};
-
-const rollDice = (state: QwixxState) => {
-  state.dice = {
-    w1: rollD6(), w2: rollD6(),
-    red: state.lockedRows.includes('red') ? 0 : rollD6(),
-    yellow: state.lockedRows.includes('yellow') ? 0 : rollD6(),
-    green: state.lockedRows.includes('green') ? 0 : rollD6(),
-    blue: state.lockedRows.includes('blue') ? 0 : rollD6(),
-  };
-};
-
-const applyMark = (state: QwixxState, player: QwixxPlayerState, color: Color, index: number) => {
-  const row = player.marks[color];
-  const lastMark = row.length > 0 ? row[row.length - 1] : -1;
+function makeRow(color: string, expansion: string): QwixxRow {
+  const isAsc = color === "red" || color === "yellow";
+  const rowMax = EXPANSIONS[expansion as keyof typeof EXPANSIONS]?.rowMax || 12;
+  let nums: number[] = [];
   
-  if (index <= lastMark) throw new Error("Must mark strictly to the right");
-  if (index === 10 && row.length < 5) throw new Error("Need 5 marks to hit the end number");
-  if (state.lockedRows.includes(color)) throw new Error("Row is locked");
-
-  row.push(index);
-
-  // Lock row handling (index 10 is the 12/2 space)
-  if (index === 10 && row.length >= 5) {
-    row.push(11); // Add the Padlock (acts as +1 score mark)
-    if (!state.pendingLocks.includes(color)) state.pendingLocks.push(color);
+  if (isAsc) {
+    for (let i = 2; i <= rowMax; i++) nums.push(i);
+  } else {
+    for (let i = rowMax; i >= 2; i--) nums.push(i);
   }
-};
-
-const advanceRound = (state: QwixxState) => {
-  // Commit pending locks
-  state.pendingLocks.forEach(c => {
-    if (!state.lockedRows.includes(c)) state.lockedRows.push(c);
-  });
-  state.pendingLocks = [];
-
-  // Next player
-  let nextIdx = (state.activePlayerIndex + 1) % state.players.length;
-  // Skip eliminated players
-  while (state.players[nextIdx].penalties >= 4 && nextIdx !== state.activePlayerIndex) {
-    nextIdx = (nextIdx + 1) % state.players.length;
-  }
-
-  state.activePlayerIndex = nextIdx;
-  state.viewingPlayerIndex = nextIdx;
-  state.phase = 'active_turn';
-  rollDice(state);
-};
-
-const updateScores = (state: QwixxState) => {
-  state.players.forEach(p => {
-    let total = 0;
-    (['red', 'yellow', 'green', 'blue'] as Color[]).forEach(c => {
-      total += calculateScore(p.marks[c].length);
-    });
-    total -= (p.penalties * 5);
-    p.score = total;
-  });
-};
-
-const checkGameOver = (state: QwixxState) => {
-  if (state.lockedRows.length >= 2 || state.players.some(p => p.penalties >= 4)) {
-    state.phase = 'game_over';
-  }
-};
-
-// --- GAME DEFINITION EXPORT ---
-export const Qwixx: GameDef<QwixxState, QwixxMove> = {
-  name: 'Qwixx',
-  minPlayers: 2,
-  maxPlayers: 5,
   
-  init: (numPlayers: number): QwixxState => {
-    // Generate placeholder IDs matching the engine's expectation.
-    // Your core GameHub engine likely overwrites these or handles player mapping.
-    const playerIds = Array.from({ length: numPlayers }, (_, i) => `p${i}`);
-    const playerNames = Array.from({ length: numPlayers }, (_, i) => `Player ${i + 1}`);
-    
-    const state: QwixxState = {
-      players: playerIds.map((id, i) => ({
-        id,
-        name: playerNames[i],
-        marks: { red: [], yellow: [], green: [], blue: [] },
-        penalties: 0,
-        score: 0
-      })),
-      activePlayerIndex: 0,
-      viewingPlayerIndex: 0,
-      phase: 'active_turn',
-      dice: { w1: 1, w2: 1, red: 1, yellow: 1, green: 1, blue: 1 },
-      lockedRows: [],
-      pendingLocks: [],
-    };
-    rollDice(state);
-    return state;
+  if (expansion === "num_mixx") {
+    nums.sort(() => Math.random() - 0.5);
+  }
+  
+  let cellColors = nums.map(() => color);
+  if (expansion === "col_mixx") {
+    cellColors = nums.map(() => COLORS[Math.floor(Math.random() * COLORS.length)]);
+  }
+  
+  let doubles: number[] = [];
+  if (expansion === "double") {
+    while (doubles.length < 2) {
+      let r = Math.floor(Math.random() * nums.length);
+      if (!doubles.includes(r)) doubles.push(r);
+    }
+  }
+  
+  return { nums, cellColors, doubles, marks: [] };
+}
+
+function isValidActivePlayerMarks(marks: { c: string; i: number; n: number; reqColor: string }[], dice: any) {
+  if (marks.length === 0) return true;
+  if (marks.length > 2) return false;
+  const wSum = dice.w[0] + dice.w[1];
+  const isW = (m: any) => m.n === wSum;
+  const isC = (m: any) => m.n === dice.w[0] + dice[m.reqColor] || m.n === dice.w[1] + dice[m.reqColor];
+  
+  if (marks.length === 1) return isW(marks[0]) || isC(marks[0]);
+  
+  if (marks.length === 2) {
+    let m1 = marks[0], m2 = marks[1];
+    if (m1.c === m2.c) {
+      // White sum must strictly precede Color sum chronologically
+      let left = m1.i < m2.i ? m1 : m2;
+      let right = m1.i < m2.i ? m2 : m1;
+      return isW(left) && isC(right);
+    } else {
+      return (isW(m1) && isC(m2)) || (isC(m1) && isW(m2));
+    }
+  }
+  return false;
+}
+
+export const Qwixx: GameModule = {
+  meta: {
+    id: "qwixx",
+    name: "Qwixx",
+    minPlayers: 2,
+    maxPlayers: 8,
+    description: "Cross numbers left-to-right using dice sums.",
+    emoji: "🎲"
   },
 
-  processMove: (state: QwixxState, move: QwixxMove, playerId: string): void => {
-    const pIndex = state.players.findIndex(p => p.id === playerId);
-    if (pIndex === -1) throw new Error("Player not found");
+  create(names: string[]) {
+    const expansion = "standard";
+    const players: QwixxPlayer[] = names.map((name) => ({
+      name: name || "Player",
+      rows: {},
+      penalties: 0,
+      turnMarks: [],
+    }));
+    
+    players.forEach(p => {
+      COLORS.forEach(c => { p.rows[c] = makeRow(c, expansion); });
+    });
+    
+    const dieMax = 6;
+    const rnd = () => Math.floor(Math.random() * dieMax) + 1;
 
-    if (state.phase === 'active_turn') {
-      if (pIndex !== state.activePlayerIndex || move.type !== 'ACTIVE_PLAY') {
-        throw new Error("Invalid active turn");
-      }
+    return {
+      players,
+      dice: { w: [rnd(), rnd()], r: rnd(), y: rnd(), g: rnd(), b: rnd() },
+      activeSeat: 0,
+      phase: "ACTIVE",
+      expansion,
+      locked: [],
+      pendingLocks: [],
+      activeMarks: [],
+      playerTurnMarks: {},
+      round: 1,
+      mc: 0,
+    } as QwixxState;
+  },
+
+  applyAction(state: any, seat: number, msg: any) {
+    const s = state as QwixxState;
+    if (s.phase === "GAME_OVER") return;
+
+    if (msg.action === "setExpansion") {
+      const exp = msg.expansion as string;
+      if (!EXPANSIONS[exp as keyof typeof EXPANSIONS]) return;
+      s.expansion = exp;
+      s.players.forEach(p => {
+        COLORS.forEach(c => { p.rows[c] = makeRow(c, exp); });
+      });
+      return;
+    }
+
+    if (msg.action === "roll") {
+      if (seat !== s.activeSeat) return;
+      const dieMax = EXPANSIONS[s.expansion as keyof typeof EXPANSIONS]?.dieMax || 6;
+      const rnd = () => Math.floor(Math.random() * dieMax) + 1;
+      s.dice = {
+        w: [rnd(), rnd()],
+        r: s.locked.includes('red') ? 0 : rnd(),
+        y: s.locked.includes('yellow') ? 0 : rnd(),
+        g: s.locked.includes('green') ? 0 : rnd(),
+        b: s.locked.includes('blue') ? 0 : rnd(),
+      };
+      s.activeMarks = [];
+      s.playerTurnMarks = {};
+      s.phase = "ACTIVE";
+      return;
+    }
+
+    if (msg.action === "mark") {
+      const { c, i } = msg;
+      const p = s.players[seat];
+      if (!p) return;
+      const row = p.rows[c];
+      if (!row || row.marks.includes(i)) return;
       
-      const player = state.players[state.activePlayerIndex];
-      const proposedMarks = move.marks;
-
-      // 1. Validate Penalty
-      if (proposedMarks.length === 0) {
-        player.penalties += 1;
-      } else {
-        // 2. Validate move legality (left-to-right, dice sums, white-before-color rule)
-        const wSum = state.dice.w1 + state.dice.w2;
-
-        proposedMarks.forEach((m, i) => {
-          const faceVal = getFaceValue(m.color, m.index);
-          const isW = faceVal === wSum;
-          const isC = faceVal === state.dice.w1 + state.dice[m.color] || faceVal === state.dice.w2 + state.dice[m.color];
+      const last = row.marks.length > 0 ? row.marks[row.marks.length - 1] : -1;
+      if (i <= last) return;
+      
+      const endIdx = row.nums.length - 1;
+      if (i === endIdx && row.marks.length < 5) return;
+      
+      const isAct = seat === s.activeSeat;
+      
+      if (s.phase === "ACTIVE") {
+        if (!isAct) {
+          // Off-turn: Only allowed to mark the white sum
+          const wSum = s.dice!.w[0] + s.dice!.w[1];
+          if (row.nums[i] !== wSum) return;
+          if (!s.playerTurnMarks[seat]) s.playerTurnMarks[seat] = [];
+          if (s.playerTurnMarks[seat].length >= 1) return;
           
-          if (proposedMarks.length === 2) {
-            // Strict mapping: first item must be white sum, second must be color sum
-            if (i === 0 && !isW) throw new Error("First mark must be White Sum");
-            if (i === 1 && !isC) throw new Error("Second mark must be Color Sum");
-            if (proposedMarks[0].color === proposedMarks[1].color && proposedMarks[0].index >= proposedMarks[1].index) {
-               throw new Error("White sum must be to the left of Color sum in the same row");
-            }
-          } else if (proposedMarks.length === 1) {
-            if (!isW && !isC) throw new Error("Mark must match either White Sum or Color Sum");
-          }
+          s.playerTurnMarks[seat].push({ c, i, n: row.nums[i] });
+          row.marks.push(i);
+          row.marks.sort((a,b)=>a-b);
+          s.mc++;
+        } else {
+          // Active Turn: Can mark White or Color
+          const reqColor = row.cellColors[i];
+          const newMark = { c, i, n: row.nums[i], reqColor };
+          const proposed = [...s.activeMarks, newMark];
+          if (proposed.length > 2) return;
+          if (!isValidActivePlayerMarks(proposed, s.dice!)) return;
           
-          applyMark(state, player, m.color, m.index);
-        });
-      }
-
-      // Advance phase
-      if (state.players.length > 1) {
-        state.phase = 'others_cycle';
-        state.viewingPlayerIndex = (state.activePlayerIndex + 1) % state.players.length;
-      } else {
-        advanceRound(state); // Solo mode skips cycle
-      }
-
-    } else if (state.phase === 'others_cycle') {
-      if (pIndex !== state.viewingPlayerIndex || move.type !== 'CYCLE_PLAY') {
-        throw new Error("Invalid cycle turn");
-      }
-      
-      const player = state.players[state.viewingPlayerIndex];
-      
-      if (move.mark) {
-        const wSum = state.dice.w1 + state.dice.w2;
-        if (getFaceValue(move.mark.color, move.mark.index) !== wSum) {
-          throw new Error("Must be white sum");
+          s.activeMarks = proposed;
+          row.marks.push(i);
+          row.marks.sort((a,b)=>a-b);
+          s.mc++;
         }
-        applyMark(state, player, move.mark.color, move.mark.index);
+      } else if (s.phase === "OTHERS_WHITE") {
+        if (isAct) return;
+        const wSum = s.dice!.w[0] + s.dice!.w[1];
+        if (row.nums[i] !== wSum) return;
+        if (!s.playerTurnMarks[seat]) s.playerTurnMarks[seat] = [];
+        if (s.playerTurnMarks[seat].length >= 1) return;
+        
+        s.playerTurnMarks[seat].push({ c, i, n: row.nums[i] });
+        row.marks.push(i);
+        row.marks.sort((a,b)=>a-b);
+        s.mc++;
       }
-
-      // Advance cycle
-      state.viewingPlayerIndex = (state.viewingPlayerIndex + 1) % state.players.length;
-      if (state.viewingPlayerIndex === state.activePlayerIndex) {
-        advanceRound(state);
+      
+      // Determine lock status
+      if (i === endIdx && row.marks.length >= 5 && !s.locked.includes(c)) {
+        s.pendingLocks.push(c);
       }
     }
 
-    updateScores(state);
-    checkGameOver(state);
+    if (msg.action === "finishActiveTurn") {
+      if (seat !== s.activeSeat) return;
+      if (s.activeMarks.length === 0) {
+        s.players[s.activeSeat].penalties++;
+      }
+      
+      // Enforce Locks
+      s.pendingLocks.forEach(c => {
+        if (!s.locked.includes(c)) s.locked.push(c);
+      });
+      s.pendingLocks = [];
+      
+      if (s.locked.length >= 2 || s.players.some(p => p.penalties >= 4)) {
+        s.phase = "GAME_OVER";
+      } else {
+        s.phase = "OTHERS_WHITE";
+      }
+      return;
+    }
+
+    if (msg.action === "advanceTurn") {
+      s.activeSeat = (s.activeSeat + 1) % s.players.length;
+      let tries = 0;
+      // Skip over players who are eliminated (4+ penalties)
+      while (s.players[s.activeSeat].penalties >= 4 && tries < s.players.length) {
+        s.activeSeat = (s.activeSeat + 1) % s.players.length;
+        tries++;
+      }
+      
+      s.phase = "ACTIVE";
+      
+      // Automatically roll next dice
+      const dieMax = EXPANSIONS[s.expansion as keyof typeof EXPANSIONS]?.dieMax || 6;
+      const rnd = () => Math.floor(Math.random() * dieMax) + 1;
+      s.dice = {
+        w: [rnd(), rnd()],
+        r: s.locked.includes('red') ? 0 : rnd(),
+        y: s.locked.includes('yellow') ? 0 : rnd(),
+        g: s.locked.includes('green') ? 0 : rnd(),
+        b: s.locked.includes('blue') ? 0 : rnd(),
+      };
+      s.activeMarks = [];
+      s.playerTurnMarks = {};
+      s.round++;
+      return;
+    }
   },
 
-  isGameOver: (state: QwixxState): boolean => {
-    return state.phase === 'game_over';
+  viewFor(state: any, seat: number): GameView {
+    const s = state as QwixxState;
+    const p = s.players[seat];
+    let summary;
+    
+    // Hub automatically detects game end and handles summary overlays
+    if (s.phase === "GAME_OVER") {
+      const scores = s.players.map((pl, i) => {
+        let total = 0;
+        COLORS.forEach(c => {
+          let m = pl.rows[c].marks.length;
+          // Count padlock as a mark if the end number is crossed
+          if (pl.rows[c].marks.includes(pl.rows[c].nums.length - 1)) m++;
+          total += (m * (m + 1)) / 2;
+        });
+        total -= pl.penalties * 5;
+        return { seat: i, name: pl.name, score: total, delta: 0 };
+      });
+      const max = Math.max(...scores.map(x => x.score));
+      summary = {
+        rows: scores,
+        winners: scores.filter(x => x.score === max).map(x => x.seat),
+      };
+    }
+
+    return {
+      game: "qwixx",
+      phase: s.phase,
+      over: s.phase === "GAME_OVER",
+      yourSeat: seat,
+      summary,
+      state: {
+        dice: s.dice,
+        activeSeat: s.activeSeat,
+        expansion: s.expansion,
+        locked: s.locked,
+        yourRows: p ? p.rows : {},
+        yourPenalties: p ? p.penalties : 0,
+        allPlayers: s.players.map((pl, i) => ({
+          seat: i,
+          name: pl.name,
+          penalties: pl.penalties,
+        })),
+        phase: s.phase,
+        round: s.round,
+      },
+    };
+  },
+
+  isOver(state: any) {
+    return state.phase === "GAME_OVER";
   }
 };
