@@ -1,22 +1,26 @@
-import { GameDef } from './types';
-import { flip7 } from './flip7';
-import { skyjo } from './skyjo';
-import { Qwixx } from './qwixx'; // 1. Import Qwixx here
+// games/registry.ts — central list of games in the hub.
+// To add a game: implement a GameModule, import it here, add it to GAMES.
+// Existing games are untouched, so a new game can't break them.
+import type { GameModule } from "./types";
+import { Skyjo, skyjoCompleteTurnEnd } from "./skyjo";
+import { Flip7 } from "./flip7";
+import { Qwixx } from "./qwixx";
 
-// 2. Add qwixx to the GAME_CATALOGUE (not GAMES)
-export const GAME_CATALOGUE: Record<string, GameDef<any, any>> = {
-  flip7,
-  skyjo,
-  qwixx: Qwixx, 
+export const GAMES: Record<string, GameModule> = {
+  [Skyjo.meta.id]: Skyjo,
+  [Flip7.meta.id]: Flip7,
+  [Qwixx.meta.id]: Qwixx,
 };
 
-// 3. Ensure getGame is exported so server.ts can find it
-export const getGame = (gameId: string): GameDef<any, any> => {
-  return GAME_CATALOGUE[gameId];
-};
+// Public catalogue for the hub UI (no logic, just metadata).
+export const GAME_CATALOGUE = Object.values(GAMES).map((g) => g.meta);
 
-// 4. Ensure TICK_RUNNERS is exported (keep whatever you originally had inside it)
-export const TICK_RUNNERS: Record<string, any> = {
-  // If you had any tick runners for skyjo/flip7, leave them here. 
-  // Qwixx is turn-based, so it doesn't need a tick runner!
+export function getGame(id: string): GameModule | null {
+  return GAMES[id] ?? null;
+}
+
+// Per-game "deferred tick" runners. The hub stays game-agnostic; each game that
+// uses tick() registers how to complete its deferred step here.
+export const TICK_RUNNERS: Record<string, (state: any) => void> = {
+  skyjo: skyjoCompleteTurnEnd,
 };
