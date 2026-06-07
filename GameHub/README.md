@@ -14,8 +14,17 @@ GitHub → Cloudflare auto-builds and deploys. No `wrangler login`, no CLI requi
 | `wrangler.jsonc` | Worker config (DO bindings, migrations, static assets). **Source of truth.** |
 | `package.json` / `package-lock.json` / `tsconfig.json` | Tooling (commit the lockfile). |
 
-> A standalone `skyjo-pro.html` also exists at the workspace root for **offline/local
-> play only**. Online play uses the deployed Worker below.
+> **Folder vs Worker name:** this project folder is `GameHub`, but the deployed Cloudflare
+> Worker is still named **`skyjo-pro`** (keeping the existing Git-connected deploy & room
+> URLs). Don't rename the Worker unless you also update `wrangler.jsonc` + the dashboard.
+>
+> **Bots:** Easy/Medium are heuristics; **Hard uses policies trained by self-play** in
+> `/training` (Cross-Entropy Method). Run `node training/train_flip7.mjs` /
+> `train_skyjo.mjs` to retrain; the resulting weights are pasted into the client's `Bots`
+> module. Validated head-to-head: Skyjo Hard beats Easy ~87%, Medium ~58%; Flip 7 Hard
+> beats Easy ~62% (Flip 7 is luck-heavy so margins compress). Bots "think" on the host's
+> client (or local device) so they cost ~0 server compute.
+
 
 ---
 

@@ -215,7 +215,7 @@
     <div class="menu-card">
       <h1 class="logo">GAME HUB</h1>
       <p class="muted" style="margin-bottom:26px">Play card games with friends.</p>
-      <div id="verStamp" style="position:absolute;bottom:8px;right:12px;font-size:.65rem;color:var(--text-dim);font-weight:700;opacity:.6"></div>
+      <div id="verStamp" style="margin-top:4px;font-size:.72rem;color:var(--text-dim);font-weight:800;letter-spacing:.5px;opacity:.75"></div>
       <button class="btn purple" onclick="goOnline()">Play Online</button>
       <button class="btn secondary" onclick="showScreen('localPick')">Local (Pass &amp; Play)</button>
       <button class="btn secondary" onclick="showRulesMenu()" style="background:transparent;box-shadow:none;border:2px solid var(--border)">📖 How to Play</button>
@@ -294,11 +294,16 @@
       <button class="btn secondary backbtn" onclick="showScreen('menuScreen')">←</button>
       <h2 style="margin-top:0">Local Game</h2>
       <div id="localTiles" class="game-tiles"></div>
-      <div id="localPlayers" style="margin-top:8px">
-        <input type="text" class="input" value="Player 1">
-        <input type="text" class="input" value="Player 2">
+      <div id="localPlayers" style="margin-top:8px"></div>
+      <div class="seg" id="localBotDiff" style="margin:6px 0">
+        <button data-d="easy" onclick="setLocalBotDiff('easy')">😊 Easy</button>
+        <button data-d="medium" class="on" onclick="setLocalBotDiff('medium')">🙂 Medium</button>
+        <button data-d="hard" onclick="setLocalBotDiff('hard')">🤖 Hard</button>
       </div>
-      <button class="btn secondary" onclick="addLocalPlayer()" style="font-size:1rem;padding:10px">+ Add Player</button>
+      <div style="display:flex;gap:8px">
+        <button class="btn secondary" onclick="addLocalPlayer()" style="font-size:1rem;padding:10px;margin:0">+ Player</button>
+        <button class="btn secondary" onclick="addLocalBot()" style="font-size:1rem;padding:10px;margin:0">+ Bot 🤖</button>
+      </div>
       <button class="btn" onclick="startLocalGame()" style="margin-top:16px">Start</button>
     </div>
   </div>
@@ -369,7 +374,7 @@
    shape as Skyjo below. The hub never needs to change.
    ==================================================================== */
 const PARTYKIT_HOST = location.host; // served by the same Worker
-const BUILD_VERSION = "2026-06-07-flip7-vfx"; // bump on each change; shown on the menu
+const BUILD_VERSION = "v8-trained-bots"; // bump on each change; shown on the menu
 
 const $=id=>document.getElementById(id);
 function showScreen(id){
@@ -574,6 +579,7 @@ function handleNet(m){
   }
   if(m.type==='game'){
     net.isHost=m.isHost;net.spectating=(m.view.yourSeat<0);
+    window._currentBots=m.bots||[];   // bot seats the host must drive
     $('gameRoomTag').textContent=net.room||'';$('gameRoomTag').classList.toggle('hidden',!net.room);
     $('spectateTag').classList.toggle('hidden',!net.spectating);
     if(!$('gameScreen').classList.contains('active'))showScreen('gameScreen');
@@ -581,15 +587,36 @@ function handleNet(m){
     return;
   }
 }
+let _botDiff='medium';
+function setBotDiff(d){_botDiff=d;document.querySelectorAll('#botDiffSeg button').forEach(b=>b.classList.toggle('on',b.dataset.d===d));}
+function addBot(){net.send({type:'add_bot',difficulty:_botDiff});}
+function removeBot(){net.send({type:'remove_bot'});}
 function renderRoom(m){
   $('roomCode').textContent=m.code;
   $('roomVis').textContent=(m.quickGame?'⚡ Quick Play · ':'')+(m.isPublic?'🌍 Public room':'🔒 Private room');
-  $('roomMembers').innerHTML=m.members.map(p=>`<span class="chip">${p.name}${p.id===getPid()?' (You)':''}</span>`).join('')||'<span class="muted">Just you so far…</span>';
+  $('roomMembers').innerHTML=m.members.map(p=>`<span class="chip"${p.bot?' style="background:#312e81;color:#c7d2fe"':''}>${p.name}${p.id===getPid()?' (You)':''}${p.bot?' · '+(p.difficulty||'med'):''}</span>`).join('')||'<span class="muted">Just you so far…</span>';
   $('hostArea').classList.toggle('hidden',!m.isHost);
   $('guestArea').classList.toggle('hidden',m.isHost);
+  // bot controls (host only)
+  let botBox=$('botBox');
+  if(m.isHost){
+    if(!botBox){botBox=document.createElement('div');botBox.id='botBox';botBox.style.cssText='margin:12px 0';
+      $('roomMembers').parentNode.appendChild(botBox);}
+    const nBots=m.members.filter(x=>x.bot).length;
+    const full=m.members.length>=(m.maxPlayers||8);
+    botBox.innerHTML=`<div class="seg" id="botDiffSeg" style="margin-bottom:8px">
+        <button data-d="easy" class="${_botDiff==='easy'?'on':''}" onclick="setBotDiff('easy')">😊 Easy</button>
+        <button data-d="medium" class="${_botDiff==='medium'?'on':''}" onclick="setBotDiff('medium')">🙂 Medium</button>
+        <button data-d="hard" class="${_botDiff==='hard'?'on':''}" onclick="setBotDiff('hard')">🤖 Hard</button>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn secondary" style="margin:0" onclick="addBot()" ${full?'disabled':''}>+ Add Bot</button>
+        ${nBots?`<button class="btn secondary" style="margin:0" onclick="removeBot()">− Remove Bot</button>`:''}
+      </div>`;
+  } else if(botBox){ botBox.remove(); }
   if(m.isHost) renderTiles('hostTiles',gid=>net.send({type:'launch_game',gameId:gid}), m.members.length);
 }
-function leaveOnline(){if(net.ws){try{net.ws.close();}catch(e){}net.ws=null;}net.room=null;net.isHost=false;net.spectating=false;resetGameUi();showScreen('onlineSetup');}
+function leaveOnline(){if(net.ws){try{net.ws.close();}catch(e){}net.ws=null;}net.room=null;net.isHost=false;net.spectating=false;window._currentBots=[];resetGameUi();showScreen('onlineSetup');}
 function leaveGameToRoom(){ // back arrow in game
   if(mode==='local'){ if(confirm('Leave the game?')){ resetGameUi(); showScreen('menuScreen'); } return; }
   if(net.isHost){ if(confirm('Return everyone to the room lobby?')) net.send({type:'to_room'}); }
@@ -619,11 +646,13 @@ function renderPublic(rooms){
 function dispatchView(view){
   const client=window.GameClients[view.game];
   if(!client){toast('Unknown game: '+view.game);return;}
+  window._renderView=view;
   if(animating){pendingView=view;return;}
   client.render(view);
+  maybeRunBot(view); // drive bot seats if we're responsible
 }
 function flushView(){if(pendingView){const v=pendingView;pendingView=null;dispatchView(v);}}
-function resetGameUi(){curView=null;prevView=null;animating=false;pendingView=null;summaryShown=false;lastRoundShown=false;$('overlay').classList.add('hidden');$('overlay').style.opacity='';const f7=$('f7Controls');if(f7)f7.remove();const dw=$('f7DealerWrap');if(dw)dw.remove();$('topArea').style.display='';}
+function resetGameUi(){curView=null;prevView=null;animating=false;pendingView=null;summaryShown=false;lastRoundShown=false;$('overlay').classList.add('hidden');$('overlay').style.opacity='';const f7=$('f7Controls');if(f7)f7.remove();const dw=$('f7DealerWrap');if(dw)dw.remove();$('topArea').style.display='';if(window._flip7ResetSeq)window._flip7ResetSeq();}
 function hideOverlay(){const o=$('overlay');if(o.classList.contains('hidden'))return;o.style.opacity='0';setTimeout(()=>{o.classList.add('hidden');o.style.opacity='';},220);}
 function bumpStatus(){const sb=$('statusBar');sb.classList.remove('bump');void sb.offsetWidth;sb.classList.add('bump');}
 
@@ -649,27 +678,47 @@ function showSummary(view){
 /* ====================== LOCAL PLAY (offline, single-device) ====================== */
 let localEngine=null,localGameId=null,localActor=0;
 let _localPick='skyjo';
-function localCount(){return $('localPlayers').children.length;}
+/* Local seats: array of {name, bot, difficulty}. Rendered as rows. */
+let localSeats=[{name:'Player 1',bot:false},{name:'Player 2',bot:false}];
+let _localBotDiff='medium';
+function setLocalBotDiff(d){_localBotDiff=d;document.querySelectorAll('#localBotDiff button').forEach(b=>b.classList.toggle('on',b.dataset.d===d));}
+function renderLocalSeats(){
+  const box=$('localPlayers');box.innerHTML='';
+  localSeats.forEach((seat,i)=>{
+    const row=document.createElement('div');row.style.cssText='display:flex;gap:6px;align-items:center;margin-bottom:6px';
+    const inp=document.createElement('input');inp.type='text';inp.className='input';inp.style.margin='0';inp.value=seat.name;
+    inp.disabled=!!seat.bot;inp.oninput=()=>{localSeats[i].name=inp.value;};
+    if(seat.bot)inp.style.opacity='.7';
+    const del=document.createElement('button');del.className='icon-btn';del.textContent='✕';del.onclick=()=>{localSeats.splice(i,1);renderLocalSeats();refreshLocalTiles();};
+    row.appendChild(inp);if(localSeats.length>2||seat.bot)row.appendChild(del);
+    box.appendChild(row);
+  });
+}
+function localCount(){return localSeats.length;}
+function addLocalBot(){if(localSeats.length>=8)return;const names=['Botley','Chip','Ada','Turing','Pixel','Nova'];const n=localSeats.filter(s=>s.bot).length;localSeats.push({name:(names[n]||'Bot')+' 🤖',bot:true,difficulty:_localBotDiff});renderLocalSeats();refreshLocalTiles();}
 function refreshLocalTiles(){
   renderTiles('localTiles',gid=>{_localPick=gid;markLocalPick();},localCount());
   markLocalPick();
 }
 function markLocalPick(){document.querySelectorAll('#localTiles .game-tile').forEach(t=>{t.style.borderColor=(t.dataset.g===_localPick&&t.dataset.fits==='true')?'var(--accent)':'';});}
-function addLocalPlayer(){const c=localCount();if(c>=8)return;const i=document.createElement('input');i.type='text';i.className='input';i.value='Player '+(c+1);$('localPlayers').appendChild(i);refreshLocalTiles();}
+function addLocalPlayer(){if(localSeats.length>=8)return;localSeats.push({name:'Player '+(localSeats.length+1),bot:false});renderLocalSeats();refreshLocalTiles();}
 function startLocalGame(){
-  const names=Array.from($('localPlayers').children).map(i=>i.value.trim()).filter(Boolean);
+  const seats=localSeats.map(s=>({name:(s.name||'').trim()||(s.bot?'Bot':'Player'),bot:s.bot,difficulty:s.difficulty}));
+  const names=seats.map(s=>s.name);
   const g=catalogue.find(x=>x.id===_localPick);
   if(g&&(names.length<g.minPlayers||names.length>g.maxPlayers))return toast(`${g.name} needs ${g.minPlayers}–${g.maxPlayers} players.`);
   if(names.length<2)return toast('Need at least 2 players');
   if(!window.LocalEngines[_localPick])return toast('That game is online-only for now.');
   mode='local';localGameId=_localPick;localEngine=window.LocalEngines[_localPick](names);
+  // bot seats the local device will drive
+  window._currentBots=seats.map((s,i)=>s.bot?{seat:i,difficulty:s.difficulty||'medium'}:null).filter(Boolean);
   resetGameUi();showScreen('gameScreen');$('gameRoomTag').classList.add('hidden');$('spectateTag').classList.add('hidden');
   renderLocal();
 }
 function renderLocal(){const v=localEngine.viewFor(localEngine.actor());dispatchView(v);}
 function localAct(seat,msg){localEngine.apply(seat,msg);renderLocal();}
 function localNext(){localEngine.next();resetGameUi();renderLocal();}
-function quitLocal(){resetGameUi();showScreen('menuScreen');}
+function quitLocal(){window._currentBots=[];resetGameUi();showScreen('menuScreen');}
 
 /* ====================== GAME CLIENTS REGISTRY ====================== */
 window.GameClients={};
@@ -863,144 +912,206 @@ class SkyjoEngine{
   getStateFor(viewer){const s={phase:this.phase,round:this.round,currentPlayer:this.currentPlayer,roundEnder:this.roundEnder,finalTurnsLeft:this.finalTurnsLeft,turnAction:this.turnAction,tiebreakerPlayers:[...this.tiebreakerPlayers],lastAction:this.lastAction,deckCount:this.deck.length,discardTop:this.discard.length?this.discard[this.discard.length-1]:null,players:this.players.map(p=>({name:p.name,totalScore:p.totalScore,roundScore:p.roundScore,revealCount:p.revealCount,board:p.board.map(c=>({value:(c.revealed||c.cleared)?c.value:null,revealed:c.revealed,cleared:c.cleared}))}))};s.myDrawnCard=(this.turnAction==='deck'||this.turnAction==='discard')?this.drawnCard:null;s.publicDrawn=this.turnAction==='deck'?this.drawnCard:null;s.viewerIndex=viewer;return s;}
 }
 
-/* -------------------- FLIP 7 client -------------------- */
+/* -------------------- FLIP 7 client (event-timeline) -------------------- */
 (function(){
   function modText(m){return m==='x2'?'×2':m;}
-  // OG Flip 7 number palette (cool→warm by value).
   const NUMCOL=['#94a3b8','#38bdf8','#22d3ee','#34d399','#4ade80','#a3e635','#facc15','#fb923c','#f97316','#ef4444','#ec4899','#d946ef','#a855f7'];
   function numFace(n){return NUMCOL[Math.max(0,Math.min(12,n))];}
-  // Build a card element matching its kind.
+  // Pacing (dramatic).
+  const SPEED={cardReveal:560,flip3Gap:780,wiggleMin:350,wiggleMax:1700,actionFly:620,beat:420};
   function cardEl(kind,val,{busted=false,cause=false}={}){
     const c=document.createElement('div');c.className='f7-card';
     if(kind==='num'){c.classList.add('num');c.textContent=val;c.style.background=numFace(val);}
     else if(kind==='mod'){c.classList.add(val==='x2'?'modx2':'mod');c.textContent=modText(val);}
-    else if(val==='second'){c.classList.add('second');c.innerHTML='♥';c.title='Second Chance';}
-    else if(val==='freeze'){c.classList.add('freeze');c.innerHTML='❄';c.title='Freeze';}
+    else if(val==='second'){c.classList.add('second');c.innerHTML='&#9829;';c.title='Second Chance';}
+    else if(val==='freeze'){c.classList.add('freeze');c.innerHTML='&#10052;';c.title='Freeze';}
     else if(val==='flip3'){c.classList.add('flip3');c.textContent='F3';c.title='Flip Three';}
     if(busted)c.classList.add('busted-card');
     if(cause){c.classList.remove('busted-card');c.classList.add('bust-cause');}
     return c;
   }
-  // Distinct VFX: a full-screen tinted burst with an icon.
   function actionVfx(kind){
-    const o=document.createElement('div');
-    o.style.cssText='position:fixed;inset:0;z-index:400;pointer-events:none;display:flex;align-items:center;justify-content:center';
+    const o=document.createElement('div');o.style.cssText='position:fixed;inset:0;z-index:400;pointer-events:none;display:flex;align-items:center;justify-content:center';
     const icon=document.createElement('div');
-    if(kind==='freeze'){o.style.background='radial-gradient(circle,rgba(186,230,253,.5),transparent 60%)';icon.textContent='❄';icon.style.color='#38bdf8';}
+    if(kind==='freeze'){o.style.background='radial-gradient(circle,rgba(186,230,253,.5),transparent 60%)';icon.textContent='\u2744';icon.style.color='#38bdf8';}
     else{o.style.background='radial-gradient(circle,rgba(234,255,0,.45),transparent 60%)';icon.textContent='F3';icon.style.color='#fff';icon.style.fontStyle='italic';icon.style.textShadow='0 2px 8px #d4e600';}
     icon.style.cssText+=';font-size:7rem;font-weight:900;animation:popReveal .5s var(--spring)';
     o.appendChild(icon);document.body.appendChild(o);
     setTimeout(()=>{o.style.transition='opacity .3s';o.style.opacity='0';setTimeout(()=>o.remove(),300);},650);
   }
-  // Fly a face-down card from the dealer deck to a target board (anticipation).
-  function dealFromDeck(targetBoardEl){
-    return new Promise(res=>{
-      const deck=$('f7Deck');if(!deck||!targetBoardEl){res();return;}
-      deck.classList.remove('deal');void deck.offsetWidth;deck.classList.add('deal');
-      const a=deck.getBoundingClientRect(),b=targetBoardEl.getBoundingClientRect();
-      const c=document.createElement('div');
-      Object.assign(c.style,{position:'fixed',top:a.top+'px',left:a.left+'px',width:a.width+'px',height:a.height+'px',
-        borderRadius:'12px',background:'var(--card-back)',border:'3px solid #818cf8',zIndex:1000,boxShadow:'0 16px 30px rgba(0,0,0,.5)',
-        transition:'all .42s var(--spring-soft)',pointerEvents:'none'});
-      document.body.appendChild(c);c.offsetHeight;
-      requestAnimationFrame(()=>{c.style.top=(b.top+10)+'px';c.style.left=(b.left+20)+'px';c.style.transform='scale(.6) rotate(8deg)';c.style.opacity='.4';});
-      setTimeout(()=>{c.remove();res();},440);
-    });
-  }
-  let _lastDealKey=null;
+  // boards are rebuilt each render; find a player's row container
+  function boardOf(i){return $('mainBoardsContainer').children[i];}
+  function rowOf(i){const b=boardOf(i);return b?b.querySelector('.f7-row'):null;}
+  function rectOf(el){return el?el.getBoundingClientRect():null;}
 
-  function render(view){
+  // ---- static board render from state ----
+  function draw(view){
     const s=view.flip7,viewer=s.viewerSeat;
-    // Flip 7 doesn't use the Skyjo deck/discard piles or held window — hide them.
     $('topArea').style.display='none';$('miniBoardsContainer').innerHTML='';
-    const myTurn=s.phase==='PLAY'&&s.current===viewer&&s.players[viewer]&&s.players[viewer].status==='active'&&!s.pendingAction;
-    const pending=s.pendingAction&&s.pendingAction.from===viewer;
-
-    // animations / sounds from log
-    const prevLog=prevView&&prevView.flip7?prevView.flip7.log:null;
-    const log=s.log;
-    const newLog=log&&JSON.stringify(log)!==JSON.stringify(prevLog);
-    if(newLog){
-      if(log.type==='got')SFX.flip();
-      else if(log.type==='bust')SFX.bad();
-      else if(log.type==='flip7'){SFX.win();Kit.confetti();}
-      else if(log.type==='stay')SFX.good();
-      else if(log.type==='freeze'){SFX.discard();actionVfx('freeze');}      // distinct VFX (#2)
-      else if(log.type==='flip3'){SFX.triplet();actionVfx('flip3');}        // distinct VFX (#2)
-      else if(log.type==='second_used')SFX.good();
-    }
-    // turn banner
-    if(prevView&&prevView.flip7&&s.phase==='PLAY'&&s.current!==prevView.flip7.current){const mine=s.current===viewer;Kit.turnBanner(mine?'Your turn!':(s.players[s.current]?.name+"'s turn"),mine);bumpStatus();if(mine)SFX.yourTurn();}
-
-    // ----- Dealer pile (anticipation) -----
-    const main=$('mainBoardsContainer');
+    // dealer pile
     let dealerWrap=$('f7DealerWrap');
     if(!dealerWrap){dealerWrap=document.createElement('div');dealerWrap.id='f7DealerWrap';dealerWrap.className='f7-dealer';
-      dealerWrap.innerHTML=`<div class="pile-label">Dealer</div><div id="f7Deck" class="f7-deck"><span class="cnt"></span></div>`;
+      dealerWrap.innerHTML='<div class="pile-label">Dealer</div><div id="f7Deck" class="f7-deck"><span class="cnt"></span></div>';
       $('topArea').parentNode.insertBefore(dealerWrap,$('topArea'));}
     dealerWrap.style.display=(s.phase==='PLAY')?'flex':'none';
-    const cntEl=dealerWrap.querySelector('.cnt');if(cntEl)cntEl.textContent=`deck ${s.deckCount} · out ${s.discardCount}`;
-
-    // ----- boards -----
-    main.innerHTML='';
+    const cntEl=dealerWrap.querySelector('.cnt');if(cntEl)cntEl.textContent='deck '+s.deckCount+' \u00b7 out '+s.discardCount;
+    const main=$('mainBoardsContainer');main.innerHTML='';
+    const pending=s.pendingAction&&s.pendingAction.from===viewer;
     s.players.forEach((p,i)=>{
-      const wrap=document.createElement('div');
-      const busted=p.status==='busted';
+      const wrap=document.createElement('div');const busted=p.status==='busted';
       wrap.className='player-board'+(s.current===i&&s.phase==='PLAY'?' active-turn':'')+(i===viewer?' me':'');
       wrap.style.minWidth='260px';if(busted)wrap.style.opacity='.85';
       const head=document.createElement('div');head.className='board-header';
-      head.innerHTML=`<span>${p.name}${i===viewer?' (You)':''} <span class="f7-status ${p.status}">${p.status}</span></span><span class="score-badge">${busted?'BUST':'Now: '+p.live} · Total: ${p.banked}</span>`;
+      head.innerHTML='<span>'+p.name+(i===viewer?' (You)':'')+' <span class="f7-status '+p.status+'">'+p.status+'</span></span><span class="score-badge">'+(busted?'BUST':'Now: '+p.live)+' \u00b7 Total: '+p.banked+'</span>';
       wrap.appendChild(head);
       const row=document.createElement('div');row.className='f7-row';
-      if(!p.nums.length&&!p.mods.length&&!p.second){row.innerHTML='<span class="f7-empty">no cards yet</span>';}
-      // numbers (busted cards stay visible #1; the duplicate that caused it is highlighted)
+      if(!p.nums.length&&!p.mods.length&&!p.second)row.innerHTML='<span class="f7-empty">no cards yet</span>';
       p.nums.forEach(n=>row.appendChild(cardEl('num',n,{busted})));
-      if(busted&&p.bustCard!=null)row.appendChild(cardEl('num',p.bustCard,{cause:true})); // the offending duplicate
+      if(busted&&p.bustCard!=null)row.appendChild(cardEl('num',p.bustCard,{cause:true}));
       p.mods.forEach(m=>row.appendChild(cardEl('mod',m,{busted})));
       if(p.second)row.appendChild(cardEl('act','second'));
       wrap.appendChild(row);
-      const meta=document.createElement('div');meta.className='muted';meta.style.cssText='margin-top:6px;font-size:.8rem';
-      meta.textContent=`${p.unique}/7 unique`;wrap.appendChild(meta);
-      // action targeting: only ACTIVE players are valid targets (matches server)
-      if(pending&&p.status==='active'){wrap.style.cursor='pointer';wrap.style.outline='2px dashed #f59e0b';wrap.onclick=()=>net.spectating?null:act(viewer,{action:'target',target:i});}
+      const meta=document.createElement('div');meta.className='muted';meta.style.cssText='margin-top:6px;font-size:.8rem';meta.textContent=p.unique+'/7 unique';wrap.appendChild(meta);
+      const canTarget=pending&&p.status==='active'&&!(s.pendingAction.kind==='give_second'&&i===viewer);
+      if(canTarget){wrap.style.cursor='pointer';wrap.style.outline='2px dashed #f59e0b';wrap.onclick=()=>net.spectating?null:act(viewer,{action:'target',target:i});}
       main.appendChild(wrap);
     });
+    drawControls(view);
+  }
 
-    // play a deal animation when someone just received a card
-    if(newLog&&log.type==='got'&&log.player!=null){
-      const tb=document.getElementById('main-board-'+log.player)||main.children[log.player];
-      // (boards above don't have ids; use index)
-      const targetBoard=main.children[log.player];
-      dealFromDeck(targetBoard);
-    }
-
-    // controls + status
+  function drawControls(view){
+    const s=view.flip7,viewer=s.viewerSeat;
+    const myTurn=s.phase==='PLAY'&&s.current===viewer&&s.players[viewer]&&s.players[viewer].status==='active'&&!s.pendingAction;
+    const pending=s.pendingAction&&s.pendingAction.from===viewer;
     let ctrl=$('f7Controls');if(!ctrl){ctrl=document.createElement('div');ctrl.id='f7Controls';ctrl.className='f7-controls';document.body.appendChild(ctrl);}
     ctrl.innerHTML='';
     const sb=$('statusBar');sb.style.color='var(--text)';
-    if(net.spectating){sb.innerHTML='<span style="color:#f59e0b">👁 Spectating — you\'ll join next round</span>';}
+    if(net.spectating){sb.innerHTML='<span style="color:#f59e0b">\ud83d\udc41 Spectating \u2014 you\'ll join next round</span>';}
     else if(s.phase==='ROUND_END'||s.phase==='GAME_OVER'){
-      if(mode==='local'||net.isHost)sb.innerHTML=`<button class="btn" style="margin:0;padding:10px 20px" onclick="${mode==='local'?'localNext()':"net.send({type:'next_round'})"}">${s.phase==='GAME_OVER'?(mode==='local'?'Play Again':'New Game'):'Next Round'}</button>`;
-      else sb.innerHTML='<span class="muted">Waiting for host…</span>';
+      if(mode==='local'||net.isHost)sb.innerHTML='<button class="btn" style="margin:0;padding:10px 20px" onclick="'+(mode==='local'?'localNext()':"net.send({type:'next_round'})")+'">'+(s.phase==='GAME_OVER'?(mode==='local'?'Play Again':'New Game'):'Next Round')+'</button>';
+      else sb.innerHTML='<span class="muted">Waiting for host\u2026</span>';
     }
-    else if(pending){sb.innerHTML=`<span style="color:#f59e0b">${s.pendingAction.kind==='freeze'?'❄ Choose who to Freeze':'🔃 Choose who flips 3'} (tap a player)</span>`;}
-    else if(myTurn){sb.innerHTML='<span style="color:#10b981">Your turn — Hit or Stay</span>';
+    else if(pending){
+      const k=s.pendingAction.kind;
+      sb.innerHTML='<span style="color:#f59e0b">'+(k==='freeze'?'\u2744 Choose who to Freeze':k==='flip3'?'\ud83d\udd03 Choose who flips 3':'\u2665 Give Second Chance to an opponent')+' (tap a player)</span>';
+    }
+    else if(myTurn){sb.innerHTML='<span style="color:#10b981">Your turn \u2014 Hit or Stay</span>';
       const hit=document.createElement('button');hit.className='btn green';hit.textContent='Hit';hit.onclick=()=>act(viewer,{action:'hit'});
       const stay=document.createElement('button');stay.className='btn secondary';stay.textContent='Stay';stay.onclick=()=>act(viewer,{action:'stay'});
       ctrl.appendChild(hit);ctrl.appendChild(stay);
     }
-    else if(mode==='local'){const cur=s.players[s.current];sb.innerHTML=`<span style="color:#10b981">${cur?cur.name:''}'s turn</span>`;
-      if(s.phase==='PLAY'&&cur&&cur.status==='active'&&!s.pendingAction){const hit=document.createElement('button');hit.className='btn green';hit.textContent='Hit';hit.onclick=()=>act(s.current,{action:'hit'});const stay=document.createElement('button');stay.className='btn secondary';stay.textContent='Stay';stay.onclick=()=>act(s.current,{action:'stay'});ctrl.appendChild(hit);ctrl.appendChild(stay);}
-      if(s.pendingAction){sb.innerHTML=`<span style="color:#f59e0b">${cur.name}: ${s.pendingAction.kind==='freeze'?'Freeze ❄':'Flip 3'} — tap an active player</span>`;document.querySelectorAll('#mainBoardsContainer .player-board').forEach((w,i)=>{if(s.players[i].status==='active'){w.style.cursor='pointer';w.style.outline='2px dashed #f59e0b';w.onclick=()=>act(s.current,{action:'target',target:i});}});}
+    else if(mode==='local'){const cur=s.players[s.current];
+      if(s.pendingAction){const k=s.pendingAction.kind;sb.innerHTML='<span style="color:#f59e0b">'+cur.name+': '+(k==='freeze'?'Freeze \u2744':k==='flip3'?'Flip 3':'Give \u2665')+' \u2014 tap a player</span>';}
+      else{sb.innerHTML='<span style="color:#10b981">'+(cur?cur.name:'')+'\'s turn</span>';
+        if(s.phase==='PLAY'&&cur&&cur.status==='active'){const hit=document.createElement('button');hit.className='btn green';hit.textContent='Hit';hit.onclick=()=>act(s.current,{action:'hit'});const stay=document.createElement('button');stay.className='btn secondary';stay.textContent='Stay';stay.onclick=()=>act(s.current,{action:'stay'});ctrl.appendChild(hit);ctrl.appendChild(stay);}}
     }
-    else sb.textContent='Waiting for '+(s.players[s.current]?.name||'…');
+    else sb.textContent='Waiting for '+(s.players[s.current]?.name||'\u2026');
+  }
 
-    if(s.phase==='ROUND_END'||s.phase==='GAME_OVER'){if(!summaryShown){summaryShown=true;showSummary(view);}ctrl.innerHTML='';}
-    else{summaryShown=false;hideOverlay();}
+  // ---- fly a card-like element between two points ----
+  function fly(fromEl,toEl,build,dur){
+    return new Promise(res=>{
+      const a=rectOf(fromEl),b=rectOf(toEl);if(!a||!b){res();return;}
+      const c=build();
+      Object.assign(c.style,{position:'fixed',top:a.top+'px',left:a.left+'px',width:(a.width||46)+'px',height:(a.height||66)+'px',margin:0,zIndex:1000,transition:'all '+dur+'ms var(--spring-soft)',pointerEvents:'none'});
+      document.body.appendChild(c);c.offsetHeight;
+      const midY=Math.min(a.top,b.top)-50;
+      requestAnimationFrame(()=>{c.style.top=midY+'px';c.style.left=((a.left+b.left)/2)+'px';c.style.transform='scale(1.15) rotate(-8deg)';});
+      setTimeout(()=>{c.style.top=b.top+'px';c.style.left=b.left+'px';c.style.transform='scale(1) rotate(0)';},dur*0.5);
+      setTimeout(()=>{c.remove();res();},dur+30);
+    });
+  }
+  // wiggle the dealer card; duration & intensity scale with bust probability
+  function wiggleReveal(prob){
+    return new Promise(res=>{
+      const deck=$('f7Deck');if(!deck){res();return;}
+      const r=rectOf(deck);
+      const c=document.createElement('div');c.className='f7-deck';
+      Object.assign(c.style,{position:'fixed',top:r.top+'px',left:r.left+'px',width:r.width+'px',height:r.height+'px',zIndex:1001,transition:'transform .08s ease',pointerEvents:'none'});
+      document.body.appendChild(c);
+      const dur=Math.round(SPEED.wiggleMin+(SPEED.wiggleMax-SPEED.wiggleMin)*Math.min(1,prob*1.6));
+      const amp=4+prob*16; const start=Date.now();
+      (function tick(){const t=Date.now()-start;if(t>=dur){c.remove();res();return;}
+        const f=1+(t/dur)*3; // speeds up toward the end
+        c.style.transform='translateX('+(Math.sin(t/(40/f))*amp)+'px) rotate('+(Math.sin(t/(55/f))*amp*0.4)+'deg)';
+        requestAnimationFrame(tick);})();
+    });
+  }
+  // deal a face-down card from the deck onto a player's row, then it stays hidden
+  // until the caller reveals (we just animate the travel; the rebuilt board shows the real card)
+  function dealTravel(toRowEl){
+    return new Promise(res=>{
+      const deck=$('f7Deck');if(!deck||!toRowEl){res();return;}
+      deck.classList.remove('deal');void deck.offsetWidth;deck.classList.add('deal');
+      const a=rectOf(deck),b=rectOf(toRowEl);
+      const c=document.createElement('div');c.className='f7-card';c.style.background='var(--card-back)';c.style.border='3px solid #818cf8';
+      Object.assign(c.style,{position:'fixed',top:a.top+'px',left:a.left+'px',zIndex:1000,transition:'all .34s var(--spring-soft)',pointerEvents:'none'});
+      document.body.appendChild(c);c.offsetHeight;
+      requestAnimationFrame(()=>{c.style.top=b.top+'px';c.style.left=(b.right-30)+'px';});
+      setTimeout(()=>{c.remove();res();},360);
+    });
+  }
 
+  // ---- play an event timeline ----
+  let lastSeq=-1;
+  async function playEvents(view){
+    const s=view.flip7; const ev=s.events||[];
+    // only play events newer than what we've shown
+    const fresh=ev.filter(e=>e.seq>lastSeq);
+    if(!fresh.length){draw(view);prevView=view;curView=view;maybeSummary(view);return;}
+    animating=true;
+    for(const e of fresh){
+      lastSeq=Math.max(lastSeq,e.seq);
+      await playOne(e,view);
+    }
+    animating=false;
+    draw(view); // settle to authoritative state
     prevView=view;curView=view;
+    maybeSummary(view);
+    flushView();
+  }
+  function maybeSummary(view){
+    const s=view.flip7;
+    if(s.phase==='ROUND_END'||s.phase==='GAME_OVER'){if(!summaryShown){summaryShown=true;showSummary(view);}const c=$('f7Controls');if(c)c.innerHTML='';}
+    else{summaryShown=false;hideOverlay();}
+  }
+  async function playOne(e,view){
+    const s=view.flip7;
+    switch(e.type){
+      case 'draw_start':{ draw(view); SFX.draw(); await wiggleReveal(e.prob||0); break; }
+      case 'card':{ const row=rowOf(e.player); if(e.flip3)await sleep(SPEED.flip3Gap*0.2); await dealTravel(row); SFX.flip(); break; }
+      case 'bust':{ SFX.bad(); const b=boardOf(e.player); if(b){b.style.animation='shakeX .5s ease';setTimeout(()=>b&&(b.style.animation=''),520);} Kit.turnBanner((s.players[e.player]?.name||'')+' BUST!',false); await sleep(SPEED.beat); break; }
+      case 'flip7':{ SFX.win(); Kit.confetti(); Kit.turnBanner('FLIP 7! +15',true); await sleep(SPEED.beat); break; }
+      case 'flip3_abandon':{ Kit.turnBanner('Flip 3 abandoned',false); await sleep(SPEED.beat*0.6); break; }
+      case 'second_used':{ SFX.good(); Kit.turnBanner('Second Chance!',true); await sleep(SPEED.beat); break; }
+      case 'stay':{ SFX.good(); break; }
+      case 'action_card':{ /* card appears on the drawer; quick beat */ await sleep(SPEED.beat*0.5); break; }
+      case 'play_action':{
+        actionVfx(e.kind); SFX[e.kind==='freeze'?'discard':'triplet']();
+        // fly the action card from -> target
+        const fromRow=rowOf(e.from),toRow=rowOf(e.target);
+        await fly(fromRow,toRow,()=>cardEl('act',e.kind),SPEED.actionFly);
+        if(e.auto)Kit.turnBanner((e.kind==='freeze'?'\u2744 ':'\ud83d\udd03 ')+'on self!',false);
+        await sleep(SPEED.beat*0.5); break;
+      }
+      case 'freeze_done':{ const b=boardOf(e.target); if(b){b.style.transition='filter .3s';b.style.filter='brightness(1.4) saturate(1.4)';setTimeout(()=>b&&(b.style.filter=''),350);} await sleep(SPEED.beat*0.4); break; }
+      case 'second_pass':{ SFX.flip(); const fromRow=rowOf(e.from),toRow=rowOf(e.to); await fly(fromRow,toRow,()=>cardEl('act','second'),SPEED.actionFly); if(e.auto)Kit.turnBanner('\u2665 passed',true); await sleep(SPEED.beat*0.4); break; }
+      case 'second_discard':{ await sleep(SPEED.beat*0.3); break; }
+      case 'reshuffle':{ Kit.turnBanner('Deck reshuffled',false); await sleep(SPEED.beat); break; }
+      default: break;
+    }
+  }
+
+  function render(view){
+    // turn banner on turn change (only when not mid-animation start)
+    if(prevView&&prevView.flip7&&view.flip7.phase==='PLAY'&&view.flip7.current!==prevView.flip7.current&&(!view.flip7.events||!view.flip7.events.length)){
+      const mine=view.flip7.current===view.flip7.viewerSeat;Kit.turnBanner(mine?'Your turn!':(view.flip7.players[view.flip7.current]?.name+"'s turn"),mine);bumpStatus();if(mine)SFX.yourTurn();
+    }
+    playEvents(view);
   }
   function act(seat,msg){ if(mode==='local')localAct(seat,msg); else net.send({type:'action',...msg}); }
+  // reset the timeline cursor when (re)entering a game
+  window._flip7ResetSeq=function(){lastSeq=-1;};
   window.GameClients['flip7']={render};
 
   // local engine wrapper
@@ -1018,40 +1129,213 @@ class SkyjoEngine{
 /* ---- Flip 7 engine (client copy for local offline play; mirrors src/games/flip7.ts) ---- */
 class Flip7Engine{
   constructor(names){this.s=this._fresh(names,names.map(()=>0));}
+  static fromState(st){const e=Object.create(Flip7Engine.prototype);e.s=st;if(e.s.events==null)e.s.events=[];if(e.s.seq==null)e.s.seq=0;return e;}
   _newP(name,banked){return{name,nums:[],mods:[],second:false,status:'active',bustCard:null,banked:banked||0,roundScore:0};}
   _buildDeck(){const d=[];d.push({kind:'num',v:0});for(let n=1;n<=12;n++)for(let i=0;i<n;i++)d.push({kind:'num',v:n});for(const m of['+2','+4','+6','+8','+10','x2'])d.push({kind:'mod',v:m});for(const a of['freeze','flip3','second'])for(let i=0;i<3;i++)d.push({kind:'act',v:a});this._sh(d);return d;}
   _sh(d){for(let i=d.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[d[i],d[j]]=[d[j],d[i]];}}
-  _fresh(names,banked){const s={players:names.map((n,i)=>this._newP(n,banked[i]||0)),deck:this._buildDeck(),discard:[],current:0,phase:'PLAY',round:1,pendingAction:null,flip3Left:0,flip3Target:-1,log:null};
-    for(let i=0;i<s.players.length;i++){let c=this._draw(s),g=0;while(c.kind==='act'&&g++<200){s.deck.unshift(c);this._sh(s.deck);c=this._draw(s);}this._give(s,i,c,true);}
+  _emit(s,e){e.seq=++s.seq;s.events.push(e);}
+  _fresh(names,banked){const s={players:names.map((n,i)=>this._newP(n,banked[i]||0)),deck:this._buildDeck(),discard:[],current:0,phase:'PLAY',round:1,pendingAction:null,flip3Left:0,flip3Target:-1,events:[],seq:0};
+    for(let i=0;i<s.players.length;i++){let c=this._draw(s),g=0;while(c.kind==='act'&&g++<200){s.deck.unshift(c);this._sh(s.deck);c=this._draw(s);}this._place(s,i,c);}
     s.current=this._firstActive(s,0);return s;}
-  _draw(s){if(!s.deck.length){s.deck=s.discard;s.discard=[];this._sh(s.deck);s.log={type:'reshuffle'};}return s.deck.pop();}
+  _draw(s){if(!s.deck.length){s.deck=s.discard;s.discard=[];this._sh(s.deck);this._emit(s,{type:'reshuffle'});}return s.deck.pop();}
   _firstActive(s,from){for(let k=0;k<s.players.length;k++){const i=(from+k)%s.players.length;if(s.players[i].status==='active')return i;}return from;}
   _activeCount(s){return s.players.filter(p=>p.status==='active').length;}
+  _activeOthers(s,ex){return s.players.map((p,i)=>i).filter(i=>i!==ex&&s.players[i].status==='active');}
   _unique(p){return new Set(p.nums).size;}
-  _give(s,pi,card,initial=false){const p=s.players[pi];
-    if(card.kind==='num'){const n=card.v;if(p.nums.includes(n)){if(p.second){p.second=false;s.discard.push(card);s.log={type:'second_used',player:pi,value:n};return'ok';}p.status='busted';p.bustCard=n;s.log={type:'bust',player:pi,value:n};return'bust';}p.nums.push(n);p.nums.sort((a,b)=>a-b);s.log={type:'got',player:pi,card};if(this._unique(p)>=7){p.status='stayed';s.log={type:'flip7',player:pi};return'flip7';}return'ok';}
-    if(card.kind==='mod'){p.mods.push(card.v);s.log={type:'got',player:pi,card};return'ok';}
-    const a=card.v;if(a==='second'){if(!p.second){p.second=true;s.log={type:'got',player:pi,card};return'ok';}const t=s.players.findIndex((q,i)=>i!==pi&&q.status==='active'&&!q.second);if(t>=0){s.players[t].second=true;s.log={type:'second_pass',from:pi,to:t};}else s.discard.push(card);return'ok';}
-    if(initial)return'ok';s.pendingAction={kind:a,from:pi};s.log={type:'await_target',kind:a,from:pi};return'action';}
-  _resolve(s,from,kind,target){s.pendingAction=null;const tp=s.players[target];if(kind==='freeze'){if(tp.status==='active'){tp.status='stayed';s.log={type:'freeze',from,target};}else s.log={type:'freeze_void',from,target};return'ok';}s.flip3Left=3;s.flip3Target=target;s.log={type:'flip3',from,target};this._runFlip3(s);return'ok';}
-  _runFlip3(s){while(s.flip3Left>0){const t=s.flip3Target,tp=s.players[t];if(!tp||tp.status!=='active'){s.flip3Left=0;s.flip3Target=-1;break;}s.flip3Left--;const r=this._give(s,t,this._draw(s));if(r==='bust'||r==='flip7'){s.flip3Left=0;s.flip3Target=-1;break;}if(r==='action'){const pa=s.pendingAction;this._resolve(s,pa.from,pa.kind,pa.from);}}s.flip3Left=0;s.flip3Target=-1;}
+  _bustProb(s,pi){const p=s.players[pi];const tot=s.deck.length||1;let d=0;for(const c of s.deck)if(c.kind==='num'&&p.nums.includes(c.v))d++;return d/tot;}
+  _place(s,pi,card){const p=s.players[pi];if(card.kind==='num'){if(!p.nums.includes(card.v)){p.nums.push(card.v);p.nums.sort((a,b)=>a-b);}}else if(card.kind==='mod')p.mods.push(card.v);else if(card.v==='second')p.second=true;}
+  _apply(s,pi,card,opts){opts=opts||{};const p=s.players[pi];
+    if(card.kind==='num'){const n=card.v;if(p.nums.includes(n)){if(p.second){p.second=false;s.discard.push(card);this._emit(s,{type:'second_used',player:pi,value:n,flip3:!!opts.flip3});return'ok';}p.status='busted';p.bustCard=n;this._emit(s,{type:'bust',player:pi,value:n,flip3:!!opts.flip3});return'bust';}p.nums.push(n);p.nums.sort((a,b)=>a-b);this._emit(s,{type:'card',player:pi,card,flip3:!!opts.flip3});if(this._unique(p)>=7){p.status='stayed';this._emit(s,{type:'flip7',player:pi});return'flip7';}return'ok';}
+    if(card.kind==='mod'){p.mods.push(card.v);this._emit(s,{type:'card',player:pi,card,flip3:!!opts.flip3});return'ok';}
+    const a=card.v;if(a==='second'){if(!p.second){p.second=true;this._emit(s,{type:'card',player:pi,card});return'ok';}const others=this._activeOthers(s,pi).filter(i=>!s.players[i].second);if(others.length===0){s.discard.push(card);this._emit(s,{type:'second_discard',player:pi});return'ok';}if(others.length===1){s.players[others[0]].second=true;this._emit(s,{type:'second_pass',from:pi,to:others[0],auto:true});return'ok';}s.pendingAction={kind:'give_second',from:pi};this._emit(s,{type:'await_target',kind:'give_second',from:pi});return'action';}
+    this._emit(s,{type:'action_card',player:pi,kind:a});const others=this._activeOthers(s,pi);if(others.length===0){this._resolve(s,pi,a,pi,true);return'ok';}s.pendingAction={kind:a,from:pi};this._emit(s,{type:'await_target',kind:a,from:pi});return'action';}
+  _resolve(s,from,kind,target,auto){const tp=s.players[target];s.pendingAction=null;if(kind==='freeze'){this._emit(s,{type:'play_action',kind:'freeze',from,target,auto:!!auto});if(tp.status==='active'){tp.status='stayed';this._emit(s,{type:'freeze_done',target});}return'ok';}this._emit(s,{type:'play_action',kind:'flip3',from,target,auto:!!auto});s.flip3Left=3;s.flip3Target=target;this._runFlip3(s);return'ok';}
+  _runFlip3(s){while(s.flip3Left>0){const t=s.flip3Target,tp=s.players[t];if(!tp||tp.status!=='active')break;s.flip3Left--;const r=this._apply(s,t,this._draw(s),{flip3:true});if(r==='bust'||r==='flip7'){this._emit(s,{type:'flip3_abandon',target:t});break;}if(r==='action'){const pa=s.pendingAction;if(pa){if(pa.kind==='give_second'){const o=this._activeOthers(s,pa.from).filter(i=>!s.players[i].second);s.pendingAction=null;if(o.length){s.players[o[0]].second=true;this._emit(s,{type:'second_pass',from:pa.from,to:o[0],auto:true});}else this._emit(s,{type:'second_discard',player:pa.from});}else this._resolve(s,pa.from,pa.kind,pa.from,true);}}}s.flip3Left=0;s.flip3Target=-1;}
   _advance(s){if(this._activeCount(s)===0){this._score(s);return;}s.current=this._firstActive(s,(s.current+1)%s.players.length);}
-  _score(s){let f7=-1;for(const p of s.players){if(p.status==='busted'){p.roundScore=0;continue;}const u=new Set(p.nums).size;let base=p.nums.reduce((a,b)=>a+b,0);if(p.mods.includes('x2'))base*=2;for(const m of p.mods)if(m[0]==='+')base+=parseInt(m.slice(1));if(u>=7){base+=15;f7=1;}p.roundScore=base;p.banked+=base;}s.pendingAction=null;s.flip3Left=0;s.flip3Target=-1;s.phase=s.players.some(p=>p.banked>=200)?'GAME_OVER':'ROUND_END';}
-  apply(seat,msg){const s=this.s;if(s.phase!=='PLAY')return;
-    if(s.pendingAction){if(msg.action==='target'&&s.pendingAction.from===seat){const t=msg.target|0;if(s.players[t]&&s.players[t].status==='active'){this._resolve(s,seat,s.pendingAction.kind,t);this._advance(s);renderLocal();}}return;}
+  _score(s){let f7=-1;for(const p of s.players){if(p.status==='busted'){p.roundScore=0;continue;}const u=new Set(p.nums).size;let base=p.nums.reduce((a,b)=>a+b,0);if(p.mods.includes('x2'))base*=2;for(const m of p.mods)if(m[0]==='+')base+=parseInt(m.slice(1));if(u>=7){base+=15;f7=1;}p.roundScore=base;p.banked+=base;}s.pendingAction=null;s.flip3Left=0;s.flip3Target=-1;s.phase=s.players.some(p=>p.banked>=200)?'GAME_OVER':'ROUND_END';const mx=Math.max(...s.players.map(p=>p.banked));this._emit(s,{type:s.phase==='GAME_OVER'?'game_over':'round_end',winners:s.players.map((p,i)=>p.banked===mx?i:-1).filter(i=>i>=0),flip7:f7});}
+  apply(seat,msg){const s=this.s;s.events=[];if(s.phase!=='PLAY')return;
+    if(s.pendingAction){const pa=s.pendingAction;if(msg.action==='target'&&pa.from===seat){const t=msg.target|0;if(!s.players[t]||s.players[t].status!=='active')return;if(pa.kind==='give_second'){if(t===seat)return;s.pendingAction=null;s.players[t].second=true;this._emit(s,{type:'second_pass',from:seat,to:t,auto:false});}else{this._resolve(s,seat,pa.kind,t);this._advance(s);}}return;}
     if(seat!==s.current||s.players[seat].status!=='active')return;
-    if(msg.action==='stay'){s.players[seat].status='stayed';s.log={type:'stay',player:seat};this._advance(s);}
-    else if(msg.action==='hit'){const r=this._give(s,seat,this._draw(s));if(r==='action'){renderLocal();return;}this._advance(s);}
+    if(msg.action==='stay'){s.players[seat].status='stayed';this._emit(s,{type:'stay',player:seat});this._advance(s);}
+    else if(msg.action==='hit'){const prob=this._bustProb(s,seat);const card=this._draw(s);this._emit(s,{type:'draw_start',player:seat,prob});const r=this._apply(s,seat,card,{});if(r==='action'){return;}this._advance(s);}
   }
-  next(){const s=this.s;const over=s.phase==='GAME_OVER';this.s=this._fresh(s.players.map(p=>p.name),over?s.players.map(()=>0):s.players.map(p=>p.banked));if(!over)this.s.round=s.round+1;}
+  next(){const s=this.s;const over=s.phase==='GAME_OVER';const ns=this._fresh(s.players.map(p=>p.name),over?s.players.map(()=>0):s.players.map(p=>p.banked));ns.seq=s.seq+1;if(!over)ns.round=s.round+1;this.s=ns;}
   viewFor(seat){const s=this.s;const over=s.phase==='GAME_OVER';let summary;if(s.phase==='ROUND_END'||s.phase==='GAME_OVER'){const mx=Math.max(...s.players.map(p=>p.banked));summary={rows:s.players.map((p,i)=>({seat:i,name:p.name,score:p.banked,delta:p.roundScore})),winners:s.players.map((p,i)=>p.banked===mx?i:-1).filter(i=>i>=0)};}
     const live=p=>{if(p.status==='busted')return 0;let b=p.nums.reduce((a,c)=>a+c,0);if(p.mods.includes('x2'))b*=2;for(const m of p.mods)if(m[0]==='+')b+=parseInt(m.slice(1));if(new Set(p.nums).size>=7)b+=15;return b;};
-    return{game:'flip7',phase:s.phase,over,yourSeat:seat,summary,flip7:{round:s.round,current:s.current,phase:s.phase,pendingAction:s.pendingAction,viewerSeat:seat,deckCount:s.deck.length,discardCount:s.discard.length,players:s.players.map(p=>({name:p.name,nums:p.nums,mods:p.mods,second:p.second,status:p.status,bustCard:p.bustCard,banked:p.banked,unique:new Set(p.nums).size,live:live(p)})),log:s.log}};}
+    return{game:'flip7',phase:s.phase,over,yourSeat:seat,summary,flip7:{round:s.round,current:s.current,phase:s.phase,pendingAction:s.pendingAction,viewerSeat:seat,deckCount:s.deck.length,discardCount:s.discard.length,seq:s.seq,events:s.events,players:s.players.map(p=>({name:p.name,nums:p.nums,mods:p.mods,second:p.second,status:p.status,bustCard:p.bustCard,banked:p.banked,unique:new Set(p.nums).size,live:live(p)}))}};}
+}
+
+/* ====================== BOTS ======================
+   Bots "think" on the host's client (online) or the local device (offline) so the
+   server spends ~0 compute. Each game exposes a strategy: Easy/Medium are
+   heuristics; Hard uses Monte-Carlo rollouts via the local engine classes.
+   Interface: Bots.choose(gameId, view, difficulty) -> action msg (or null).
+   ================================================================= */
+const Bots=(()=>{
+  function rint(n){return Math.floor(Math.random()*n);}
+
+  /* ===== Trained policies (learned via self-play CEM in /training) ===== */
+  // Flip 7 hit/stay: linear policy over features; HIT if dot(W,f) > 0.
+  const FLIP7_W=[0.9529,-5.7442,-3.9162,2.4365,2.4865,6.4455,-6.6279];
+  // Skyjo turn params: [thrTakeDiscard, thrBeat, thrSwapMargin, thrLockLow].
+  const SKYJO_P=[1.962,8.261,1.71,2.796];
+
+  /* ---------- FLIP 7 ---------- */
+  // Estimate true bust probability from the view. We know our own numbers; the
+  // remaining-deck duplicate count is estimated from how many copies of each held
+  // value are unseen across all tables, divided by the (known) deckCount.
+  function flip7BustProb(gv,me){
+    const p=gv.players[me];
+    if(!p.nums.length)return 0;
+    // count copies of each held value already visible on ALL tables (incl. busts)
+    const seen={};
+    for(const q of gv.players){ for(const n of q.nums){seen[n]=(seen[n]||0)+1;} if(q.bustCard!=null)seen[q.bustCard]=(seen[q.bustCard]||0)+1; }
+    let dupesLeft=0;
+    for(const n of new Set(p.nums)){ const copiesTotal=(n===0?1:n); const left=Math.max(0,copiesTotal-(seen[n]||0)); dupesLeft+=left; }
+    const deck=Math.max(1, gv.deckCount||1);
+    return Math.min(1, dupesLeft/deck);
+  }
+  function flip7Features(gv,me){
+    const p=gv.players[me];
+    const bp=flip7BustProb(gv,me);
+    const u=p.unique;
+    return [1, bp, p.live/40, u/7, p.second?1:0, (7-u)/7, bp*p.live/40];
+  }
+  function flip7Hit(gv,me){let s=0;for(let i=0;i<FLIP7_W.length;i++)s+=FLIP7_W[i]*flip7Features(gv,me)[i];return s>0;}
+  function flip7HeuristicHit(p,bp){return bp<0.30||p.live<14;}      // Medium
+  function flip7RecklessHit(p){return p.live<20;}                    // Easy
+
+  function flip7Choose(view,diff){
+    const s=view.flip7, me=s.current, p=s.players[me];
+    if(s.pendingAction && s.pendingAction.from===me){
+      const k=s.pendingAction.kind;
+      const others=s.players.map((q,i)=>i).filter(i=>i!==me&&s.players[i].status==='active');
+      if(k==='give_second')return {action:'target',target:others[0]!=null?others[0]:me};
+      let target=me;
+      if(others.length){
+        if(k==='freeze') target=others.reduce((a,b)=>s.players[b].live>s.players[a].live?b:a,others[0]);
+        else target=others.reduce((a,b)=>s.players[b].unique>s.players[a].unique?b:a,others[0]);
+      }
+      return {action:'target',target};
+    }
+    const bp=flip7BustProb(s,me);
+    let hit;
+    if(diff==='hard') hit=flip7Hit(s,me);
+    else if(diff==='easy') hit=(p.live<18||Math.random()<0.5);
+    else hit=flip7HeuristicHit(p,bp);   // medium
+    return hit?{action:'hit'}:{action:'stay'};
+  }
+
+  /* ---------- SKYJO ---------- */
+  function skyjoChoose(view,diff){
+    const s=view.skyjo, me=s.currentPlayer, p=s.players[me];
+    if(s.phase==='REVEAL'){
+      const idxs=p.board.map((c,i)=>i).filter(i=>!p.board[i].revealed&&!p.board[i].cleared);
+      return {action:(s.tiebreakerPlayers&&s.tiebreakerPlayers.length)?'tiebreaker':'reveal',index:idxs[rint(idxs.length)]};
+    }
+    const P = diff==='hard'?SKYJO_P : diff==='easy'?[6,2,0,4] : [3,5,2,2];
+    const revealed=p.board.filter(c=>c.revealed&&!c.cleared).map(c=>c.value);
+    const worst=revealed.length?Math.max(...revealed):-99;
+    const worstIdx=p.board.findIndex(c=>c.revealed&&!c.cleared&&c.value===worst);
+    const hidden=p.board.map((c,i)=>i).filter(i=>!p.board[i].revealed&&!p.board[i].cleared);
+    const ta=s.turnAction;
+    if(ta===null){
+      const dt=s.discardTop;
+      const take=dt!=null&&(dt<=P[0]||(worst-dt)>=P[1]);
+      return take?{action:'take_discard'}:{action:'draw_deck'};
+    }
+    const drawn=s.myDrawnCard;
+    if(ta==='deck'){
+      if(drawn!=null){
+        if(worstIdx>=0 && drawn<worst-P[2]) return {action:'swap',index:worstIdx};
+        if(drawn<=P[3] && hidden.length) return {action:'swap',index:hidden[rint(hidden.length)]};
+        return {action:'discard_drawn'};
+      }
+      return {action:'discard_drawn'};
+    }
+    if(ta==='discard'){
+      if(worstIdx>=0 && drawn<worst) return {action:'swap',index:worstIdx};
+      return {action:'swap',index:hidden.length?hidden[rint(hidden.length)]:0};
+    }
+    if(ta==='must_reveal') return {action:'reveal_after_discard',index:hidden[rint(hidden.length)]};
+    return null;
+  }
+
+  return {
+    choose(gameId,view,diff){
+      try{
+        if(gameId==='skyjo')return skyjoChoose(view,diff);
+        if(gameId==='flip7')return flip7Choose(view,diff);
+      }catch(e){console.warn('bot error',e);}
+      return null;
+    }
+  };
+})();
+
+/* ====================== BOT DRIVER ======================
+   On each render, if the acting seat is a bot AND we are responsible for it
+   (host online, or local), schedule its move after a human-like delay.
+   ================================================================= */
+let _botTimer=null, _botBusy=false;
+function botSeatsFromView(view){
+  // online: server sends `view._bots` via the game msg (attached in handleNet)
+  return window._currentBots||[];
+}
+function maybeRunBot(view){
+  if(_botBusy)return;
+  const gid=view.game;
+  const gv=view[gid];
+  if(!gv)return;
+  // who must act?
+  let actingSeat=-1, pendingFrom=-1;
+  if(gid==='skyjo'){
+    if(gv.turnAction==='turn_end_delay')return; // mid turn-transition; wait
+    if(gv.phase==='REVEAL'){ // any bot that still needs to flip
+      actingSeat=-1; // handled below for all bots
+    } else if(gv.phase==='PLAY'||gv.phase==='FINAL_TURNS'){ actingSeat=gv.currentPlayer; }
+  } else if(gid==='flip7'){
+    if(gv.pendingAction) pendingFrom=gv.pendingAction.from;
+    else if(gv.phase==='PLAY') actingSeat=gv.current;
+  }
+  const bots=botSeatsFromView(view); if(!bots.length)return;
+  const iAmDriver = (mode==='local') || net.isHost;
+  if(!iAmDriver)return;
+
+  // Skyjo REVEAL: drive every bot that still needs to flip (sequentially)
+  if(gid==='skyjo' && gv.phase==='REVEAL'){
+    for(const b of bots){const p=gv.players[b.seat]; if(p.revealCount<2){scheduleBot(view,b,b.seat);return;}}
+    return;
+  }
+  const targetSeat = pendingFrom>=0?pendingFrom:actingSeat;
+  if(targetSeat<0)return;
+  const b=bots.find(x=>x.seat===targetSeat);
+  if(b)scheduleBot(view,b,targetSeat);
+}
+function scheduleBot(view,bot,seat){
+  if(_botTimer)return;
+  _botBusy=true;
+  const think = bot.difficulty==='hard'?700:bot.difficulty==='easy'?450:600;
+  _botTimer=setTimeout(()=>{
+    _botTimer=null;
+    const v=window._renderView||view;
+    const gid=v.game;
+    // recompute "current" so we act on fresh state
+    const gv=v[gid];
+    // build a view object the bot expects (currentPlayer/current = seat)
+    let vv=v;
+    if(gid==='skyjo'){ vv={...v,skyjo:{...gv,currentPlayer:seat}}; }
+    const msg=Bots.choose(gid,vv,bot.difficulty);
+    _botBusy=false;
+    if(!msg){return;}
+    if(mode==='local'){ localAct(seat,msg); }
+    else { net.send({type:'action',botSeat:seat,...msg}); }
+  },think+Math.random()*250);
 }
 
 /* ====================== INIT ====================== */
 {const v=$('verStamp');if(v)v.textContent='build '+BUILD_VERSION;}
 renderTiles('quickTiles',quickPlay); // quick play: no size filter (matchmaking fills the room)
+renderLocalSeats();
 refreshLocalTiles();
 if(SFX.muted){const b=$('soundBtn');if(b){b.textContent='🔇';b.classList.add('off');}}
 document.addEventListener('keydown',e=>{if(e.key==='Escape')$('investigateOverlay').classList.add('hidden');});

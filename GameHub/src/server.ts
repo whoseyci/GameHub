@@ -29,7 +29,7 @@ const IDLE_MS = 10 * 60 * 1000;       // close room after 10 min idle
 const EMPTY_GRACE_MS = 45 * 1000;     // close shortly after everyone leaves
 
 type ConnState = { pid?: string };
-interface Member { id: string; name: string; }
+interface Member { id: string; name: string; bot?: boolean; difficulty?: string; }
 interface Pending { id: string; name: string; }
 
 /* ============================================================
@@ -161,6 +161,8 @@ export class Room extends Server<Env> {
       conn.send(JSON.stringify({
         type: "game",
         isHost: pid === this.hostId,
+        // seats that are bots + their difficulty, so the HOST can drive them
+        bots: this.members.map((m, i) => (m.bot ? { seat: i, difficulty: m.difficulty } : null)).filter(Boolean),
         view: g.viewFor(this.gameState, seat),
       }));
     } else {
@@ -172,7 +174,7 @@ export class Room extends Server<Env> {
         quickGame: this.quickGame,
         maxPlayers: this.maxPlayers,
         catalogue: GAME_CATALOGUE,
-        members: this.members.map((m) => ({ id: m.id, name: m.name })),
+        members: this.members.map((m) => ({ id: m.id, name: m.name, bot: !!m.bot, difficulty: m.difficulty })),
       }));
     }
   }
@@ -230,6 +232,23 @@ export class Room extends Server<Env> {
     const isHost = pid === this.hostId;
     const seat = this.memberIdx(pid);
 
+    /* ---- host: add / remove a bot (only between games) ---- */
+    if (msg.type === "add_bot" && isHost && !this.gameId) {
+      if (this.members.length < this.maxPlayers) {
+        const diff = ["easy", "medium", "hard"].includes(msg.difficulty) ? msg.difficulty : "medium";
+        const n = this.members.filter((m) => m.bot).length + 1;
+        const names = ["Botley", "Chip", "Ada", "Turing", "Pixel", "Nova", "Echo", "Zar"];
+        this.members.push({ id: "bot_" + Math.random().toString(36).slice(2, 8), name: (names[n - 1] || "Bot " + n) + " 🤖", bot: true, difficulty: diff });
+        await this.persistMeta(); await this.lobbyUpdate(); this.broadcastState();
+      }
+      return;
+    }
+    if (msg.type === "remove_bot" && isHost && !this.gameId) {
+      const idx = this.members.findIndex((m) => m.bot);
+      if (idx >= 0) { this.members.splice(idx, 1); await this.persistMeta(); await this.lobbyUpdate(); this.broadcastState(); }
+      return;
+    }
+
     /* ---- host: launch a game from the room lobby ---- */
     if (msg.type === "launch_game" && isHost && !this.gameId) {
       const err = this.startGame(msg.gameId);
@@ -272,10 +291,19 @@ export class Room extends Server<Env> {
     }
 
     /* ---- gameplay action ---- */
-    if (msg.type === "action" && this.gameId && this.gameState && seat >= 0) {
+    if (msg.type === "action" && this.gameId && this.gameState) {
+      // Determine which seat is acting. The HOST may drive BOT seats on their behalf
+      // (bots "think" on the host's client to keep server compute ~0).
+      let actSeat = seat;
+      if (msg.botSeat != null && isHost) {
+        const bi = msg.botSeat | 0;
+        if (this.members[bi] && this.members[bi].bot) actSeat = bi;
+        else return;
+      }
+      if (actSeat < 0) return;
       this.touch();
       const g = getGame(this.gameId)!;
-      g.applyAction(this.gameState, seat, msg);
+      g.applyAction(this.gameState, actSeat, msg);
       this.scheduleTick();
       await this.persistGame();
       this.broadcastState();
