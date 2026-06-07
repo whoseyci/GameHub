@@ -216,6 +216,10 @@
       <h1 class="logo">GAME HUB</h1>
       <p class="muted" style="margin-bottom:26px">Play card games with friends.</p>
       <div id="verStamp" style="margin-top:4px;font-size:.72rem;color:var(--text-dim);font-weight:800;letter-spacing:.5px;opacity:.75"></div>
+      <div style="margin:10px 0 14px">
+        <div class="muted" style="font-size:.8rem;margin-bottom:6px;font-weight:700">Available games (click to Quick Play)</div>
+        <div id="mainMenuGames" class="game-tiles"></div>
+      </div>
       <button class="btn purple" onclick="goOnline()">Play Online</button>
       <button class="btn secondary" onclick="showScreen('localPick')">Local (Pass &amp; Play)</button>
       <button class="btn secondary" onclick="showRulesMenu()" style="background:transparent;box-shadow:none;border:2px solid var(--border)">📖 How to Play</button>
@@ -1735,6 +1739,7 @@ function scheduleBot(view,bot,seat){
 /* ====================== INIT ====================== */
 {const v=$('verStamp');if(v)v.textContent='build '+BUILD_VERSION;}
 renderTiles('quickTiles',quickPlay); // quick play: no size filter (matchmaking fills the room)
+renderTiles('mainMenuGames', quickPlay);
 renderLocalSeats();
 refreshLocalTiles();
 if(SFX.muted){const b=$('soundBtn');if(b){b.textContent='🔇';b.classList.add('off');}}
