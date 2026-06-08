@@ -142,7 +142,7 @@ window.GameClients = window.GameClients || {};
         }
         return `<span class="${cls}"></span>`;
       }).join('');
-      return `<div class="qwixx-mini-row"><span class="qwixx-mini-row-key ${color}"></span>${dots}</div>`;
+      return `<div class="qwixx-mini-row"><span class="qwixx-mini-row-key ${color}"></span>${dots}<span class="qwixx-mini-row-pts">${rowPoints(row)}</span></div>`;
     }).join('');
     const pens = Array.from({length:4}, (_, i) => `<span class="qwixx-mini-pen ${player.penalties > i ? 'on' : ''}">⚠</span>`).join('');
     return `<div class="qwixx-mini-board${player.active ? ' active' : ''}${player.seat === viewerSeat ? ' you' : ''}">
@@ -183,7 +183,8 @@ window.GameClients = window.GameClients || {};
       html += `</div><div class="qwixx-row-score">${locked || pendingLock ? '🔒' : `${count}<small>${pts}</small>`}</div></div>`;
     });
     const you = player.seat === viewerSeat ? ' you' : '';
-    html += `</div><div class="qwixx-player-foot${you}">Score ${scoreRows(player.rows, player.penalties)} · Penalties ${player.penalties}/4</div>`;
+    const pens = Array.from({length:4},(_,i)=>`<span class="qwixx-full-pen ${player.penalties>i?'on':''}">⚠</span>`).join('');
+    html += `</div><div class="qwixx-player-foot${you}"><span>Score ${scoreRows(player.rows, player.penalties)}</span><span class="qwixx-full-pens">${pens}</span></div>`;
     return html;
   }
 
@@ -209,9 +210,9 @@ window.GameClients = window.GameClients || {};
 
     let controlsHtml = '';
     if(isWhite){
-      controlsHtml = pendingWhite
-        ? `<button class="qwixx-ctrl-btn pri" onclick="window.GameClients['qwixx'].act('skip')">Skip white ${dice.w[0]+dice.w[1]}</button>`
-        : `<span class="muted">Waiting for white-dice decisions…</span>`;
+      if (pendingWhite) controlsHtml = `<button class="qwixx-ctrl-btn pri" onclick="window.GameClients['qwixx'].act('skip')">Skip white ${dice.w[0]+dice.w[1]}</button>`;
+      else if (isAct && !s.activeColorUsed) controlsHtml = `<button class="qwixx-ctrl-btn pri" onclick="window.GameClients['qwixx'].act('finishTurn')">Skip color / pass to others</button>`;
+      else controlsHtml = `<span class="muted">Waiting for white-dice decisions…</span>`;
     } else if(isColor){
       controlsHtml = isAct
         ? `<button class="qwixx-ctrl-btn pri" onclick="window.GameClients['qwixx'].act('finishTurn')">${!s.activeMarkedThisTurn ? 'Take Penalty / Finish' : 'Finish Turn'}</button>`
@@ -359,7 +360,14 @@ window.GameClients = window.GameClients || {};
           }
         }
       } else if(msg.action === 'finishTurn'){
-        if(this.phase !== 'COLOR_PHASE' || seat !== this.activeSeat) return;
+        if(seat !== this.activeSeat) return;
+        if(this.phase === 'WHITE_PHASE'){
+          if(this.pendingWhiteDecisions.includes(seat)) return;
+          this.activeColorUsed = true;
+          if(this.pendingWhiteDecisions.length === 0) this.nextTurn();
+          return;
+        }
+        if(this.phase !== 'COLOR_PHASE') return;
         if(!this.activeMarkedThisTurn) this.players[this.activeSeat].penalties++;
         this.nextTurn();
       }
@@ -380,7 +388,13 @@ window.GameClients = window.GameClients || {};
     return {
       apply(seat,msg){ E.applyAction(seat,msg); },
       next(){ const fresh = new QwixxEngine(E.players.map(p=>p.name)); Object.assign(E, fresh); },
-      actor(){ return E.phase === 'WHITE_PHASE' ? (E.pendingWhiteDecisions[0] ?? E.activeSeat) : E.activeSeat; },
+      actor(){
+      if(E.phase === 'WHITE_PHASE'){
+        if(E.pendingWhiteDecisions.includes(E.activeSeat) || !E.activeColorUsed) return E.activeSeat;
+        return E.pendingWhiteDecisions.find(i => i !== E.activeSeat) ?? E.activeSeat;
+      }
+      return E.activeSeat;
+    },
       viewFor(seat){
         const s = E.stateFor(seat);
         let summary;

@@ -189,7 +189,17 @@ export const Qwixx: GameModule = {
     }
 
     if (msg.action === "finishTurn") {
-      if (s.phase !== "COLOR_PHASE" || seat !== s.activeSeat) return;
+      if (seat !== s.activeSeat) return;
+      if (s.phase === "WHITE_PHASE") {
+        // Local/pass-and-play convenience: after the active player has resolved
+        // their white choice, they may skip the color option before passive
+        // players get focus. Online players can still resolve white concurrently.
+        if (s.pendingWhiteDecisions.includes(seat)) return;
+        s.activeColorUsed = true;
+        if (s.pendingWhiteDecisions.length === 0) maybeEndOrNextTurn(s);
+        return;
+      }
+      if (s.phase !== "COLOR_PHASE") return;
       if (!s.activeMarkedThisTurn) s.players[s.activeSeat].penalties++;
       maybeEndOrNextTurn(s);
     }

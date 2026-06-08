@@ -34,7 +34,8 @@
   function draw(view){
     removeQwixxUi();
     const s=view.flip7,viewer=s.viewerSeat;
-    $('topArea').style.display='none';$('miniBoardsContainer').innerHTML='';
+    $('topArea').style.display='none';
+    const mini=$('miniBoardsContainer');mini.innerHTML='';mini.classList.add('f7-mini-strip');
     // dealer pile
     let dealerWrap=$('f7DealerWrap');
     if(!dealerWrap){dealerWrap=document.createElement('div');dealerWrap.id='f7DealerWrap';dealerWrap.className='f7-dealer';
@@ -44,10 +45,12 @@
     const cntEl=dealerWrap.querySelector('.cnt');if(cntEl)cntEl.textContent='deck '+s.deckCount+' \u00b7 out '+s.discardCount;
     const main=$('mainBoardsContainer');main.innerHTML='';
     const pending=s.pendingAction&&s.pendingAction.from===viewer;
+    const focus = mode==='local' ? s.current : (viewer>=0 ? viewer : s.current);
     s.players.forEach((p,i)=>{
+      if(i!==focus){mini.appendChild(miniDOM(s,p,i,viewer,pending));return;}
       const wrap=document.createElement('div');const busted=p.status==='busted';
-      wrap.className='player-board'+(s.current===i&&s.phase==='PLAY'?' active-turn':'')+(i===viewer?' me':'');
-      wrap.style.minWidth='260px';if(busted)wrap.style.opacity='.85';
+      wrap.className='player-board f7-focus-board'+(s.current===i&&s.phase==='PLAY'?' active-turn':'')+(i===viewer?' me':'');
+      if(busted)wrap.style.opacity='.85';
       const head=document.createElement('div');head.className='board-header';
       head.innerHTML='<span>'+p.name+(i===viewer?' (You)':'')+' <span class="f7-status '+p.status+'">'+p.status+'</span></span><span class="score-badge">'+(busted?'BUST':'Now: '+p.live)+' \u00b7 Total: '+p.banked+'</span>';
       wrap.appendChild(head);
@@ -64,6 +67,17 @@
       main.appendChild(wrap);
     });
     drawControls(view);
+  }
+  function miniDOM(s,p,i,viewer,pending){
+    const b=document.createElement('button');b.className='f7-mini-board'+(s.current===i?' active':'')+(p.status==='busted'?' busted':'');
+    b.onclick=()=>{const main=$('mainBoardsContainer');const oldView=window._renderView;if(oldView){const v=JSON.parse(JSON.stringify(oldView));v.flip7.viewerSeat=i;draw(v);}};
+    const nums=p.nums.slice(0,10).map(n=>`<span class="f7-mini-card num">${n}</span>`).join('');
+    const mods=p.mods.slice(0,4).map(m=>`<span class="f7-mini-card mod">${m}</span>`).join('');
+    const second=p.second?'<span class="f7-mini-card act">♥</span>':'';
+    b.innerHTML=`<div class="f7-mini-head"><b>${p.name}</b><span>${p.status}</span><em>${p.live}/${p.banked}</em></div><div class="f7-mini-cards">${nums}${mods}${second}</div><div class="f7-mini-bar"><span>${p.unique}/7</span><span>${p.status==='busted'?'BUST':''}</span></div>`;
+    const canTarget=pending&&p.status==='active'&&!(s.pendingAction.kind==='give_second'&&i===viewer);
+    if(canTarget){b.classList.add('targetable');b.onclick=()=>net.spectating?null:act(viewer,{action:'target',target:i});}
+    return b;
   }
 
   function drawControls(view){
@@ -172,12 +186,12 @@
       case 'flip3_abandon':{ Kit.turnBanner('Flip 3 abandoned',false); await sleep(SPEED.beat*0.6); break; }
       case 'second_used':{ SFX.good(); Kit.turnBanner('Second Chance!',true); await sleep(SPEED.beat); break; }
       case 'stay':{ SFX.good(); break; }
-      case 'action_card':{ /* card appears on the drawer; quick beat */ await sleep(SPEED.beat*0.5); break; }
+      case 'action_card':{ draw(view); const row=rowOf(e.player); await dealTravel(row,{kind:'act',v:e.kind}); await sleep(SPEED.beat*0.2); break; }
       case 'play_action':{
-        actionVfx(e.kind); SFX[e.kind==='freeze'?'discard':'triplet']();
-        // fly the action card from -> target
+        // first show the action card travelling board -> board, then apply the effect
         const fromRow=rowOf(e.from),toRow=rowOf(e.target);
         await fly(fromRow,toRow,()=>cardEl('act',e.kind),SPEED.actionFly);
+        actionVfx(e.kind); SFX[e.kind==='freeze'?'discard':'triplet']();
         if(e.auto)Kit.turnBanner((e.kind==='freeze'?'\u2744 ':'\ud83d\udd03 ')+'on self!',false);
         await sleep(SPEED.beat*0.5); break;
       }
