@@ -17,11 +17,13 @@ import {
 } from "partyserver";
 import { getGame, GAME_CATALOGUE, TICK_RUNNERS } from "./games/registry";
 import { parseClientMessage } from "./protocol";
+import { appendReplay, summarizeGameState, type ReplayEntry } from "./replay";
 
 export interface Env {
   Room: DurableObjectNamespace<Room>;
   Lobby: DurableObjectNamespace<Lobby>;
   ASSETS: Fetcher;
+  DEBUG_TOKEN?: string;
   [key: string]: unknown;
 }
 
@@ -46,6 +48,7 @@ export class Room extends Server<Env> {
   quickGame: string | null = null; // if set, this is a quick-play room for that game
   maxPlayers = 8;
   lastActivity = Date.now();
+  actionLog: ReplayEntry[] = [];
 
   // current game (null => in room lobby)
   gameId: string | null = null;
@@ -62,6 +65,7 @@ export class Room extends Server<Env> {
       this.quickGame = m.quickGame ?? null;
       this.maxPlayers = m.maxPlayers ?? 8;
       this.lastActivity = m.lastActivity ?? Date.now();
+      this.actionLog = m.actionLog ?? [];
       this.gameId = m.gameId ?? null;
       this.tickAt = m.tickAt ?? null;
     }
@@ -74,7 +78,8 @@ export class Room extends Server<Env> {
     await this.ctx.storage.put("meta", {
       members: this.members, pending: this.pending, hostId: this.hostId,
       isPublic: this.isPublic, quickGame: this.quickGame, maxPlayers: this.maxPlayers,
-      lastActivity: this.lastActivity, gameId: this.gameId, tickAt: this.tickAt,
+      lastActivity: this.lastActivity, actionLog: this.actionLog,
+      gameId: this.gameId, tickAt: this.tickAt,
     });
   }
   private async persistGame() {
@@ -92,6 +97,33 @@ export class Room extends Server<Env> {
     this.ctx.storage.setAlarm(next);
   }
   private touch() { this.lastActivity = Date.now(); this.armAlarm(); }
+  private log(entry: Omit<ReplayEntry, "seq" | "t">) { this.actionLog = appendReplay(this.actionLog, entry); }
+  private debugSnapshot() {
+    return {
+      code: this.name,
+      now: Date.now(),
+      liveConnections: [...this.getConnections()].length,
+      members: this.members.map((m, seat) => ({ seat, id: m.id, name: m.name, bot: !!m.bot, difficulty: m.difficulty })),
+      pending: this.pending,
+      hostId: this.hostId,
+      isPublic: this.isPublic,
+      quickGame: this.quickGame,
+      maxPlayers: this.maxPlayers,
+      lastActivity: this.lastActivity,
+      idleMs: Date.now() - this.lastActivity,
+      gameId: this.gameId,
+      tickAt: this.tickAt,
+      game: summarizeGameState(this.gameId, this.gameState),
+      replay: this.actionLog,
+    };
+  }
+
+  async onRequest(req: Request) {
+    const url = new URL(req.url);
+    if (url.pathname === "/debug") return Response.json(this.debugSnapshot());
+    if (url.pathname === "/replay") return Response.json({ code: this.name, replay: this.actionLog });
+    return Response.json({ ok: true, room: this.name });
+  }
 
   async onAlarm() {
     const now = Date.now();
@@ -99,7 +131,7 @@ export class Room extends Server<Env> {
     if (this.tickAt && now >= this.tickAt - 50 && this.gameId && this.gameState) {
       this.tickAt = null;
       const runner = TICK_RUNNERS[this.gameId];
-      if (runner) { runner(this.gameState); await this.persistGame(); }
+      if (runner) { runner(this.gameState); this.log({ kind: "tick", gameId: this.gameId }); await this.persistGame(); }
       this.scheduleTick();        // a tick may queue another (e.g. chained turn-ends)
       await this.persistMeta();
       this.broadcastState();
@@ -220,6 +252,7 @@ export class Room extends Server<Env> {
         if (this.members.length >= this.maxPlayers) { conn.send(JSON.stringify({ type: "room_full", message: "Room is full." })); return; }
         this.members.push({ id: pid, name });
       }
+      this.log({ kind: "join", actor: pid, gameId: this.gameId, detail: { name, seat: this.memberIdx(pid), pending: this.pendingIdx(pid) >= 0 } });
       await this.persistMeta();
       await this.lobbyUpdate();
       this.broadcastState();
@@ -240,14 +273,15 @@ export class Room extends Server<Env> {
         const diff = ["easy", "medium", "hard"].includes(msg.difficulty) ? msg.difficulty : "medium";
         const n = this.members.filter((m) => m.bot).length + 1;
         const names = ["Botley", "Chip", "Ada", "Turing", "Pixel", "Nova", "Echo", "Zar"];
-        this.members.push({ id: "bot_" + Math.random().toString(36).slice(2, 8), name: (names[n - 1] || "Bot " + n) + " 🤖", bot: true, difficulty: diff });
+          this.members.push({ id: "bot_" + Math.random().toString(36).slice(2, 8), name: (names[n - 1] || "Bot " + n) + " 🤖", bot: true, difficulty: diff });
+        this.log({ kind: "add_bot", actor: pid, detail: { difficulty: diff } });
         await this.persistMeta(); await this.lobbyUpdate(); this.broadcastState();
       }
       return;
     }
     if (msg.type === "remove_bot" && isHost && !this.gameId) {
       const idx = this.members.findIndex((m) => m.bot);
-      if (idx >= 0) { this.members.splice(idx, 1); await this.persistMeta(); await this.lobbyUpdate(); this.broadcastState(); }
+      if (idx >= 0) { const [bot] = this.members.splice(idx, 1); this.log({ kind: "remove_bot", actor: pid, detail: { bot: bot.name } }); await this.persistMeta(); await this.lobbyUpdate(); this.broadcastState(); }
       return;
     }
 
@@ -255,6 +289,7 @@ export class Room extends Server<Env> {
     if (msg.type === "launch_game" && isHost && !this.gameId) {
       const err = this.startGame(msg.gameId);
       if (err) { conn.send(JSON.stringify({ type: "error", message: err })); return; }
+      this.log({ kind: "launch_game", actor: pid, gameId: this.gameId, detail: { players: this.members.length } });
       await this.persistMeta(); await this.persistGame(); await this.lobbyUpdate();
       this.broadcastState();
       return;
@@ -275,6 +310,7 @@ export class Room extends Server<Env> {
         this.pending = [];
       }
       g.applyAction(this.gameState, seat, { action: "next_round" });
+      this.log({ kind: "next_round", actor: pid, seat, gameId: this.gameId });
       this.scheduleTick();
       await this.persistMeta(); await this.persistGame(); await this.lobbyUpdate();
       this.broadcastState();
@@ -283,6 +319,7 @@ export class Room extends Server<Env> {
 
     /* ---- host: return to room lobby (keep the group together) ---- */
     if (msg.type === "to_room" && isHost) {
+      this.log({ kind: "to_room", actor: pid, seat, gameId: this.gameId });
       this.gameId = null; this.gameState = null; this.tickAt = null;
       // absorb spectators into the group now that we're between games
       for (const p of this.pending) if (this.memberIdx(p.id) < 0 && this.members.length < this.maxPlayers) this.members.push(p);
@@ -306,6 +343,7 @@ export class Room extends Server<Env> {
       this.touch();
       const g = getGame(this.gameId)!;
       g.applyAction(this.gameState, actSeat, msg);
+      this.log({ kind: "action", actor: pid, seat: actSeat, gameId: this.gameId, action: msg.action, detail: msg.botSeat != null ? { botSeat: msg.botSeat } : undefined });
       this.scheduleTick();
       await this.persistGame();
       this.broadcastState();
@@ -411,6 +449,16 @@ export class Lobby extends Server<Env> {
    ============================================================ */
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
+    const url = new URL(request.url);
+    if (url.pathname.startsWith("/debug/room/")) {
+      if (!env.DEBUG_TOKEN) return new Response("Debug disabled", { status: 404 });
+      const supplied = url.searchParams.get("token") || request.headers.get("x-debug-token");
+      if (supplied !== env.DEBUG_TOKEN) return new Response("Unauthorized", { status: 401 });
+      const code = decodeURIComponent(url.pathname.slice("/debug/room/".length));
+      if (!/^[A-Za-z0-9_-]{1,64}$/.test(code)) return new Response("Bad room code", { status: 400 });
+      const room = await getServerByName(env.Room, code);
+      return room.fetch("https://room/debug");
+    }
     return (
       (await routePartykitRequest(request, env)) ||
       (await env.ASSETS.fetch(request)) ||

@@ -154,6 +154,19 @@ Anything that isn't `/parties/*` falls through to the `ASSETS` binding → `inde
 
 ---
 
+## Debugging / observability
+
+Every room keeps a capped replay log of recent lifecycle/action events. In production,
+set a Worker secret named `DEBUG_TOKEN`; then inspect a room with:
+
+```text
+/debug/room/<ROOM_CODE>?token=<DEBUG_TOKEN>
+```
+
+The debug snapshot includes room membership, game phase, a sanitized game summary,
+timers, and the recent replay log. It intentionally does **not** dump full hidden
+card/deck state.
+
 ## Local development (optional)
 
 ```bash
