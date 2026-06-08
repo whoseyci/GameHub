@@ -30,7 +30,9 @@ describe("Qwixx client regressions", () => {
     expect(qwixx).toContain("function markHintsFor");
     expect(qwixx).toContain("state.pendingWhiteDecisions.includes(player.seat)");
     expect(qwixx).toContain("player.seat === state.activeSeat");
-    expect(qwixx).toContain("options[0]");
+    expect(qwixx).toContain("possibleColorMarks");
+    expect(qwixx).toContain("recommendedMove");
+    expect(qwixx).toContain("renderMiniBoard");
   });
 });
 

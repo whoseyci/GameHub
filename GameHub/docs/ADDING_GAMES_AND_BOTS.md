@@ -74,6 +74,8 @@ The recommended view shape is a **table view**:
 Render one full board for `view.yourSeat`/focused seat and compact clickable boards
 for opponents. In local multiplayer, `localEngine.actor()` should return the seat
 whose board should be shown full-size; this makes local and online use the same UI.
+See `docs/MOBILE_GAME_VIEW_GUIDE.md` for the miniature-board contract and no-scroll
+in-game layout rules.
 
 Optional offline/local play:
 
