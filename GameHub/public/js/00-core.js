@@ -67,6 +67,15 @@ const Kit=(()=>{
     const cards=document.querySelectorAll('#mainBoardsContainer .board-card, #miniBoardsContainer .board-card');
     cards.forEach((c,i)=>{c.classList.remove('anim-deal');void c.offsetWidth;c.style.animationDelay=(i%12)*0.035+'s';c.classList.add('anim-deal');if(i%4===0)setTimeout(()=>SFX.deal(),(i%12)*35);setTimeout(()=>{c.style.animationDelay='';c.classList.remove('anim-deal');},700+(i%12)*40);});
   }
+  const EventRunner=(()=>{
+    let chain=Promise.resolve();
+    function run(events,handler){
+      chain=chain.then(async()=>{for(const ev of events)await handler(ev);});
+      return chain;
+    }
+    function idle(){return chain;}
+    return {run,idle};
+  })();
   const CardMotion=(()=>{
     let chain=Promise.resolve();
     const locations=new Map();
@@ -85,11 +94,11 @@ const Kit=(()=>{
     function idle(){return chain;}
     return {move,location,clear,idle};
   })();
-  function rollDice(container,dice,{duration=900,size=42,animate=true}={}){
+  function rollDice(container,dice,{duration=900,size=42,animate=true,originEl=null}={}){
     return new Promise(res=>{
       if(!container){res();return;}
       const colorCls={white:'white',red:'red',yellow:'yellow',green:'green',blue:'blue',r:'red',y:'yellow',g:'green',b:'blue'};
-      const makeDie=(d)=>`<div class="kit-die ${colorCls[d.color]||d.color||'white'}"><span>${d.value}</span></div>`;
+      const makeDie=(d)=>`<div class="kit-die ${colorCls[d.color]||d.color||'white'}"><b class="front"><span>${d.value}</span></b><i class="side side-r"></i><i class="side side-b"></i><i class="side side-t"></i></div>`;
       if(!animate||window.matchMedia('(prefers-reduced-motion: reduce)').matches){
         container.classList.remove('rolling');
         container.innerHTML=dice.map(d=>`<div class="kit-die-static" style="--die-size:${size}px">${makeDie(d)}</div>`).join('');
@@ -98,10 +107,15 @@ const Kit=(()=>{
       const w=Math.max(container.clientWidth||280,size*dice.length+12),h=Math.max(container.clientHeight||64,size+18);
       container.classList.add('rolling');
       container.innerHTML='';
+      const cr=container.getBoundingClientRect();
+      const or=originEl?originEl.getBoundingClientRect():null;
+      const ox=or?Math.max(0,Math.min(w-size,or.left+or.width/2-cr.left-size/2)):null;
+      const oy=or?Math.max(0,Math.min(h-size,or.top+or.height/2-cr.top-size/2)):null;
       const bodies=dice.map((d,i)=>{
         const el=document.createElement('div');
         el.className='kit-die-phys';el.style.setProperty('--die-size',size+'px');el.innerHTML=makeDie({...d,value:'•'});container.appendChild(el);
-        return {d,el,x:8+i*(size+6),y:2+Math.random()*8,vx:(Math.random()*2-1)*8,vy:-(6+Math.random()*5),r:Math.random()*360,vr:(Math.random()*2-1)*26,lastFace:0};
+        const targetX=8+i*(size+6);
+        return {d,el,x:ox??targetX,y:oy??(2+Math.random()*8),vx:(targetX-(ox??targetX))*0.06+(Math.random()*2-1)*7,vy:-(7+Math.random()*6),r:Math.random()*360,vr:(Math.random()*2-1)*32,lastFace:0};
       });
       const start=performance.now();
       function step(now){
@@ -132,7 +146,7 @@ const Kit=(()=>{
     burst(0.08);burst(0.92);setTimeout(()=>{burst(0.2);burst(0.8);},350);const end=Date.now()+3800;
     (function f(){x.clearRect(0,0,cv.width,cv.height);for(const p of ps){p.vy+=0.28;p.vx*=0.99;p.x+=p.vx;p.y+=p.vy;p.a+=p.va;x.save();x.translate(p.x,p.y);x.rotate(p.a);x.fillStyle=p.c;x.fillRect(-p.r/2,-p.r/2,p.r,p.r*0.6);x.restore();}if(Date.now()<end)requestAnimationFrame(f);else cv.remove();})();
   }
-  return {cardColor,floatText,turnBanner,flyCard,flyToHeld,dealCascade,CardMotion,rollDice,confetti};
+  return {cardColor,floatText,turnBanner,flyCard,flyToHeld,dealCascade,EventRunner,CardMotion,rollDice,confetti};
 })();
 
 /* ====================== SOUND (arcade) ====================== */

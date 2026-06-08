@@ -88,6 +88,7 @@ window.LocalEngines['hearts'] = function(names) {
 Use existing helpers:
 
 - `Kit` for card animation/visuals
+- `Kit.EventRunner.run(events, handler)` for sequential event playback
 - `Kit.CardMotion.move(cardId, fromEl, toEl, opts)` for every card transfer
 - `SFX` for sound
 - `showSummary(view)` for end screens

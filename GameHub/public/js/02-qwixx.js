@@ -118,7 +118,7 @@ window.GameClients = window.GameClients || {};
     ];
   }
   function renderDice(dice){
-    return `<div class="qwixx-dice-rows"><div id="qwixxDiceKit" class="qwixx-kit-dice"></div></div>`;
+    return `<div class="qwixx-dice-rows"><button id="qwixxThrowBtn" class="qwixx-throw-btn">🎲 Throw dice</button><div id="qwixxDiceKit" class="qwixx-kit-dice"></div></div>`;
   }
 
   function actionLegalForCell(state, player, viewerSeat, color, row, i, hints){
@@ -238,8 +238,15 @@ window.GameClients = window.GameClients || {};
     $('topArea').appendChild(diceZone);
     const diceSig = `${s.round}|${s.activeSeat}|${dice.w.join(',')}|${dice.r}|${dice.y}|${dice.g}|${dice.b}`;
     const shouldRoll = window._qwixxDiceSig !== diceSig;
-    window._qwixxDiceSig = diceSig;
-    Kit.rollDice($('qwixxDiceKit'), diceList(dice), {size: innerWidth < 760 ? 30 : 42, animate: shouldRoll});
+    const diceTray = $('qwixxDiceKit'), throwBtn = $('qwixxThrowBtn');
+    const doThrow = () => { if(throwBtn) throwBtn.classList.add('hidden'); window._qwixxDiceSig = diceSig; Kit.rollDice(diceTray, diceList(dice), {size: innerWidth < 760 ? 30 : 42, animate: true, originEl: throwBtn}); };
+    if(shouldRoll){
+      diceTray.innerHTML='';
+      if(throwBtn){ throwBtn.classList.remove('hidden'); throwBtn.onclick=doThrow; }
+    } else {
+      if(throwBtn) throwBtn.classList.add('hidden');
+      Kit.rollDice(diceTray, diceList(dice), {size: innerWidth < 760 ? 30 : 42, animate: false});
+    }
 
     const boardContainer = $('mainBoardsContainer');
     boardContainer.innerHTML = '';

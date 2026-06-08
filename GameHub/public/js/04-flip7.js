@@ -46,7 +46,7 @@
     const cntEl=dealerWrap.querySelector('.cnt');if(cntEl)cntEl.textContent='deck '+s.deckCount+' \u00b7 out '+s.discardCount;
     const main=$('mainBoardsContainer');main.innerHTML='';
     const pending=s.pendingAction&&s.pendingAction.from===viewer;
-    const focus = eventFocus!=null ? eventFocus : (mode==='local' ? s.current : (viewer>=0 ? viewer : s.current));
+    const focus = mode==='local' ? (eventFocus!=null ? eventFocus : s.current) : (viewer>=0 ? viewer : s.current);
     s.players.forEach((p,i)=>{
       if(i!==focus){mini.appendChild(miniDOM(s,p,i,viewer,pending));return;}
       const wrap=document.createElement('div');const busted=p.status==='busted';
@@ -62,6 +62,7 @@
       if(busted&&p.bustCard!=null)row.appendChild(cardEl('num',p.bustCard,{cause:true}));
       p.mods.forEach(m=>row.appendChild(cardEl('mod',m,{busted})));
       if(p.second)row.appendChild(cardEl('act','second'));
+      (p.actionCards||[]).forEach(a=>row.appendChild(cardEl('act',a)));
       wrap.appendChild(row);
       const meta=document.createElement('div');meta.className='muted';meta.style.cssText='margin-top:6px;font-size:.8rem';meta.textContent=p.unique+'/7 unique';wrap.appendChild(meta);
       const canTarget=pending&&p.status==='active'&&!(s.pendingAction.kind==='give_second'&&i===viewer);
@@ -71,12 +72,23 @@
     drawControls(view);
   }
   function miniDOM(s,p,i,viewer,pending){
-    const b=document.createElement('button');b.className='f7-mini-board'+(s.current===i?' active':'')+(p.status==='busted'?' busted':'');
+    const b=document.createElement('button');
+    b.className='player-board f7-opponent-board'+(s.current===i?' active-turn':'')+(p.status==='busted'?' busted':'');
+    b.dataset.f7Seat=i;
     b.onclick=()=>inspect(i);
-    const nums=p.nums.slice(0,10).map(n=>`<span class="f7-mini-card num">${n}</span>`).join('');
-    const mods=p.mods.slice(0,4).map(m=>`<span class="f7-mini-card mod">${m}</span>`).join('');
-    const second=p.second?'<span class="f7-mini-card act">♥</span>':'';
-    b.innerHTML=`<div class="f7-mini-head"><b>${p.name}</b><span>${p.status}</span><em>${p.live}/${p.banked}</em></div><div class="f7-mini-cards">${nums}${mods}${second}</div><div class="f7-mini-bar"><span>${p.unique}/7</span><span>${p.status==='busted'?'BUST':''}</span></div>`;
+    const busted=p.status==='busted';
+    const head=document.createElement('div');head.className='board-header';
+    head.innerHTML='<span>'+p.name+' <span class="f7-status '+p.status+'">'+p.status+'</span></span><span class="score-badge">'+(busted?'BUST':'Now: '+p.live)+' · '+p.banked+'</span>';
+    b.appendChild(head);
+    const row=document.createElement('div');row.className='f7-row';
+    if(!p.nums.length&&!p.mods.length&&!p.second)row.innerHTML='<span class="f7-empty">no cards</span>';
+    p.nums.forEach(n=>row.appendChild(cardEl('num',n,{busted})));
+    if(busted&&p.bustCard!=null)row.appendChild(cardEl('num',p.bustCard,{cause:true}));
+    p.mods.forEach(m=>row.appendChild(cardEl('mod',m,{busted})));
+    if(p.second)row.appendChild(cardEl('act','second'));
+    (p.actionCards||[]).forEach(a=>row.appendChild(cardEl('act',a)));
+    b.appendChild(row);
+    const meta=document.createElement('div');meta.className='muted';meta.textContent=p.unique+'/7 unique';b.appendChild(meta);
     const canTarget=pending&&p.status==='active'&&!(s.pendingAction.kind==='give_second'&&i===viewer);
     if(canTarget){b.classList.add('targetable');b.onclick=()=>net.spectating?null:act(viewer,{action:'target',target:i});}
     return b;
@@ -88,7 +100,7 @@
     const s=view.flip7,p=s.players[seat];if(!p)return;
     const seats=s.players.map((_,i)=>i).filter(i=>i!==view.flip7.viewerSeat);
     const idx=seats.indexOf(seat),prev=seats[(idx-1+seats.length)%seats.length],next=seats[(idx+1)%seats.length];
-    const row=[...p.nums.map(n=>cardEl('num',n,{busted:p.status==='busted'})),...p.mods.map(m=>cardEl('mod',m,{busted:p.status==='busted'})),...(p.second?[cardEl('act','second')]:[])];
+    const row=[...p.nums.map(n=>cardEl('num',n,{busted:p.status==='busted'})),...p.mods.map(m=>cardEl('mod',m,{busted:p.status==='busted'})),...(p.second?[cardEl('act','second')]:[]),...(p.actionCards||[]).map(a=>cardEl('act',a))];
     const cards=document.createElement('div');cards.className='f7-row';row.forEach(c=>cards.appendChild(c));
     const box=$('investigateBox');box.innerHTML=`<div class="inspect-head"><button class="icon-btn" onclick="window.GameClients['flip7'].inspect(${prev})">‹</button><b>${p.name} · ${p.status}</b><button class="icon-btn" onclick="window.GameClients['flip7'].inspect(${next})">›</button><button class="icon-btn" onclick="$('investigateOverlay').classList.add('hidden')">✕</button></div><div class="player-board f7-focus-board"><div class="board-header"><span>${p.name}</span><span class="score-badge">Now ${p.live} · Total ${p.banked} · ${p.unique}/7</span></div></div>`;
     box.querySelector('.player-board').appendChild(cards);
@@ -169,29 +181,59 @@
   }
 
 
-  function animView(view){
-    if(!prevView||!prevView.flip7)return view;
-    const v=JSON.parse(JSON.stringify(prevView));
-    v.flip7.viewerSeat=view.flip7.viewerSeat;
-    return v;
+  function cloneView(v){ return JSON.parse(JSON.stringify(v)); }
+  function eventView(base, seat){ const v=cloneView(base); v.flip7.viewerSeat=seat; return v; }
+  function ensureExtras(shadow){ shadow.flip7.players.forEach(p=>{ if(!p.actionCards)p.actionCards=[]; }); }
+  function removeOne(arr,val){ const i=arr.indexOf(val); if(i>=0)arr.splice(i,1); }
+  function addCardToShadow(p,card){
+    if(!card)return;
+    if(card.kind==='num'){ if(!p.nums.includes(card.v)){p.nums.push(card.v);p.nums.sort((a,b)=>a-b);} }
+    else if(card.kind==='mod') p.mods.push(card.v);
+    else if(card.v==='second') p.second=true;
+    else p.actionCards.push(card.v);
+    p.unique=new Set(p.nums).size;
+    p.live=liveScore(p);
+  }
+  function liveScore(p){
+    if(p.status==='busted')return 0;
+    let base=(p.nums||[]).reduce((a,b)=>a+b,0);
+    if((p.mods||[]).includes('x2'))base*=2;
+    for(const m of (p.mods||[])) if(String(m)[0]==='+') base+=parseInt(String(m).slice(1));
+    if(new Set(p.nums||[]).size>=7)base+=15;
+    return base;
+  }
+  function applyShadowEvent(shadow,e){
+    ensureExtras(shadow);
+    const p=e.player!=null?shadow.flip7.players[e.player]:null;
+    if(e.type==='card') addCardToShadow(p,e.card);
+    else if(e.type==='action_card'&&p){ p.actionCards.push(e.kind); }
+    else if(e.type==='bust'&&p){ p.status='busted'; p.bustCard=e.value; p.live=0; }
+    else if(e.type==='second_used'&&p){ p.second=false; }
+    else if(e.type==='flip7'&&p){ p.status='stayed'; }
+    else if(e.type==='stay'&&p){ p.status='stayed'; }
+    else if(e.type==='play_action'){ const fp=shadow.flip7.players[e.from]; if(fp&&fp.actionCards) removeOne(fp.actionCards,e.kind); }
+    else if(e.type==='freeze_done'){ const tp=shadow.flip7.players[e.target]; if(tp)tp.status='stayed'; }
+    else if(e.type==='second_pass'){ const tp=shadow.flip7.players[e.to]; if(tp)tp.second=true; const fp=shadow.flip7.players[e.from]; if(fp&&fp.actionCards) removeOne(fp.actionCards,'second'); }
+    shadow.flip7.players.forEach(x=>{x.unique=new Set(x.nums||[]).size;x.live=liveScore(x);});
   }
 
-  // ---- play an event timeline ----
+  // ---- unified sequential event runner ----
   let lastSeq=-1;
   async function playEvents(view){
-    const s=view.flip7; const ev=s.events||[];
-    // only play events newer than what we've shown
-    const fresh=ev.filter(e=>e.seq>lastSeq);
-    if(!fresh.length){draw(view);prevView=view;curView=view;maybeSummary(view);return;}
+    const ev=(view.flip7.events||[]).filter(e=>e.seq>lastSeq);
+    if(!ev.length){draw(view);prevView=view;curView=view;maybeSummary(view);return;}
     animating=true;
-    for(const e of fresh){
+    const shadow=cloneView(prevView&&prevView.flip7?prevView:view);
+    shadow.flip7.viewerSeat=view.flip7.viewerSeat;
+    ensureExtras(shadow);
+    await Kit.EventRunner.run(ev, async(e)=>{
       lastSeq=Math.max(lastSeq,e.seq);
-      await playOne(e,view);
-    }
+      await runUnifiedEvent(shadow,e,view);
+    });
     eventFocus=null;
     if(mode==='local') window._f7InspectSeat=null;
     animating=false;
-    draw(view); // settle to authoritative state
+    draw(view);
     prevView=view;curView=view;
     maybeSummary(view);
     flushView();
@@ -201,34 +243,73 @@
     if(s.phase==='ROUND_END'||s.phase==='GAME_OVER'){if(!summaryShown){summaryShown=true;showSummary(view);}const c=$('f7Controls');if(c)c.innerHTML='';}
     else{summaryShown=false;hideOverlay();}
   }
-  async function playOne(e,view){
-    const s=view.flip7;
+  async function runUnifiedEvent(shadow,e,finalView){
+    const focusSeat=e.player??e.from??e.target??shadow.flip7.viewerSeat;
+    if(mode==='local')eventFocus=focusSeat;
     switch(e.type){
-      case 'draw_start':{ eventFocus=e.player; draw(animView(view)); SFX.draw(); await wiggleReveal(e.prob||0); break; }
-      case 'card':{ eventFocus=e.player; draw(animView(view)); const row=rowOf(e.player); if(e.flip3)await sleep(SPEED.flip3Gap*0.2); await dealTravel(row,e.card,e.seq); break; }
-      case 'bust':{ eventFocus=e.player; draw(view); SFX.bad(); const b=boardOf(e.player); if(b){b.style.animation='shakeX .5s ease';setTimeout(()=>b&&(b.style.animation=''),520);} Kit.turnBanner((s.players[e.player]?.name||'')+' BUST!',false); await sleep(SPEED.beat); break; }
-      case 'flip7':{ SFX.win(); Kit.confetti(); Kit.turnBanner('FLIP 7! +15',true); await sleep(SPEED.beat); break; }
-      case 'flip3_abandon':{ Kit.turnBanner('Flip 3 abandoned',false); await sleep(SPEED.beat*0.6); break; }
-      case 'second_used':{ SFX.good(); Kit.turnBanner('Second Chance!',true); await sleep(SPEED.beat); break; }
-      case 'stay':{ SFX.good(); break; }
-      case 'action_card':{ eventFocus=e.player; draw(animView(view)); const row=rowOf(e.player); await dealTravel(row,{kind:'act',v:e.kind},e.seq); await sleep(SPEED.beat*0.2); break; }
+      case 'draw_start':{
+        draw(shadow); SFX.draw(); await wiggleReveal(e.prob||0); break;
+      }
+      case 'card':{
+        if(mode==='local')eventFocus=e.player;
+        draw(shadow);
+        const row=rowOf(e.player); if(e.flip3)await sleep(SPEED.flip3Gap*0.2);
+        await dealTravel(row,e.card,e.seq);
+        applyShadowEvent(shadow,e);
+        draw(shadow);
+        await sleep(SPEED.beat*0.18);
+        break;
+      }
+      case 'action_card':{
+        if(mode==='local')eventFocus=e.player;
+        draw(shadow);
+        const row=rowOf(e.player);
+        await dealTravel(row,{kind:'act',v:e.kind},e.seq);
+        applyShadowEvent(shadow,e);
+        draw(shadow);
+        await sleep(SPEED.beat*0.2);
+        break;
+      }
       case 'play_action':{
-        // first show the action card travelling board -> board, then apply the effect
-        eventFocus=e.from; draw(animView(view));
+        if(mode==='local')eventFocus=e.from;
+        draw(shadow);
         const fromRow=rowOf(e.from),toRow=rowOf(e.target);
         await Kit.CardMotion.move('flip7:action:'+e.seq,fromRow,toRow,{value:e.kind,color:'#b45309',startFaceDown:false,spin:true,duration:SPEED.actionFly});
-        eventFocus=e.target; draw(animView(view));
+        applyShadowEvent(shadow,e);
+        if(mode==='local')eventFocus=e.target;
+        draw(shadow);
         actionVfx(e.kind); SFX[e.kind==='freeze'?'discard':'triplet']();
         if(e.auto)Kit.turnBanner((e.kind==='freeze'?'\u2744 ':'\ud83d\udd03 ')+'on self!',false);
-        await sleep(SPEED.beat*0.5); break;
+        await sleep(SPEED.beat*0.5);
+        break;
       }
-      case 'freeze_done':{ const b=boardOf(e.target); if(b){b.style.transition='filter .3s';b.style.filter='brightness(1.4) saturate(1.4)';setTimeout(()=>b&&(b.style.filter=''),350);} await sleep(SPEED.beat*0.4); break; }
-      case 'second_pass':{ SFX.flip(); const fromRow=rowOf(e.from),toRow=rowOf(e.to); await fly(fromRow,toRow,()=>cardEl('act','second'),SPEED.actionFly); if(e.auto)Kit.turnBanner('\u2665 passed',true); await sleep(SPEED.beat*0.4); break; }
+      case 'bust':{
+        applyShadowEvent(shadow,e);
+        if(mode==='local')eventFocus=e.player;
+        draw(shadow); SFX.bad();
+        const b=boardOf(e.player); if(b){b.style.animation='shakeX .5s ease';setTimeout(()=>b&&(b.style.animation=''),520);}
+        Kit.turnBanner((shadow.flip7.players[e.player]?.name||'')+' BUST!',false);
+        await sleep(SPEED.beat); break;
+      }
+      case 'freeze_done':{
+        applyShadowEvent(shadow,e); draw(shadow);
+        const b=boardOf(e.target); if(b){b.style.transition='filter .3s';b.style.filter='brightness(1.4) saturate(1.4)';setTimeout(()=>b&&(b.style.filter=''),350);} await sleep(SPEED.beat*0.4); break;
+      }
+      case 'second_pass':{
+        draw(shadow); SFX.flip(); const fromRow=rowOf(e.from),toRow=rowOf(e.to);
+        await Kit.CardMotion.move('flip7:second:'+e.seq,fromRow,toRow,{value:'♥',color:'#b45309',startFaceDown:false,spin:true,duration:SPEED.actionFly});
+        applyShadowEvent(shadow,e); draw(shadow); if(e.auto)Kit.turnBanner('\u2665 passed',true); await sleep(SPEED.beat*0.4); break;
+      }
+      case 'second_used':{ applyShadowEvent(shadow,e); draw(shadow); SFX.good(); Kit.turnBanner('Second Chance!',true); await sleep(SPEED.beat); break; }
+      case 'flip7':{ applyShadowEvent(shadow,e); draw(shadow); SFX.win(); Kit.confetti(); Kit.turnBanner('FLIP 7! +15',true); await sleep(SPEED.beat); break; }
+      case 'stay':{ applyShadowEvent(shadow,e); draw(shadow); SFX.good(); break; }
+      case 'flip3_abandon':{ Kit.turnBanner('Flip 3 abandoned',false); await sleep(SPEED.beat*0.6); break; }
       case 'second_discard':{ await sleep(SPEED.beat*0.3); break; }
       case 'reshuffle':{ Kit.turnBanner('Deck reshuffled',false); await sleep(SPEED.beat); break; }
-      default: break;
+      default:{ applyShadowEvent(shadow,e); draw(shadow); }
     }
   }
+
 
   function render(view){
     // turn banner on turn change (only when not mid-animation start)
