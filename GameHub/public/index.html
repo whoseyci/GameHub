@@ -56,6 +56,7 @@
   .qwixx-ctrl-btn:disabled{opacity:.4;cursor:not-allowed}
   .qwixx-ctrl-btn.pri{background:var(--accent);border-color:var(--accent);color:#fff}
 
+  :root {
     /* shared card sizing (the "card kit" — every game uses these) */
     --slot-w:clamp(58px,16vw,84px);--slot-h:calc(var(--slot-w)*1.42);
     --bcard-w:clamp(52px,15vw,74px);--bcard-h:calc(var(--bcard-w)*1.42);
@@ -869,7 +870,7 @@ window.GameClients={
         else net.send({ type: 'action', action: 'mark', ...msg });
       }
     };
-  },
+  })(),
 };
 window.LocalEngines={};
 
