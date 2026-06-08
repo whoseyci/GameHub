@@ -237,7 +237,10 @@ window.GameClients = window.GameClients || {};
       </div>
       <div class="qwixx-controls">${controlsHtml}</div>`;
     $('topArea').appendChild(diceZone);
-    Kit.rollDice($('qwixxDiceKit'), diceList(dice), {size: innerWidth < 760 ? 30 : 42});
+    const diceSig = `${s.round}|${s.activeSeat}|${dice.w.join(',')}|${dice.r}|${dice.y}|${dice.g}|${dice.b}`;
+    const shouldRoll = window._qwixxDiceSig !== diceSig;
+    window._qwixxDiceSig = diceSig;
+    Kit.rollDice($('qwixxDiceKit'), diceList(dice), {size: innerWidth < 760 ? 30 : 42, animate: shouldRoll});
 
     const boardContainer = $('mainBoardsContainer');
     boardContainer.innerHTML = '';
