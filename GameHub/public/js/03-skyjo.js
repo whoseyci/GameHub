@@ -1,0 +1,191 @@
+/* -------------------- SKYJO client -------------------- */
+(function(){
+  const C=Kit.cardColor;
+  function boardEl(pi){return document.getElementById('main-board-'+pi)||document.getElementById('mini-board-'+pi);}
+  function cardAt(pi,idx){const b=boardEl(pi);return b?b.querySelectorAll('.board-card')[idx]:null;}
+
+  function render(view){
+    removeQwixxUi();
+    $('topArea').style.display=''; // Skyjo uses the deck/discard piles
+    const piles = $('topArea').querySelector('.piles');
+    if (piles) piles.style.display = 'flex';
+    $('heldCardWrapper').style.display='';
+    const f7=$('f7Controls');if(f7)f7.innerHTML='';const dw=$('f7DealerWrap');if(dw)dw.style.display='none';
+    const s=view.skyjo; // engine state (personalized)
+    const viewer=s.viewerIndex;
+    const isPlay=s.phase==='PLAY'||s.phase==='FINAL_TURNS';
+    const myTurn=isPlay&&s.currentPlayer===viewer&&viewer>=0;
+    const ta=s.turnAction;
+
+    // last round popup
+    if(s.phase==='FINAL_TURNS'&&!lastRoundShown){lastRoundShown=true;const e=s.players[s.roundEnder]?.name||'A player';toast('🚨 LAST ROUND! '+e+' closed it out',3200);SFX.lastRound();}
+    if(s.phase==='REVEAL'||s.phase==='PLAY')lastRoundShown=false;
+
+    // turn banner
+    if(isPlay&&prevView&&prevView.skyjo){
+      const pv=prevView.skyjo,pPlay=pv.phase==='PLAY'||pv.phase==='FINAL_TURNS';
+      if(ta===null&&(s.currentPlayer!==pv.currentPlayer||!pPlay)){const mine=s.currentPlayer===viewer;Kit.turnBanner(mine?'Your turn!':(s.players[s.currentPlayer]?.name+"'s turn"),mine);bumpStatus();if(mine)SFX.yourTurn();}
+    }
+
+    const prevForAnim=prevView?prevView.skyjo:null;
+    const newAction=s.lastAction&&(!prevForAnim||JSON.stringify(prevForAnim.lastAction)!==JSON.stringify(s.lastAction));
+
+    drawPiles(s,viewer,myTurn,ta);
+    drawBoards(s,viewer);
+
+    if(s.phase==='REVEAL'&&(!prevForAnim||prevForAnim.phase!=='REVEAL'||prevForAnim.round!==s.round))Kit.dealCascade();
+    if(newAction)runAnim(s,viewer);
+
+    if(s.phase==='ROUND_END'||s.phase==='GAME_OVER'){if(!summaryShown){summaryShown=true;showSummary(view);}}
+    else{summaryShown=false;hideOverlay();}
+
+    prevView=view;curView=view;
+  }
+
+  function drawPiles(s,viewer,myTurn,ta){
+    const uiDeck=$('uiDeck'),uiDiscard=$('uiDiscard');
+    $('deckCount').textContent=s.deckCount!=null?s.deckCount:'';
+    uiDeck.classList.remove('pile-hint');uiDeck.onclick=null;uiDiscard.classList.remove('pile-hint');uiDiscard.onclick=null;
+
+    // Everyone sees the deck-drawn card flipped face-up on the deck (publicDrawn).
+    if(s.publicDrawn!=null){uiDeck.className='card-slot revealed';uiDeck.textContent=s.publicDrawn;uiDeck.style.color=C(s.publicDrawn);uiDeck.style.borderColor='#fff';uiDeck.innerHTML=s.publicDrawn+'<span id="deckCount" class="deck-count">'+(s.deckCount||'')+'</span>';}
+    else{uiDeck.className='card-slot face-down';uiDeck.style.color='';uiDeck.style.borderColor='';uiDeck.innerHTML='<span id="deckCount" class="deck-count">'+(s.deckCount||'')+'</span>';}
+
+    if(myTurn&&ta===null){uiDeck.classList.add('pile-hint');uiDeck.onclick=()=>act(s.currentPlayer,{action:'draw_deck'});if(s.discardTop!==null){uiDiscard.classList.add('pile-hint');uiDiscard.onclick=()=>act(s.currentPlayer,{action:'take_discard'});}}
+    else if(myTurn&&ta==='deck'){uiDiscard.classList.add('pile-hint');uiDiscard.onclick=()=>act(s.currentPlayer,{action:'discard_drawn'});}
+
+    if(s.discardTop!==null){uiDiscard.className='card-slot revealed';uiDiscard.textContent=s.discardTop;uiDiscard.style.color=C(s.discardTop);uiDiscard.style.borderColor='#fff';if(myTurn&&ta==='deck')uiDiscard.classList.add('pile-hint');}
+    else{uiDiscard.className='card-slot';uiDiscard.textContent='Empty';uiDiscard.style.color='';uiDiscard.style.borderColor='';}
+
+    // held window
+    const wrap=$('heldCardWrapper'),held=$('uiHeldCard');
+    if(myTurn&&(ta==='deck'||ta==='discard'||ta==='must_reveal')){
+      wrap.classList.remove('hidden');
+      if(ta==='must_reveal'){$('heldTextLabel').textContent='Discarded!';$('heldSubLabel').textContent='Now reveal a face-down card.';held.style.display='none';}
+      else if(s.myDrawnCard!=null){held.style.display='flex';held.textContent=s.myDrawnCard;held.style.color=C(s.myDrawnCard);held.style.borderColor='#fff';$('heldTextLabel').textContent=ta==='deck'?'Drew from Deck:':'Took from Discard:';$('heldSubLabel').textContent=ta==='deck'?'Tap a card to swap, or Discard to drop it.':'Tap a card to swap.';}
+      else{held.style.display='flex';held.textContent='?';held.style.color='';}
+    } else wrap.classList.add('hidden');
+
+    // status bar
+    const sb=$('statusBar');sb.style.color='var(--text)';
+    if(net.spectating){sb.innerHTML='<span style="color:#f59e0b">👁 Spectating — you\'ll join next round</span>';}
+    else if(s.phase==='REVEAL'){
+      if(s.tiebreakerPlayers&&s.tiebreakerPlayers.length){const inTb=s.tiebreakerPlayers.includes(viewer);sb.textContent=mode==='local'?'Tie! Tied players flip 1 more card.':(inTb?'Tie! Flip 1 more card.':'Waiting for tiebreaker…');sb.style.color=(mode==='local'||inTb)?'var(--accent)':'var(--text)';}
+      else sb.textContent=mode==='local'?'Everyone: flip 2 cards to begin.':'Flip 2 cards to begin.';
+    }
+    else if(s.phase==='ROUND_END'||s.phase==='GAME_OVER'){
+      if(mode==='local'||net.isHost)sb.innerHTML=`<button class="btn" style="margin:0;padding:10px 20px" onclick="${mode==='local'?'localNext()':"net.send({type:'next_round'})"}">${s.phase==='GAME_OVER'?(mode==='local'?'Play Again':'New Game'):'Next Round'}</button>`;
+      else sb.innerHTML='<span class="muted">Waiting for host…</span>';
+    }
+    else{
+      if(ta==='turn_end_delay')sb.innerHTML='<span class="muted">Ending turn…</span>';
+      else if(mode==='local')sb.innerHTML=`<span style="color:#10b981">${s.players[s.currentPlayer].name}'s turn!</span>`;
+      else if(myTurn)sb.innerHTML='<span style="color:#10b981">Your turn!</span>';
+      else sb.textContent='Waiting for '+s.players[s.currentPlayer].name+'…';
+    }
+  }
+
+  function drawBoards(s,viewer){
+    const mainBc=$('mainBoardsContainer'),miniBc=$('miniBoardsContainer');mainBc.innerHTML='';miniBc.innerHTML='';
+    let mainIdx=[];
+    if(mode==='local'){if(s.phase==='REVEAL'||s.phase==='ROUND_END'||s.phase==='GAME_OVER')mainIdx=s.players.map((_,i)=>i);else mainIdx=[s.currentPlayer];}
+    else if(viewer<0)mainIdx=[s.currentPlayer>=0?s.currentPlayer:0];
+    else mainIdx=[viewer];
+    s.players.forEach((p,pi)=>{const isMain=mainIdx.includes(pi);const interactive=(mode==='local')||(pi===viewer);const dom=boardDOM(s,p,pi,isMain,interactive,viewer);(isMain?mainBc:miniBc).appendChild(dom);});
+  }
+  function boardDOM(s,p,pi,isMain,interactive,viewer){
+    const wrap=document.createElement('div');
+    const active=s.currentPlayer===pi&&(s.phase==='PLAY'||s.phase==='FINAL_TURNS')&&isMain;
+    wrap.className='player-board'+(isMain?'':' board-mini')+(active?' active-turn':'')+(pi===viewer&&isMain?' me':'');
+    wrap.id=(isMain?'main':'mini')+'-board-'+pi;
+    if(!isMain)wrap.onclick=()=>investigate(s,pi,viewer);
+    const h=document.createElement('div');h.className='board-header';
+    const live=p.board.filter(c=>c.revealed&&!c.cleared).reduce((a,c)=>a+c.value,0);
+    h.innerHTML=`<span>${p.name}${pi===viewer?' (You)':''}</span><span class="score-badge">Now: ${live} · Total: ${p.totalScore}</span>`;
+    wrap.appendChild(h);
+    const grid=document.createElement('div');grid.className='board-grid';
+    p.board.forEach((c,ci)=>{const card=document.createElement('div');
+      if(c.cleared)card.className='board-card cleared';
+      else if(c.revealed){card.className='board-card revealed';card.textContent=c.value;card.style.color=C(c.value);}
+      else card.className='board-card face-down';
+      if(interactive&&isMain&&!c.cleared&&canClick(s,pi,ci,c,viewer)){card.classList.add('clickable');card.onclick=()=>cardClick(s,pi,ci,c);}
+      grid.appendChild(card);});
+    wrap.appendChild(grid);return wrap;
+  }
+  function canClick(s,pi,ci,c,viewer){
+    if(s.phase==='REVEAL'){if(mode!=='local'&&pi!==viewer)return false;if(s.tiebreakerPlayers.length)return s.tiebreakerPlayers.includes(pi)&&!c.revealed&&!c.cleared;return s.players[pi].revealCount<2&&!c.revealed&&!c.cleared;}
+    if(s.phase!=='PLAY'&&s.phase!=='FINAL_TURNS')return false;
+    if(s.currentPlayer!==pi)return false;if(mode!=='local'&&pi!==viewer)return false;
+    if(s.turnAction==='deck'||s.turnAction==='discard')return true;
+    if(s.turnAction==='must_reveal')return !c.revealed;return false;
+  }
+  function cardClick(s,pi,ci,c){
+    if(s.phase==='REVEAL'){act(pi,{action:s.tiebreakerPlayers.length?'tiebreaker':'reveal',index:ci});return;}
+    if(s.turnAction==='deck'||s.turnAction==='discard')act(pi,{action:'swap',index:ci});
+    else if(s.turnAction==='must_reveal'&&!c.revealed)act(pi,{action:'reveal_after_discard',index:ci});
+  }
+  // seat = which player's board was acted on (needed for local pass-and-play REVEAL,
+  // where each player flips their OWN cards). Online ignores it (server uses the
+  // authenticated connection's seat).
+  function act(seat,msg){ if(mode==='local')localAct(seat,msg); else net.send({type:'action',...msg}); }
+
+  async function runAnim(s,viewer){
+    const a=s.lastAction;if(!a)return;
+    if(a.type==='draw_deck'){ // everyone: card flips up on the deck (done in drawPiles via publicDrawn); active player also pulls into hand
+      SFX.draw();
+      if(a.player===viewer&&s.myDrawnCard!=null){animating=true;await Kit.flyToHeld($('uiDeck'),$('uiHeldCard'),{value:s.myDrawnCard,color:C(s.myDrawnCard),startFaceDown:false,reveal:false});animating=false;flushView();}
+      return;
+    }
+    if(a.type==='take_discard'){SFX.draw();if(a.player===viewer){animating=true;await Kit.flyToHeld($('uiDiscard'),$('uiHeldCard'),{value:a.value,color:C(a.value),startFaceDown:false,reveal:false});animating=false;flushView();}return;}
+    if(a.type==='swap'){animating=true;SFX.swap();await Kit.flyCard(cardAt(a.player,a.index),$('uiDiscard'),{value:a.oldVal,color:C(a.oldVal),startFaceDown:!a.wasRevealed,revealMidway:!a.wasRevealed,spin:a.wasRevealed});if(a.diff!=null&&a.diff!==0){const sg=a.diff>0?'+':'';Kit.floatText(boardEl(a.player),sg+a.diff,a.diff>0?'#10b981':'#ef4444');(a.diff>0?SFX.good:SFX.bad)();}animating=false;flushView();return;}
+    if(a.type==='discard_drawn'){animating=true;SFX.discard();await Kit.flyCard($('uiHeldCard'),$('uiDiscard'),{value:a.value,color:C(a.value),spin:true});animating=false;flushView();return;}
+    if(a.type==='reveal'||a.type==='reveal_after_discard'){const el=cardAt(a.player,a.card!=null?a.card:a.index);if(el){el.classList.remove('anim-flip');void el.offsetWidth;el.classList.add('anim-flip');}SFX.reveal();return;}
+    if(a.type==='triplet'){animating=true;SFX.triplet();Kit.floatText(boardEl(a.player),'Triplet!','#eab308');for(let k=0;k<a.indices.length;k++){Kit.flyCard(cardAt(a.player,a.indices[k]),$('uiDiscard'),{value:a.value,color:C(a.value),spin:true,duration:600});await sleep(120);}await sleep(500);animating=false;flushView();return;}
+  }
+  function investigate(s,pi,viewer){const box=$('investigateBox');box.innerHTML='';box.appendChild(boardDOM(s,s.players[pi],pi,true,false,viewer));$('investigateOverlay').classList.remove('hidden');}
+
+  window.GameClients['skyjo']={render};
+
+  /* ---- Local engine wrapper for Skyjo (offline play; mirrors server module) ---- */
+  // Minimal port of the engine just for local mode (no network).
+  window.LocalEngines['skyjo']=function(names){
+    const E=new SkyjoEngine(names);E.start();
+    return {
+      apply(seat,msg){
+        if(msg.action==='reveal')E.revealInitial(seat,msg.index);
+        else if(msg.action==='tiebreaker')E.revealTiebreaker(seat,msg.index);
+        else if(msg.action==='draw_deck')E.drawDeck(seat);
+        else if(msg.action==='take_discard')E.takeDiscard(seat);
+        else if(msg.action==='swap')E.swap(seat,msg.index);
+        else if(msg.action==='discard_drawn')E.discardDrawnCard(seat);
+        else if(msg.action==='reveal_after_discard')E.revealAfterDiscard(seat,msg.index);
+        // auto-complete deferred turn-end locally
+        if(E.turnAction==='turn_end_delay')setTimeout(()=>{E.completeTurnEnd();renderLocal();},1200);
+      },
+      next(){if(E.phase==='GAME_OVER')E.newGame();else E.nextRound();},
+      actor(){return E.currentPlayer;},
+      viewFor(seat){const s=E.getStateFor(seat);const over=E.phase==='GAME_OVER';let summary;if(E.phase==='ROUND_END'||E.phase==='GAME_OVER'){const min=Math.min(...E.players.map(p=>p.totalScore));summary={rows:E.players.map((p,i)=>({seat:i,name:p.name,score:p.totalScore,delta:p.roundScore})),winners:E.players.map((p,i)=>p.totalScore===min?i:-1).filter(i=>i>=0)};}return{game:'skyjo',phase:E.phase,over,yourSeat:seat,summary,skyjo:s};}
+    };
+  };
+})();
+
+/* ---- Skyjo engine (client copy, used ONLY for local offline play) ---- */
+function skyjoDeck(){const d=[];for(let i=0;i<5;i++)d.push(-2);for(let i=0;i<10;i++)d.push(-1);for(let i=0;i<15;i++)d.push(0);for(let v=1;v<=12;v++)for(let i=0;i<10;i++)d.push(v);for(let i=d.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[d[i],d[j]]=[d[j],d[i]];}return d;}
+class SkyjoEngine{
+  constructor(names){this.players=names.map(n=>({name:n,board:Array.from({length:12},()=>({value:0,revealed:false,cleared:false})),roundScore:0,totalScore:0,revealCount:0}));this.deck=[];this.discard=[];this.phase='REVEAL';this.round=1;this.currentPlayer=0;this.roundEnder=-1;this.finalTurnsLeft=0;this.drawnCard=null;this.turnAction=null;this.tiebreakerPlayers=[];this.lastAction=null;this.pendingTransition=null;}
+  _deal(){this.deck=skyjoDeck();for(const p of this.players){for(const c of p.board){c.value=this.deck.pop();c.revealed=false;c.cleared=false;}p.revealCount=0;p.roundScore=0;}this.discard=[this.deck.pop()];this.phase='REVEAL';this.roundEnder=-1;this.finalTurnsLeft=0;this.currentPlayer=0;this.drawnCard=null;this.turnAction=null;this.tiebreakerPlayers=[];this.lastAction=null;this.pendingTransition=null;}
+  start(){this._deal();} nextRound(){this.round++;this._deal();} newGame(){this.round=1;for(const p of this.players)p.totalScore=0;this._deal();}
+  revealInitial(pi,ci){if(this.phase!=='REVEAL')return;const p=this.players[pi];if(p.revealCount>=2)return;const c=p.board[ci];if(c.revealed||c.cleared)return;c.revealed=true;p.revealCount++;this.lastAction={type:'reveal',player:pi,card:ci,value:c.value,t:Date.now()};if(this.players.every(pl=>pl.revealCount>=2))this._starter();}
+  _starter(){const sums=this.players.map((p,i)=>({i,sum:p.board.filter(c=>c.revealed&&!c.cleared).reduce((a,c)=>a+c.value,0)}));const mx=Math.max(...sums.map(s=>s.sum));const tied=sums.filter(s=>s.sum===mx).map(s=>s.i);this.turnAction='turn_end_delay';this.pendingTransition={tied};}
+  revealTiebreaker(pi,ci){if(!this.tiebreakerPlayers.includes(pi))return;const p=this.players[pi];if(p.revealCount>=2)return;const c=p.board[ci];if(c.revealed||c.cleared)return;c.revealed=true;p.revealCount++;this.lastAction={type:'reveal',player:pi,card:ci,value:c.value,t:Date.now()};if(this.tiebreakerPlayers.every(i=>this.players[i].revealCount>=2)){const sums=this.tiebreakerPlayers.map(i=>({i,sum:this.players[i].board.filter(c=>c.revealed&&!c.cleared).reduce((a,c)=>a+c.value,0)}));const mx=Math.max(...sums.map(s=>s.sum));this.turnAction='turn_end_delay';this.pendingTransition={tied:sums.filter(s=>s.sum===mx).map(s=>s.i)};}}
+  drawDeck(pi){if(this.phase!=='PLAY'&&this.phase!=='FINAL_TURNS')return;if(this.currentPlayer!==pi||this.turnAction!==null)return;if(this.deck.length===0){this.deck=this.discard.slice(0,-1);this.discard=[this.discard[this.discard.length-1]];for(let i=this.deck.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[this.deck[i],this.deck[j]]=[this.deck[j],this.deck[i]];}}this.drawnCard=this.deck.pop();this.turnAction='deck';this.lastAction={type:'draw_deck',player:pi,t:Date.now()};}
+  takeDiscard(pi){if(this.currentPlayer!==pi||this.turnAction!==null)return;if(!this.discard.length)return;this.drawnCard=this.discard.pop();this.turnAction='discard';this.lastAction={type:'take_discard',player:pi,value:this.drawnCard,t:Date.now()};}
+  swap(pi,bi){if(this.currentPlayer!==pi||this.turnAction===null||this.turnAction==='must_reveal')return;const p=this.players[pi];const o=p.board[bi];if(o.cleared)return;const wasR=o.revealed,ov=o.value;this.discard.push(o.value);p.board[bi]={value:this.drawnCard,revealed:true,cleared:false};const diff=wasR?(ov-this.drawnCard):null;this.lastAction={type:'swap',player:pi,index:bi,diff,oldVal:ov,wasRevealed:wasR,t:Date.now()};this._end();}
+  discardDrawnCard(pi){if(this.currentPlayer!==pi||this.turnAction!=='deck')return;const v=this.drawnCard;this.discard.push(v);this.drawnCard=null;this.turnAction='must_reveal';this.lastAction={type:'discard_drawn',player:pi,value:v,t:Date.now()};}
+  revealAfterDiscard(pi,bi){if(this.currentPlayer!==pi||this.turnAction!=='must_reveal')return;const c=this.players[pi].board[bi];if(c.revealed||c.cleared)return;c.revealed=true;this.lastAction={type:'reveal_after_discard',player:pi,index:bi,value:c.value,t:Date.now()};this._end();}
+  checkTriplets(pi){const p=this.players[pi];for(let col=0;col<4;col++){const ix=[col,col+4,col+8],cs=ix.map(i=>p.board[i]);if(cs.every(c=>c.revealed&&!c.cleared)&&cs[0].value===cs[1].value&&cs[1].value===cs[2].value){ix.forEach(i=>p.board[i].cleared=true);for(let i=0;i<3;i++)this.discard.push(cs[0].value);this.lastAction={type:'triplet',player:pi,value:cs[0].value,indices:ix,t:Date.now()};}}}
+  _end(){this.checkTriplets(this.currentPlayer);this.drawnCard=null;this.turnAction='turn_end_delay';}
+  completeTurnEnd(){if(this.turnAction!=='turn_end_delay')return;this.turnAction=null;if(this.pendingTransition){const tied=this.pendingTransition.tied;if(tied.length===1){this.currentPlayer=tied[0];this.phase='PLAY';this.lastAction={type:'starter',player:tied[0],t:Date.now()};this.tiebreakerPlayers=[];}else{this.tiebreakerPlayers=tied;for(const i of tied)this.players[i].revealCount=1;}this.pendingTransition=null;return;}const p=this.players[this.currentPlayer];if(p.board.every(c=>c.cleared||c.revealed)&&this.phase==='PLAY'){this.phase='FINAL_TURNS';this.roundEnder=this.currentPlayer;this.finalTurnsLeft=this.players.length-1;}if(this.phase==='FINAL_TURNS'){if(this.currentPlayer!==this.roundEnder)this.finalTurnsLeft--;if(this.finalTurnsLeft<=0){this._calc();return;}}this.currentPlayer=(this.currentPlayer+1)%this.players.length;}
+  _calc(){for(const p of this.players){for(const c of p.board)if(!c.cleared)c.revealed=true;this.checkTriplets(this.players.indexOf(p));p.roundScore=p.board.filter(c=>!c.cleared).reduce((a,c)=>a+c.value,0);}const e=this.players[this.roundEnder];const mo=Math.min(...this.players.filter((_,i)=>i!==this.roundEnder).map(o=>o.roundScore));if(e.roundScore>=mo&&e.roundScore>0)e.roundScore*=2;for(const p of this.players)p.totalScore+=p.roundScore;this.phase=this.players.some(p=>p.totalScore>=100)?'GAME_OVER':'ROUND_END';}
+  getStateFor(viewer){const s={phase:this.phase,round:this.round,currentPlayer:this.currentPlayer,roundEnder:this.roundEnder,finalTurnsLeft:this.finalTurnsLeft,turnAction:this.turnAction,tiebreakerPlayers:[...this.tiebreakerPlayers],lastAction:this.lastAction,deckCount:this.deck.length,discardTop:this.discard.length?this.discard[this.discard.length-1]:null,players:this.players.map(p=>({name:p.name,totalScore:p.totalScore,roundScore:p.roundScore,revealCount:p.revealCount,board:p.board.map(c=>({value:(c.revealed||c.cleared)?c.value:null,revealed:c.revealed,cleared:c.cleared}))}))};s.myDrawnCard=(this.turnAction==='deck'||this.turnAction==='discard')?this.drawnCard:null;s.publicDrawn=this.turnAction==='deck'?this.drawnCard:null;s.viewerIndex=viewer;return s;}
+}
