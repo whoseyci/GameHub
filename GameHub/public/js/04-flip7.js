@@ -46,7 +46,7 @@
     const cntEl=dealerWrap.querySelector('.cnt');if(cntEl)cntEl.textContent='deck '+s.deckCount+' \u00b7 out '+s.discardCount;
     const main=$('mainBoardsContainer');main.innerHTML='';
     const pending=s.pendingAction&&s.pendingAction.from===viewer;
-    const focus = eventFocus!=null ? eventFocus : (window._f7InspectSeat!=null ? window._f7InspectSeat : (mode==='local' ? s.current : (viewer>=0 ? viewer : s.current)));
+    const focus = eventFocus!=null ? eventFocus : (mode==='local' ? s.current : (viewer>=0 ? viewer : s.current));
     s.players.forEach((p,i)=>{
       if(i!==focus){mini.appendChild(miniDOM(s,p,i,viewer,pending));return;}
       const wrap=document.createElement('div');const busted=p.status==='busted';
@@ -72,7 +72,7 @@
   }
   function miniDOM(s,p,i,viewer,pending){
     const b=document.createElement('button');b.className='f7-mini-board'+(s.current===i?' active':'')+(p.status==='busted'?' busted':'');
-    b.onclick=()=>{window._f7InspectSeat=i;const oldView=window._renderView;if(oldView){const v=JSON.parse(JSON.stringify(oldView));v.flip7.viewerSeat=i;draw(v);}};
+    b.onclick=()=>inspect(i);
     const nums=p.nums.slice(0,10).map(n=>`<span class="f7-mini-card num">${n}</span>`).join('');
     const mods=p.mods.slice(0,4).map(m=>`<span class="f7-mini-card mod">${m}</span>`).join('');
     const second=p.second?'<span class="f7-mini-card act">♥</span>':'';
@@ -80,6 +80,19 @@
     const canTarget=pending&&p.status==='active'&&!(s.pendingAction.kind==='give_second'&&i===viewer);
     if(canTarget){b.classList.add('targetable');b.onclick=()=>net.spectating?null:act(viewer,{action:'target',target:i});}
     return b;
+  }
+
+
+  function inspect(seat){
+    const view=window._renderView;if(!view||view.game!=='flip7')return;
+    const s=view.flip7,p=s.players[seat];if(!p)return;
+    const seats=s.players.map((_,i)=>i).filter(i=>i!==view.flip7.viewerSeat);
+    const idx=seats.indexOf(seat),prev=seats[(idx-1+seats.length)%seats.length],next=seats[(idx+1)%seats.length];
+    const row=[...p.nums.map(n=>cardEl('num',n,{busted:p.status==='busted'})),...p.mods.map(m=>cardEl('mod',m,{busted:p.status==='busted'})),...(p.second?[cardEl('act','second')]:[])];
+    const cards=document.createElement('div');cards.className='f7-row';row.forEach(c=>cards.appendChild(c));
+    const box=$('investigateBox');box.innerHTML=`<div class="inspect-head"><button class="icon-btn" onclick="window.GameClients['flip7'].inspect(${prev})">‹</button><b>${p.name} · ${p.status}</b><button class="icon-btn" onclick="window.GameClients['flip7'].inspect(${next})">›</button><button class="icon-btn" onclick="$('investigateOverlay').classList.add('hidden')">✕</button></div><div class="player-board f7-focus-board"><div class="board-header"><span>${p.name}</span><span class="score-badge">Now ${p.live} · Total ${p.banked} · ${p.unique}/7</span></div></div>`;
+    box.querySelector('.player-board').appendChild(cards);
+    $('investigateOverlay').classList.remove('hidden');
   }
 
   function drawControls(view){
@@ -155,6 +168,14 @@
     });
   }
 
+
+  function animView(view){
+    if(!prevView||!prevView.flip7)return view;
+    const v=JSON.parse(JSON.stringify(prevView));
+    v.flip7.viewerSeat=view.flip7.viewerSeat;
+    return v;
+  }
+
   // ---- play an event timeline ----
   let lastSeq=-1;
   async function playEvents(view){
@@ -183,20 +204,20 @@
   async function playOne(e,view){
     const s=view.flip7;
     switch(e.type){
-      case 'draw_start':{ eventFocus=e.player; draw(view); SFX.draw(); await wiggleReveal(e.prob||0); break; }
-      case 'card':{ eventFocus=e.player; draw(view); const row=rowOf(e.player); if(e.flip3)await sleep(SPEED.flip3Gap*0.2); await dealTravel(row,e.card,e.seq); break; }
+      case 'draw_start':{ eventFocus=e.player; draw(animView(view)); SFX.draw(); await wiggleReveal(e.prob||0); break; }
+      case 'card':{ eventFocus=e.player; draw(animView(view)); const row=rowOf(e.player); if(e.flip3)await sleep(SPEED.flip3Gap*0.2); await dealTravel(row,e.card,e.seq); break; }
       case 'bust':{ eventFocus=e.player; draw(view); SFX.bad(); const b=boardOf(e.player); if(b){b.style.animation='shakeX .5s ease';setTimeout(()=>b&&(b.style.animation=''),520);} Kit.turnBanner((s.players[e.player]?.name||'')+' BUST!',false); await sleep(SPEED.beat); break; }
       case 'flip7':{ SFX.win(); Kit.confetti(); Kit.turnBanner('FLIP 7! +15',true); await sleep(SPEED.beat); break; }
       case 'flip3_abandon':{ Kit.turnBanner('Flip 3 abandoned',false); await sleep(SPEED.beat*0.6); break; }
       case 'second_used':{ SFX.good(); Kit.turnBanner('Second Chance!',true); await sleep(SPEED.beat); break; }
       case 'stay':{ SFX.good(); break; }
-      case 'action_card':{ eventFocus=e.player; draw(view); const row=rowOf(e.player); await dealTravel(row,{kind:'act',v:e.kind},e.seq); await sleep(SPEED.beat*0.2); break; }
+      case 'action_card':{ eventFocus=e.player; draw(animView(view)); const row=rowOf(e.player); await dealTravel(row,{kind:'act',v:e.kind},e.seq); await sleep(SPEED.beat*0.2); break; }
       case 'play_action':{
         // first show the action card travelling board -> board, then apply the effect
-        eventFocus=e.from; draw(view);
+        eventFocus=e.from; draw(animView(view));
         const fromRow=rowOf(e.from),toRow=rowOf(e.target);
         await Kit.CardMotion.move('flip7:action:'+e.seq,fromRow,toRow,{value:e.kind,color:'#b45309',startFaceDown:false,spin:true,duration:SPEED.actionFly});
-        eventFocus=e.target; draw(view);
+        eventFocus=e.target; draw(animView(view));
         actionVfx(e.kind); SFX[e.kind==='freeze'?'discard':'triplet']();
         if(e.auto)Kit.turnBanner((e.kind==='freeze'?'\u2744 ':'\ud83d\udd03 ')+'on self!',false);
         await sleep(SPEED.beat*0.5); break;
@@ -219,7 +240,7 @@
   function act(seat,msg){ if(mode==='local')localAct(seat,msg); else net.send({type:'action',...msg}); }
   // reset the timeline cursor when (re)entering a game
   window._flip7ResetSeq=function(){lastSeq=-1;};
-  window.GameClients['flip7']={render};
+  window.GameClients['flip7']={render,inspect};
 
   // local engine wrapper
   window.LocalEngines['flip7']=function(names){

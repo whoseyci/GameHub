@@ -202,9 +202,7 @@ window.GameClients = window.GameClients || {};
     const isColor = s.phase === 'COLOR_PHASE';
     const pendingWhite = isWhite && s.pendingWhiteDecisions.includes(view.yourSeat);
     const activeName = s.allPlayers.find(p => p.seat === s.activeSeat)?.name || 'Active player';
-    if(window._qwixxFocusSeat == null || !s.allPlayers.some(p => p.seat === window._qwixxFocusSeat)) window._qwixxFocusSeat = view.yourSeat >= 0 ? view.yourSeat : s.activeSeat;
-    if(mode === 'local') window._qwixxFocusSeat = view.yourSeat; // local device follows whose turn it is
-    const focusSeat = window._qwixxFocusSeat;
+    const focusSeat = view.yourSeat >= 0 ? view.yourSeat : s.activeSeat;
     const focused = s.allPlayers.find(p => p.seat === focusSeat) || s.allPlayers[0];
     const others = s.allPlayers.filter(p => p.seat !== focused.seat);
 
@@ -221,7 +219,7 @@ window.GameClients = window.GameClients || {};
 
     const miniTop = document.createElement('div');
     miniTop.className = 'qwixx-top-mini-strip';
-    miniTop.innerHTML = others.map(player => `<button class="qwixx-mini-wrap${player.active ? ' active' : ''}" onclick="window._qwixxFocusSeat=${player.seat}; window.GameClients['qwixx'].render(window._renderView)">${renderMiniBoard(player, s, view.yourSeat)}</button>`).join('');
+    miniTop.innerHTML = others.map(player => `<button class="qwixx-mini-wrap${player.active ? ' active' : ''}" onclick="window.GameClients['qwixx'].inspect(${player.seat})">${renderMiniBoard(player, s, view.yourSeat)}</button>`).join('');
     if(others.length) $('topArea').appendChild(miniTop);
 
     const diceZone = document.createElement('div');
@@ -250,7 +248,7 @@ window.GameClients = window.GameClients || {};
     const rec = focused.seat === s.activeSeat ? `<div class="qwixx-reco">💡 ${recommendedMove(s, focused)}</div>` : '';
     boards.innerHTML = `
       <div class="qwixx-focus-card player-board${focused.active ? ' active' : ''}">
-        <div class="board-header"><span>${focused.active ? '🎲 ' : ''}${focused.name}${focused.seat === view.yourSeat ? ' (you)' : ''}</span><span class="score-badge">total ${focused.score}</span></div>
+        <div class="board-header"><span>${focused.active ? '🎲 ' : ''}${focused.name}${focused.seat === view.yourSeat ? ' (you)' : ''}</span><span class="score-badge">Active: ${activeName} · total ${focused.score}</span></div>
         ${rec}
         ${renderScorecard(focused, s, view.yourSeat, false)}
       </div>`;
@@ -263,13 +261,24 @@ window.GameClients = window.GameClients || {};
     if(s.phase === 'GAME_OVER') showSummary(view);
   }
 
+
+  function inspect(seat){
+    const view=window._renderView;if(!view||view.game!=='qwixx')return;
+    const s=view.state;const player=s.allPlayers.find(p=>p.seat===seat);if(!player)return;
+    const seats=s.allPlayers.filter(p=>p.seat!==view.yourSeat).map(p=>p.seat);
+    const idx=seats.indexOf(seat),prev=seats[(idx-1+seats.length)%seats.length],next=seats[(idx+1)%seats.length];
+    const box=$('investigateBox');
+    box.innerHTML=`<div class="inspect-head"><button class="icon-btn" onclick="window.GameClients['qwixx'].inspect(${prev})">‹</button><b>${player.name}${player.active?' 🎲':''}</b><button class="icon-btn" onclick="window.GameClients['qwixx'].inspect(${next})">›</button><button class="icon-btn" onclick="$('investigateOverlay').classList.add('hidden')">✕</button></div><div class="player-board qwixx-focus-card">${renderScorecard(player,s,view.yourSeat,false)}</div>`;
+    $('investigateOverlay').classList.remove('hidden');
+  }
+
   function act(action, msg = {}){
     const view = window._renderView;
     if(mode === 'local') localAct(view.yourSeat, { action, ...msg });
     else net.send({ type:'action', action, ...msg });
   }
 
-  window.GameClients['qwixx'] = { render, act };
+  window.GameClients['qwixx'] = { render, act, inspect };
 
   class QwixxEngine {
     constructor(names){

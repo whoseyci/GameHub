@@ -142,7 +142,14 @@
     if(a.type==='reveal'||a.type==='reveal_after_discard'){const el=cardAt(a.player,a.card!=null?a.card:a.index);if(el){el.classList.remove('anim-flip');void el.offsetWidth;el.classList.add('anim-flip');}SFX.reveal();return;}
     if(a.type==='triplet'){animating=true;SFX.triplet();Kit.floatText(boardEl(a.player),'Triplet!','#eab308');for(let k=0;k<a.indices.length;k++){Kit.flyCard(cardAt(a.player,a.indices[k]),$('uiDiscard'),{value:a.value,color:C(a.value),spin:true,duration:600});await sleep(120);}await sleep(500);animating=false;flushView();return;}
   }
-  function investigate(s,pi,viewer){const box=$('investigateBox');box.innerHTML='';box.appendChild(boardDOM(s,s.players[pi],pi,true,false,viewer));$('investigateOverlay').classList.remove('hidden');}
+  function investigate(s,pi,viewer){
+    const seats=s.players.map((_,i)=>i).filter(i=>i!==viewer);
+    const idx=seats.indexOf(pi),prev=seats[(idx-1+seats.length)%seats.length],next=seats[(idx+1)%seats.length];
+    const box=$('investigateBox');box.innerHTML=`<div class="inspect-head"><button class="icon-btn" onclick="window._skyjoInspect(${prev})">‹</button><b>${s.players[pi].name}</b><button class="icon-btn" onclick="window._skyjoInspect(${next})">›</button><button class="icon-btn" onclick="$('investigateOverlay').classList.add('hidden')">✕</button></div>`;
+    box.appendChild(boardDOM(s,s.players[pi],pi,true,false,viewer));
+    window._skyjoLastInspect={s,viewer};window._skyjoInspect=(seat)=>investigate(window._skyjoLastInspect.s,seat,window._skyjoLastInspect.viewer);
+    $('investigateOverlay').classList.remove('hidden');
+  }
 
   window.GameClients['skyjo']={render};
 
