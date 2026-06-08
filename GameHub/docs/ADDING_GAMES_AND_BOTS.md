@@ -47,7 +47,8 @@ Rules:
 
 ## Frontend client contract
 
-A browser client registers itself as:
+Build one renderer for both online multiplayer and local multiplayer. A browser
+client registers itself as:
 
 ```js
 window.GameClients['hearts'] = {
@@ -55,6 +56,24 @@ window.GameClients['hearts'] = {
   act(action, extra) {},
 };
 ```
+
+The recommended view shape is a **table view**:
+
+```js
+{
+  game: 'hearts',
+  yourSeat: 2,              // in local mode this should be whose turn it is
+  hearts: {
+    activeSeat: 2,
+    allPlayers: [ ... ],    // enough public info to draw small opponent boards
+    yourPrivateInfo: ...    // only the viewer/actor's secrets
+  }
+}
+```
+
+Render one full board for `view.yourSeat`/focused seat and compact clickable boards
+for opponents. In local multiplayer, `localEngine.actor()` should return the seat
+whose board should be shown full-size; this makes local and online use the same UI.
 
 Optional offline/local play:
 

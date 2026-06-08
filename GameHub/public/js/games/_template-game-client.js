@@ -13,7 +13,8 @@
 
   function send(action, extra = {}) {
     const msg = { action, ...extra };
-    if (typeof localAct === 'function' && mode === 'local') localAct(null, msg);
+    const seat = window._renderView?.yourSeat ?? 0;
+    if (typeof localAct === 'function' && mode === 'local') localAct(seat, msg);
     else if (typeof net !== 'undefined') net.send({ type: 'action', ...msg });
   }
 

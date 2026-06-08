@@ -17,14 +17,14 @@ window.GameClients = window.GameClients || {};
     if(i === row.nums.length - 1 && row.marks.length < 5) return false;
     return true;
   }
+  function rowPoints(row){
+    let m = row.marks.length;
+    if(row.marks.includes(row.nums.length - 1)) m++; // lock symbol
+    return SCORE_BY_MARKS[Math.min(m, SCORE_BY_MARKS.length - 1)];
+  }
   function scoreRows(rows, penalties){
     let total = 0;
-    COLORS.forEach(c => {
-      const row = rows[c]; if(!row) return;
-      let m = row.marks.length;
-      if(row.marks.includes(row.nums.length - 1)) m++; // lock symbol
-      total += SCORE_BY_MARKS[Math.min(m, SCORE_BY_MARKS.length - 1)];
-    });
+    COLORS.forEach(c => { const row = rows[c]; if(row) total += rowPoints(row); });
     return total - penalties * 5;
   }
   function markHintsFor(state, player){
@@ -37,27 +37,36 @@ window.GameClients = window.GameClients || {};
       hints.get(k).push(h);
     };
 
+    const whiteSum = dice.w[0] + dice.w[1];
+    const whiteIdxByColor = {};
     if(state.phase === 'WHITE_PHASE' && state.pendingWhiteDecisions.includes(player.seat)){
-      const sum = dice.w[0] + dice.w[1];
       COLORS.forEach(color => {
         const row = player.rows[color];
-        const idx = row.nums.indexOf(sum);
-        if(canMarkIndex(state, color, row, idx)) add(color, idx, { kind:'white', label:`W ${sum}`, title:`White dice ${dice.w[0]}+${dice.w[1]}=${sum}` });
+        const idx = row.nums.indexOf(whiteSum);
+        whiteIdxByColor[color] = canMarkIndex(state, color, row, idx) ? idx : -1;
+        if(whiteIdxByColor[color] >= 0) add(color, idx, { kind:'white', actionable:true, label:`W ${whiteSum}`, title:`White dice ${dice.w[0]}+${dice.w[1]}=${whiteSum}` });
       });
     }
 
-    // Only the active player sees colored-die choices, and only after the shared white action.
-    if(state.phase === 'COLOR_PHASE' && player.seat === state.activeSeat){
+    // The active player sees all six-dice possibilities at once. During WHITE_PHASE,
+    // colored hints are previews for the follow-up color action; during COLOR_PHASE
+    // they are actionable. If the preview shares a row with a possible white mark,
+    // prefer colored marks to the right of that white mark because white must be
+    // resolved first on the same row.
+    if((state.phase === 'WHITE_PHASE' || state.phase === 'COLOR_PHASE') && player.seat === state.activeSeat){
       COLORS.forEach(color => {
         const die = dice[COLOR_KEY[color]];
         if(!die) return;
         const row = player.rows[color];
-        const options = [dice.w[0], dice.w[1]]
+        let options = [dice.w[0], dice.w[1]]
           .map((w, wi) => ({ wi, w, sum: w + die, idx: row.nums.indexOf(w + die) }))
-          .filter(o => canMarkIndex(state, color, row, o.idx))
-          .sort((a,b) => a.idx - b.idx);
-        // Smart/default view: show the left-most legal colored-die mark for that row.
-        if(options[0]) add(color, options[0].idx, { kind:'color', color, label:`${color[0].toUpperCase()} ${options[0].sum}`, title:`${color} die: white ${options[0].w}+${die}=${options[0].sum}` });
+          .filter(o => canMarkIndex(state, color, row, o.idx));
+        if(state.phase === 'WHITE_PHASE' && whiteIdxByColor[color] >= 0){
+          const compatible = options.filter(o => o.idx > whiteIdxByColor[color]);
+          if(compatible.length) options = compatible;
+        }
+        options.sort((a,b) => a.idx - b.idx);
+        if(options[0]) add(color, options[0].idx, { kind:'color', actionable:state.phase === 'COLOR_PHASE', color, label:`${color[0].toUpperCase()} ${options[0].sum}`, title:`${color} die: white ${options[0].w}+${die}=${options[0].sum}${state.phase === 'WHITE_PHASE' ? ' (preview after white)' : ''}` });
       });
     }
 
@@ -79,9 +88,14 @@ window.GameClients = window.GameClients || {};
     </div>`;
   }
 
-  function renderScorecard(player, state, viewerSeat){
+  function actionLegalForCell(state, player, color, row, i, hints){
+    if(!canMarkIndex(state, color, row, i)) return false;
+    const actionableHint = (hints.get(`${color}:${i}`) || []).some(h => h.actionable);
+    return actionableHint && (player.seat === state.activeSeat || state.pendingWhiteDecisions.includes(player.seat));
+  }
+  function renderScorecard(player, state, viewerSeat, compact=false){
     const hints = markHintsFor(state, player);
-    let html = `<div class="qwixx-scorecard${player.active ? ' active' : ''}">`;
+    let html = `<div class="qwixx-scorecard${player.active ? ' active' : ''}${compact ? ' compact' : ''}">`;
     COLORS.forEach(color => {
       const row = player.rows[color];
       const locked = state.locked.includes(color);
@@ -93,9 +107,9 @@ window.GameClients = window.GameClients || {};
       row.nums.forEach((n, i) => {
         const marked = row.marks.includes(i);
         const unavailable = !marked && (i <= last || locked);
-        const legal = canMarkIndex(state, color, row, i);
         const cellHints = hints.get(`${color}:${i}`) || [];
-        const hintHtml = cellHints.map(h => `<span class="qwixx-hint ${h.kind === 'white' ? 'white' : color}" title="${h.title}">${h.label}</span>`).join('');
+        const legal = actionLegalForCell(state, player, color, row, i, hints);
+        const hintHtml = compact ? '' : cellHints.map(h => `<span class="qwixx-hint ${h.kind === 'white' ? 'white' : color}${h.actionable ? '' : ' preview'}" title="${h.title}">${h.label}</span>`).join('');
         let cls = 'qwixx-cell';
         if(marked) cls += ' x';
         if(unavailable) cls += ' bad';
@@ -105,7 +119,8 @@ window.GameClients = window.GameClients || {};
         html += `<div class="${cls}" ${click}><span class="qwixx-num">${marked ? '✕' : n}</span>${hintHtml}</div>`;
       });
       const count = row.marks.length + (row.marks.includes(row.nums.length - 1) ? 1 : 0);
-      html += `</div><div class="qwixx-row-score">${locked || pendingLock ? '🔒' : count}</div></div>`;
+      const pts = rowPoints(row);
+      html += `</div><div class="qwixx-row-score">${locked || pendingLock ? '🔒' : `${count}<small>${pts}</small>`}</div></div>`;
     });
     const you = player.seat === viewerSeat ? ' you' : '';
     html += `</div><div class="qwixx-player-foot${you}">Score ${scoreRows(player.rows, player.penalties)} · Penalties ${player.penalties}/4</div>`;
@@ -157,11 +172,17 @@ window.GameClients = window.GameClients || {};
     boardContainer.innerHTML = '';
     const boards = document.createElement('div');
     boards.className = 'qwixx-boards';
-    const sortedPlayers = [...s.allPlayers].sort((a,b) => (a.seat === view.yourSeat ? -1 : b.seat === view.yourSeat ? 1 : a.seat - b.seat));
-    boards.innerHTML = sortedPlayers.map(player => `<div class="player-board qwixx-player-board${player.active ? ' active' : ''}">
-      <div class="board-header"><span>${player.active ? '🎲 ' : ''}${player.name}${player.seat === view.yourSeat ? ' (you)' : ''}</span><span class="score-badge">${player.waiting ? 'thinking…' : 'score '+player.score}</span></div>
-      ${renderScorecard(player, s, view.yourSeat)}
-    </div>`).join('');
+    if(window._qwixxFocusSeat == null || !s.allPlayers.some(p => p.seat === window._qwixxFocusSeat)) window._qwixxFocusSeat = view.yourSeat >= 0 ? view.yourSeat : s.activeSeat;
+    if(mode === 'local') window._qwixxFocusSeat = view.yourSeat; // local device follows whose turn it is
+    const focusSeat = window._qwixxFocusSeat;
+    const sortedPlayers = [...s.allPlayers].sort((a,b) => (a.seat === focusSeat ? -1 : b.seat === focusSeat ? 1 : a.seat - b.seat));
+    boards.innerHTML = sortedPlayers.map(player => {
+      const compact = player.seat !== focusSeat;
+      return `<div class="player-board qwixx-player-board${player.active ? ' active' : ''}${compact ? ' compact' : ''}" onclick="window._qwixxFocusSeat=${player.seat}; window.GameClients['qwixx'].render(window._renderView)">
+        <div class="board-header"><span>${player.active ? '🎲 ' : ''}${player.name}${player.seat === view.yourSeat ? ' (you)' : ''}</span><span class="score-badge">${player.waiting ? 'thinking…' : 'score '+player.score}</span></div>
+        ${renderScorecard(player, s, view.yourSeat, compact)}
+      </div>`;
+    }).join('');
     boardContainer.appendChild(boards);
 
     $('statusBar').textContent = s.phase === 'GAME_OVER' ? 'Game Over'
