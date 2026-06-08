@@ -89,6 +89,19 @@ describe("Qwixx rule regressions", () => {
     expect(state.phase).toBe("COLOR_PHASE");
   });
 
+  it("lets the active player take a colored mark before resolving white", () => {
+    const state: any = Qwixx.create(["A", "B"]);
+    state.dice = { w: [2, 5], r: 4, y: 3, g: 6, b: 1 };
+    Qwixx.applyAction(state, 0, { action: "mark", c: "red", i: 5, use: "color" }); // red 7? no, red idx5 = 7; use white? Let's target red 6 at idx4 via 2+4
+    expect(state.players[0].rows.red.marks).toEqual([]);
+    Qwixx.applyAction(state, 0, { action: "mark", c: "red", i: 4, use: "color" });
+    expect(state.players[0].rows.red.marks).toContain(4);
+    expect(state.activeColorUsed).toBe(true);
+    // White 7 remains legal in other rows but not in red after red color was chosen first.
+    Qwixx.applyAction(state, 0, { action: "mark", c: "yellow", i: 5, use: "white" });
+    expect(state.players[0].rows.yellow.marks).toContain(5);
+  });
+
   it("blocks marks in a locked row after the shared white action resolves", () => {
     const state: any = Qwixx.create(["A", "B"]);
     state.dice = { w: [6, 6], r: 6, y: 2, g: 3, b: 4 };

@@ -67,6 +67,14 @@ const Kit=(()=>{
     const cards=document.querySelectorAll('#mainBoardsContainer .board-card, #miniBoardsContainer .board-card');
     cards.forEach((c,i)=>{c.classList.remove('anim-deal');void c.offsetWidth;c.style.animationDelay=(i%12)*0.035+'s';c.classList.add('anim-deal');if(i%4===0)setTimeout(()=>SFX.deal(),(i%12)*35);setTimeout(()=>{c.style.animationDelay='';c.classList.remove('anim-deal');},700+(i%12)*40);});
   }
+  function rollDice(container,dice,{duration=760,size=42}={}){
+    return new Promise(res=>{
+      if(!container){res();return;}
+      const colorCls={white:'white',red:'red',yellow:'yellow',green:'green',blue:'blue',r:'red',y:'yellow',g:'green',b:'blue'};
+      container.innerHTML=dice.map((d,i)=>`<div class="kit-die-scene" style="--die-size:${size}px;--rx:${720+Math.random()*540}deg;--ry:${540+Math.random()*720}deg;--rz:${180+Math.random()*360}deg;animation-delay:${i*35}ms"><div class="kit-die ${colorCls[d.color]||d.color||'white'}"><span>${d.value}</span></div></div>`).join('');
+      setTimeout(()=>{container.querySelectorAll('.kit-die-scene').forEach(el=>el.classList.add('settled'));res();},duration);
+    });
+  }
   function confetti(){
     const cv=document.createElement('canvas');cv.style.cssText='position:fixed;inset:0;pointer-events:none;z-index:500';cv.width=innerWidth;cv.height=innerHeight;document.body.appendChild(cv);
     const x=cv.getContext('2d'),cols=['#3b82f6','#10b981','#eab308','#ef4444','#8b5cf6','#0ea5e9','#f59e0b'],ps=[];
@@ -74,7 +82,7 @@ const Kit=(()=>{
     burst(0.08);burst(0.92);setTimeout(()=>{burst(0.2);burst(0.8);},350);const end=Date.now()+3800;
     (function f(){x.clearRect(0,0,cv.width,cv.height);for(const p of ps){p.vy+=0.28;p.vx*=0.99;p.x+=p.vx;p.y+=p.vy;p.a+=p.va;x.save();x.translate(p.x,p.y);x.rotate(p.a);x.fillStyle=p.c;x.fillRect(-p.r/2,-p.r/2,p.r,p.r*0.6);x.restore();}if(Date.now()<end)requestAnimationFrame(f);else cv.remove();})();
   }
-  return {cardColor,floatText,turnBanner,flyCard,flyToHeld,dealCascade,confetti};
+  return {cardColor,floatText,turnBanner,flyCard,flyToHeld,dealCascade,rollDice,confetti};
 })();
 
 /* ====================== SOUND (arcade) ====================== */

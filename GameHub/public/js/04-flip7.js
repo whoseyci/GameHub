@@ -126,16 +126,16 @@
   }
   // deal a face-down card from the deck onto a player's row, then it stays hidden
   // until the caller reveals (we just animate the travel; the rebuilt board shows the real card)
-  function dealTravel(toRowEl){
-    return new Promise(res=>{
+  function dealTravel(toRowEl,card){
+    return new Promise(async res=>{
       const deck=$('f7Deck');if(!deck||!toRowEl){res();return;}
       deck.classList.remove('deal');void deck.offsetWidth;deck.classList.add('deal');
-      const a=rectOf(deck),b=rectOf(toRowEl);
-      const c=document.createElement('div');c.className='f7-card';c.style.background='var(--card-back)';c.style.border='3px solid #818cf8';
-      Object.assign(c.style,{position:'fixed',top:a.top+'px',left:a.left+'px',zIndex:1000,transition:'all .34s var(--spring-soft)',pointerEvents:'none'});
-      document.body.appendChild(c);c.offsetHeight;
-      requestAnimationFrame(()=>{c.style.top=b.top+'px';c.style.left=(b.right-30)+'px';});
-      setTimeout(()=>{c.remove();res();},360);
+      const ghost=cardEl(card?.kind||'num',card?.v??'?');
+      toRowEl.appendChild(ghost);ghost.style.visibility='hidden';
+      SFX.flip();
+      await Kit.flyCard(deck,ghost,{value:card?.v??'?',color:card?.kind==='num'?'#111827':card?.kind==='mod'?'#7c3aed':'#b45309',startFaceDown:true,revealMidway:true,spin:true,duration:620});
+      ghost.remove();
+      res();
     });
   }
 
@@ -166,7 +166,7 @@
     const s=view.flip7;
     switch(e.type){
       case 'draw_start':{ draw(view); SFX.draw(); await wiggleReveal(e.prob||0); break; }
-      case 'card':{ const row=rowOf(e.player); if(e.flip3)await sleep(SPEED.flip3Gap*0.2); await dealTravel(row); SFX.flip(); break; }
+      case 'card':{ const row=rowOf(e.player); if(e.flip3)await sleep(SPEED.flip3Gap*0.2); await dealTravel(row,e.card); break; }
       case 'bust':{ SFX.bad(); const b=boardOf(e.player); if(b){b.style.animation='shakeX .5s ease';setTimeout(()=>b&&(b.style.animation=''),520);} Kit.turnBanner((s.players[e.player]?.name||'')+' BUST!',false); await sleep(SPEED.beat); break; }
       case 'flip7':{ SFX.win(); Kit.confetti(); Kit.turnBanner('FLIP 7! +15',true); await sleep(SPEED.beat); break; }
       case 'flip3_abandon':{ Kit.turnBanner('Flip 3 abandoned',false); await sleep(SPEED.beat*0.6); break; }

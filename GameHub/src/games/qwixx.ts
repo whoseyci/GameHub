@@ -25,6 +25,10 @@ export interface QwixxState extends RngStateHolder {
   pendingLocks: string[];
   pendingWhiteDecisions: number[];
   activeMarkedThisTurn: boolean;
+  activeColorUsed?: boolean;
+  activeColorRow?: Color;
+  activeWhiteRow?: Color;
+  activeWhiteIndex?: number;
   round: number;
 }
 
@@ -90,6 +94,10 @@ function maybeEndOrNextTurn(s: QwixxState) {
   s.dice = getDice(s, s.locked);
   s.pendingWhiteDecisions = s.players.map((_, i) => i).filter((i) => s.players[i].penalties < 4);
   s.activeMarkedThisTurn = false;
+  s.activeColorUsed = false;
+  s.activeColorRow = undefined;
+  s.activeWhiteRow = undefined;
+  s.activeWhiteIndex = undefined;
   s.round++;
 }
 
@@ -120,6 +128,7 @@ export const Qwixx: GameModule = {
       pendingLocks: [],
       pendingWhiteDecisions: players.map((_, i) => i),
       activeMarkedThisTurn: false,
+      activeColorUsed: false,
       round: 1,
     } as QwixxState;
   },
@@ -131,38 +140,40 @@ export const Qwixx: GameModule = {
     if (msg.action === "mark") {
       const color = msg.c as Color;
       const i = msg.i;
+      const requestedUse = msg.use as "white" | "color" | undefined;
       if (!COLORS.includes(color) || !Number.isInteger(i)) return;
       const p = s.players[seat];
       const row = p?.rows[color];
       if (!p || !row || !canMarkIndex(s, color, row, i)) return;
       const isActive = seat === s.activeSeat;
+      const whiteSum = s.dice.w[0] + s.dice.w[1];
+      const whiteLegal = s.pendingWhiteDecisions.includes(seat) && row.nums[i] === whiteSum && !(isActive && s.activeColorUsed && s.activeColorRow === color);
+      const dieKey = COLOR_KEY[color];
+      const colorLegal = isActive && !s.activeColorUsed && s.dice[dieKey] > 0 && (row.nums[i] === s.dice.w[0] + s.dice[dieKey] || row.nums[i] === s.dice.w[1] + s.dice[dieKey]) && !(s.activeWhiteRow === color && s.activeWhiteIndex != null && i <= s.activeWhiteIndex);
 
-      if (s.phase === "WHITE_PHASE") {
-        if (!s.pendingWhiteDecisions.includes(seat)) return;
-        const whiteSum = s.dice.w[0] + s.dice.w[1];
-        if (row.nums[i] !== whiteSum) return;
-        markIndex(s, color, row, i);
+      let use: "white" | "color" | null = null;
+      if (requestedUse === "color") use = colorLegal ? "color" : null;
+      else if (requestedUse === "white") use = whiteLegal ? "white" : null;
+      else if (colorLegal) use = "color"; // lets active player choose color immediately
+      else if (whiteLegal) use = "white";
+      if (!use) return;
+
+      markIndex(s, color, row, i);
+      if (use === "white") {
         s.pendingWhiteDecisions = s.pendingWhiteDecisions.filter((x) => x !== seat);
-        if (isActive) s.activeMarkedThisTurn = true;
-        if (s.pendingWhiteDecisions.length === 0) {
-          applyPendingLocks(s); // after every player had the same white-action opportunity
-          s.phase = "COLOR_PHASE";
-        }
-        return;
+        if (isActive) { s.activeWhiteRow = color; s.activeWhiteIndex = i; }
+      } else {
+        s.activeColorUsed = true;
+        s.activeColorRow = color;
       }
+      if (isActive) s.activeMarkedThisTurn = true;
 
-      if (s.phase === "COLOR_PHASE") {
-        if (!isActive) return;
-        const dieKey = COLOR_KEY[color];
-        if (s.dice[dieKey] <= 0) return;
-        const sum1 = s.dice.w[0] + s.dice[dieKey];
-        const sum2 = s.dice.w[1] + s.dice[dieKey];
-        if (row.nums[i] !== sum1 && row.nums[i] !== sum2) return;
-        markIndex(s, color, row, i);
-        s.activeMarkedThisTurn = true;
-        maybeEndOrNextTurn(s);
-        return;
+      if (s.pendingWhiteDecisions.length === 0) {
+        applyPendingLocks(s);
+        if (s.activeColorUsed) maybeEndOrNextTurn(s);
+        else s.phase = "COLOR_PHASE";
       }
+      return;
     }
 
     if (msg.action === "skip") {
@@ -170,7 +181,8 @@ export const Qwixx: GameModule = {
         s.pendingWhiteDecisions = s.pendingWhiteDecisions.filter((x) => x !== seat);
         if (s.pendingWhiteDecisions.length === 0) {
           applyPendingLocks(s);
-          s.phase = "COLOR_PHASE";
+          if (s.activeColorUsed) maybeEndOrNextTurn(s);
+          else s.phase = "COLOR_PHASE";
         }
       }
       return;
@@ -218,7 +230,11 @@ export const Qwixx: GameModule = {
         phase: s.phase,
         round: s.round,
         pendingWhiteDecisions: s.pendingWhiteDecisions,
-        activeMarkedThisTurn: s.activeMarkedThisTurn
+        activeMarkedThisTurn: s.activeMarkedThisTurn,
+        activeColorUsed: !!s.activeColorUsed,
+        activeColorRow: s.activeColorRow,
+        activeWhiteRow: s.activeWhiteRow,
+        activeWhiteIndex: s.activeWhiteIndex
       },
     };
   },

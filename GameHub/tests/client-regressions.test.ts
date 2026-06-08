@@ -20,10 +20,10 @@ describe("Qwixx client regressions", () => {
   it("renders colored dice through explicit short-key mapping", () => {
     expect(qwixx).toContain("const COLOR_KEY");
     expect(qwixx).toContain("dice[COLOR_KEY[c]]");
-    expect(qwixx).toContain("renderDie(dice.r,'red','red')");
-    expect(qwixx).toContain("renderDie(dice.y,'yellow','yellow')");
-    expect(qwixx).toContain("renderDie(dice.g,'green','green')");
-    expect(qwixx).toContain("renderDie(dice.b,'blue','blue')");
+    expect(qwixx).toContain("{color:'red',value:dice.r}");
+    expect(qwixx).toContain("{color:'yellow',value:dice.y}");
+    expect(qwixx).toContain("{color:'green',value:dice.g}");
+    expect(qwixx).toContain("{color:'blue',value:dice.b}");
   });
 
   it("contains mark-hint logic for white dice and active-player color choices", () => {
@@ -39,7 +39,7 @@ describe("Qwixx client regressions", () => {
 describe("client cross-game cleanup regressions", () => {
   it("has a shared Qwixx UI cleanup helper", () => {
     expect(networkLocal).toContain("function removeQwixxUi()");
-    expect(networkLocal).toContain("querySelector('.qwixx-dice-zone')");
+    expect(networkLocal).toContain(".qwixx-dice-zone,.qwixx-top-mini-strip");
   });
 
   it("cleans Qwixx dice UI before rendering Skyjo or Flip7", () => {
