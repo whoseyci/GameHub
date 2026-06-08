@@ -26,7 +26,8 @@
     setTimeout(()=>{o.style.transition='opacity .3s';o.style.opacity='0';setTimeout(()=>o.remove(),300);},650);
   }
   // boards are rebuilt each render; find a player's row container
-  function boardOf(i){return $('mainBoardsContainer').children[i];}
+  let eventFocus=null;
+  function boardOf(i){return document.querySelector(`[data-f7-seat="${i}"]`);}
   function rowOf(i){const b=boardOf(i);return b?b.querySelector('.f7-row'):null;}
   function rectOf(el){return el?el.getBoundingClientRect():null;}
 
@@ -45,11 +46,12 @@
     const cntEl=dealerWrap.querySelector('.cnt');if(cntEl)cntEl.textContent='deck '+s.deckCount+' \u00b7 out '+s.discardCount;
     const main=$('mainBoardsContainer');main.innerHTML='';
     const pending=s.pendingAction&&s.pendingAction.from===viewer;
-    const focus = mode==='local' ? s.current : (viewer>=0 ? viewer : s.current);
+    const focus = eventFocus!=null ? eventFocus : (window._f7InspectSeat!=null ? window._f7InspectSeat : (mode==='local' ? s.current : (viewer>=0 ? viewer : s.current)));
     s.players.forEach((p,i)=>{
       if(i!==focus){mini.appendChild(miniDOM(s,p,i,viewer,pending));return;}
       const wrap=document.createElement('div');const busted=p.status==='busted';
       wrap.className='player-board f7-focus-board'+(s.current===i&&s.phase==='PLAY'?' active-turn':'')+(i===viewer?' me':'');
+      wrap.dataset.f7Seat=i;
       if(busted)wrap.style.opacity='.85';
       const head=document.createElement('div');head.className='board-header';
       head.innerHTML='<span>'+p.name+(i===viewer?' (You)':'')+' <span class="f7-status '+p.status+'">'+p.status+'</span></span><span class="score-badge">'+(busted?'BUST':'Now: '+p.live)+' \u00b7 Total: '+p.banked+'</span>';
@@ -70,7 +72,7 @@
   }
   function miniDOM(s,p,i,viewer,pending){
     const b=document.createElement('button');b.className='f7-mini-board'+(s.current===i?' active':'')+(p.status==='busted'?' busted':'');
-    b.onclick=()=>{const main=$('mainBoardsContainer');const oldView=window._renderView;if(oldView){const v=JSON.parse(JSON.stringify(oldView));v.flip7.viewerSeat=i;draw(v);}};
+    b.onclick=()=>{window._f7InspectSeat=i;const oldView=window._renderView;if(oldView){const v=JSON.parse(JSON.stringify(oldView));v.flip7.viewerSeat=i;draw(v);}};
     const nums=p.nums.slice(0,10).map(n=>`<span class="f7-mini-card num">${n}</span>`).join('');
     const mods=p.mods.slice(0,4).map(m=>`<span class="f7-mini-card mod">${m}</span>`).join('');
     const second=p.second?'<span class="f7-mini-card act">♥</span>':'';
@@ -140,14 +142,14 @@
   }
   // deal a face-down card from the deck onto a player's row, then it stays hidden
   // until the caller reveals (we just animate the travel; the rebuilt board shows the real card)
-  function dealTravel(toRowEl,card){
+  function dealTravel(toRowEl,card,seq='x'){
     return new Promise(async res=>{
       const deck=$('f7Deck');if(!deck||!toRowEl){res();return;}
       deck.classList.remove('deal');void deck.offsetWidth;deck.classList.add('deal');
       const ghost=cardEl(card?.kind||'num',card?.v??'?');
       toRowEl.appendChild(ghost);ghost.style.visibility='hidden';
       SFX.flip();
-      await Kit.flyCard(deck,ghost,{value:card?.v??'?',color:card?.kind==='num'?'#111827':card?.kind==='mod'?'#7c3aed':'#b45309',startFaceDown:true,revealMidway:true,spin:true,duration:620});
+      await Kit.CardMotion.move('flip7:deal:'+seq,deck,ghost,{value:card?.v??'?',color:card?.kind==='num'?'#111827':card?.kind==='mod'?'#7c3aed':'#b45309',startFaceDown:true,revealMidway:true,spin:true,duration:620});
       ghost.remove();
       res();
     });
@@ -165,6 +167,8 @@
       lastSeq=Math.max(lastSeq,e.seq);
       await playOne(e,view);
     }
+    eventFocus=null;
+    if(mode==='local') window._f7InspectSeat=null;
     animating=false;
     draw(view); // settle to authoritative state
     prevView=view;curView=view;
@@ -179,18 +183,20 @@
   async function playOne(e,view){
     const s=view.flip7;
     switch(e.type){
-      case 'draw_start':{ draw(view); SFX.draw(); await wiggleReveal(e.prob||0); break; }
-      case 'card':{ const row=rowOf(e.player); if(e.flip3)await sleep(SPEED.flip3Gap*0.2); await dealTravel(row,e.card); break; }
-      case 'bust':{ SFX.bad(); const b=boardOf(e.player); if(b){b.style.animation='shakeX .5s ease';setTimeout(()=>b&&(b.style.animation=''),520);} Kit.turnBanner((s.players[e.player]?.name||'')+' BUST!',false); await sleep(SPEED.beat); break; }
+      case 'draw_start':{ eventFocus=e.player; draw(view); SFX.draw(); await wiggleReveal(e.prob||0); break; }
+      case 'card':{ eventFocus=e.player; draw(view); const row=rowOf(e.player); if(e.flip3)await sleep(SPEED.flip3Gap*0.2); await dealTravel(row,e.card,e.seq); break; }
+      case 'bust':{ eventFocus=e.player; draw(view); SFX.bad(); const b=boardOf(e.player); if(b){b.style.animation='shakeX .5s ease';setTimeout(()=>b&&(b.style.animation=''),520);} Kit.turnBanner((s.players[e.player]?.name||'')+' BUST!',false); await sleep(SPEED.beat); break; }
       case 'flip7':{ SFX.win(); Kit.confetti(); Kit.turnBanner('FLIP 7! +15',true); await sleep(SPEED.beat); break; }
       case 'flip3_abandon':{ Kit.turnBanner('Flip 3 abandoned',false); await sleep(SPEED.beat*0.6); break; }
       case 'second_used':{ SFX.good(); Kit.turnBanner('Second Chance!',true); await sleep(SPEED.beat); break; }
       case 'stay':{ SFX.good(); break; }
-      case 'action_card':{ draw(view); const row=rowOf(e.player); await dealTravel(row,{kind:'act',v:e.kind}); await sleep(SPEED.beat*0.2); break; }
+      case 'action_card':{ eventFocus=e.player; draw(view); const row=rowOf(e.player); await dealTravel(row,{kind:'act',v:e.kind},e.seq); await sleep(SPEED.beat*0.2); break; }
       case 'play_action':{
         // first show the action card travelling board -> board, then apply the effect
+        eventFocus=e.from; draw(view);
         const fromRow=rowOf(e.from),toRow=rowOf(e.target);
-        await fly(fromRow,toRow,()=>cardEl('act',e.kind),SPEED.actionFly);
+        await Kit.CardMotion.move('flip7:action:'+e.seq,fromRow,toRow,{value:e.kind,color:'#b45309',startFaceDown:false,spin:true,duration:SPEED.actionFly});
+        eventFocus=e.target; draw(view);
         actionVfx(e.kind); SFX[e.kind==='freeze'?'discard':'triplet']();
         if(e.auto)Kit.turnBanner((e.kind==='freeze'?'\u2744 ':'\ud83d\udd03 ')+'on self!',false);
         await sleep(SPEED.beat*0.5); break;

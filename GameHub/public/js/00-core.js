@@ -67,6 +67,24 @@ const Kit=(()=>{
     const cards=document.querySelectorAll('#mainBoardsContainer .board-card, #miniBoardsContainer .board-card');
     cards.forEach((c,i)=>{c.classList.remove('anim-deal');void c.offsetWidth;c.style.animationDelay=(i%12)*0.035+'s';c.classList.add('anim-deal');if(i%4===0)setTimeout(()=>SFX.deal(),(i%12)*35);setTimeout(()=>{c.style.animationDelay='';c.classList.remove('anim-deal');},700+(i%12)*40);});
   }
+  const CardMotion=(()=>{
+    let chain=Promise.resolve();
+    const locations=new Map();
+    function run(step){chain=chain.then(step,step);return chain;}
+    async function move(id,fromEl,toEl,opts={}){
+      return run(async()=>{
+        locations.set(id,{state:'moving',from:fromEl?.id||null,to:toEl?.id||null});
+        await flyCard(fromEl,toEl,opts);
+        locations.set(id,{state:'arrived',at:toEl?.id||null});
+      });
+    }
+    function location(id){return locations.get(id)||null;}
+    function clear(prefix=''){
+      for(const k of [...locations.keys()]) if(!prefix||k.startsWith(prefix)) locations.delete(k);
+    }
+    function idle(){return chain;}
+    return {move,location,clear,idle};
+  })();
   function rollDice(container,dice,{duration=900,size=42,animate=true}={}){
     return new Promise(res=>{
       if(!container){res();return;}
@@ -114,7 +132,7 @@ const Kit=(()=>{
     burst(0.08);burst(0.92);setTimeout(()=>{burst(0.2);burst(0.8);},350);const end=Date.now()+3800;
     (function f(){x.clearRect(0,0,cv.width,cv.height);for(const p of ps){p.vy+=0.28;p.vx*=0.99;p.x+=p.vx;p.y+=p.vy;p.a+=p.va;x.save();x.translate(p.x,p.y);x.rotate(p.a);x.fillStyle=p.c;x.fillRect(-p.r/2,-p.r/2,p.r,p.r*0.6);x.restore();}if(Date.now()<end)requestAnimationFrame(f);else cv.remove();})();
   }
-  return {cardColor,floatText,turnBanner,flyCard,flyToHeld,dealCascade,rollDice,confetti};
+  return {cardColor,floatText,turnBanner,flyCard,flyToHeld,dealCascade,CardMotion,rollDice,confetti};
 })();
 
 /* ====================== SOUND (arcade) ====================== */

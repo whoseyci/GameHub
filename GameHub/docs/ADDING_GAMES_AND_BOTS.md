@@ -88,9 +88,30 @@ window.LocalEngines['hearts'] = function(names) {
 Use existing helpers:
 
 - `Kit` for card animation/visuals
+- `Kit.CardMotion.move(cardId, fromEl, toEl, opts)` for every card transfer
 - `SFX` for sound
 - `showSummary(view)` for end screens
 - `removeQwixxUi()` / game cleanup helpers when entering a renderer
+
+## Card-object / animation sequencing rule
+
+For card games, treat every visible card transfer as a motion of a logical card object.
+Do not update focus/effects in the middle of that motion. The standard event order is:
+
+```text
+source location -> reveal if needed -> Kit.CardMotion.move(...) -> destination board -> effect/score/target prompt
+```
+
+Guidelines:
+
+1. Give each motion a stable `cardId`, usually `${game}:${eventSeq}:<kind>`.
+2. Use `Kit.CardMotion.move(...)` instead of ad-hoc CSS transitions.
+3. Keep the board focus locked to the acting/source player while the card is moving.
+4. Only after arrival should the game show busts, score changes, target prompts, or next-player focus.
+5. If an action card targets another player, first deal it to the revealer, then animate board-to-board, then apply target effects.
+
+This prevents one card appearing in multiple places or local pass-and-play switching to
+the next player before the current animation has completed.
 
 ## Bot training path
 

@@ -5,9 +5,9 @@ whole table should fit into `100dvh` with one focused board and tiny opponent bo
 
 ## Standard pattern
 
-1. **Top controls**: one compact dice/deck/action area.
-2. **Focused board**: the current actor's board in local play; the user's board in online play unless they tap another board.
-3. **Miniature strip/grid**: all non-focused players shown as tap targets.
+1. **Opponent space at top**: semantic miniatures only; shrink here first as player count grows.
+2. **Dice/deck space in the middle**: compact shared randomness/deck/pile controls.
+3. **Action/focused-board space at bottom**: the active player’s required interaction area.
 4. **No game-page scroll**: shrink/hide secondary text before allowing scrolling.
 
 ## Miniature-board contract
