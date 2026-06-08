@@ -750,7 +750,8 @@ function dispatchView(view){
   maybeRunBot(view); // drive bot seats if we're responsible
 }
 function flushView(){if(pendingView){const v=pendingView;pendingView=null;dispatchView(v);}}
-function resetGameUi(){curView=null;prevView=null;animating=false;pendingView=null;summaryShown=false;lastRoundShown=false;$('overlay').classList.add('hidden');$('overlay').style.opacity='';const f7=$('f7Controls');if(f7)f7.remove();const dw=$('f7DealerWrap');if(dw)dw.remove();$('topArea').style.display='';if(window._flip7ResetSeq)window._flip7ResetSeq();}
+function removeQwixxUi(){const qd=$('topArea')&&$('topArea').querySelector('.qwixx-dice-zone');if(qd)qd.remove();}
+function resetGameUi(){curView=null;prevView=null;animating=false;pendingView=null;summaryShown=false;lastRoundShown=false;$('overlay').classList.add('hidden');$('overlay').style.opacity='';removeQwixxUi();const f7=$('f7Controls');if(f7)f7.remove();const dw=$('f7DealerWrap');if(dw)dw.remove();$('topArea').style.display='';const piles=$('topArea').querySelector('.piles');if(piles)piles.style.display='flex';$('heldCardWrapper').style.display='';if(window._flip7ResetSeq)window._flip7ResetSeq();}
 function hideOverlay(){const o=$('overlay');if(o.classList.contains('hidden'))return;o.style.opacity='0';setTimeout(()=>{o.classList.add('hidden');o.style.opacity='';},220);}
 function bumpStatus(){const sb=$('statusBar');sb.classList.remove('bump');void sb.offsetWidth;sb.classList.add('bump');}
 
@@ -1201,9 +1202,11 @@ window.LocalEngines['qwixx'] = function(names) {
   function cardAt(pi,idx){const b=boardEl(pi);return b?b.querySelectorAll('.board-card')[idx]:null;}
 
   function render(view){
+    removeQwixxUi();
     $('topArea').style.display=''; // Skyjo uses the deck/discard piles
     const piles = $('topArea').querySelector('.piles');
     if (piles) piles.style.display = 'flex';
+    $('heldCardWrapper').style.display='';
     const f7=$('f7Controls');if(f7)f7.innerHTML='';const dw=$('f7DealerWrap');if(dw)dw.style.display='none';
     const s=view.skyjo; // engine state (personalized)
     const viewer=s.viewerIndex;
@@ -1418,6 +1421,7 @@ class SkyjoEngine{
 
   // ---- static board render from state ----
   function draw(view){
+    removeQwixxUi();
     const s=view.flip7,viewer=s.viewerSeat;
     $('topArea').style.display='none';$('miniBoardsContainer').innerHTML='';
     // dealer pile
