@@ -15,6 +15,293 @@
     --text:#f8fafc;--text-dim:#94a3b8;--accent:#3b82f6;--accent-glow:rgba(59,130,246,.4);
     --card-back:linear-gradient(135deg,#6366f1,#4338ca);
     --spring:cubic-bezier(.34,1.56,.64,1);--spring-soft:cubic-bezier(.25,1,.4,1);--spring-big:cubic-bezier(.18,1.5,.5,1);
+    /* Qwixx Styles */
+    --qwixx-red:#e74c3c;--qwixx-yellow:#f1c40f;--qwixx-green:#2ecc71;--qwixx-blue:#3498db;
+    --qwixx-bg:#080c18;--qwixx-bg2:#0e1525;--qwixx-bg3:#141e30;--qwixx-bg4:#1c2940;
+    --qwixx-border:rgba(255,255,255,0.07);--qwixx-border2:rgba(255,255,255,0.12);
+    --qwixx-accent:#7c5cff;--qwixx-accent2:#9d8fff;
+  }
+  .qwixx-dice-zone{padding:1rem;background:linear-gradient(180deg,rgba(124,92,255,0.04) 0%,transparent 100%);border-bottom:1px solid var(--border);display:flex;flex-direction:column;gap:0.85rem;align-items:center;width:100%}
+  .qwixx-dice-rows{display:flex;justify-content:center;gap:1rem;flex-wrap:wrap;margin:0.5rem 0}
+  .qwixx-dice-row{display:flex;align-items:center;gap:0.6rem}
+  .qwixx-scene{width:52px;height:52px;perspective:400px;cursor:pointer;transition:transform 0.2s}
+  .qwixx-scene:hover{transform:scale(1.1)}
+  .qwixx-cube{width:100%;height:100%;position:relative;transform-style:preserve-3d;transform:translateZ(-26px)}
+  .qwixx-cube__face{position:absolute;width:52px;height:52px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-family:'Fredoka',sans-serif;font-size:1.8rem;font-weight:700;box-shadow:inset 0 0 12px rgba(0,0,0,0.15),0 4px 8px rgba(0,0,0,0.2);backface-visibility:hidden;border:1px solid rgba(255,255,255,0.2)}
+  .qwixx-cube__face--front{transform:rotateY(0deg) translateZ(26px)}
+  .qwixx-cube__face--right{transform:rotateY(90deg) translateZ(26px)}
+  .qwixx-cube__face--back{transform:rotateY(180deg) translateZ(26px)}
+  .qwixx-cube__face--left{transform:rotateY(-90deg) translateZ(26px)}
+  .qwixx-cube__face--top{transform:rotateX(90deg) translateZ(26px)}
+  .qwixx-cube__face--bottom{transform:rotateX(-90deg) translateZ(26px)}
+  .qwixx-cube.w .qwixx-cube__face{background:linear-gradient(145deg,#f0f0f0,#ccc);color:#333}
+  .qwixx-cube.r .qwixx-cube__face{background:linear-gradient(145deg,var(--qwixx-red),#c0392b);color:#fff}
+  .qwixx-cube.y .qwixx-cube__face{background:linear-gradient(145deg,var(--qwixx-yellow),#c9a00a);color:#333}
+  .qwixx-cube.g .qwixx-cube__face{background:linear-gradient(145deg,var(--qwixx-green),#27ae60);color:#fff}
+  .qwixx-cube.b .qwixx-cube__face{background:linear-gradient(145deg,var(--qwixx-blue),#2471a3);color:#fff}
+  .qwixx-scene.can .qwixx-cube__face--front{box-shadow:0 0 18px currentColor,inset 0 0 12px rgba(255,255,255,0.4)}
+  .qwixx-scorecard{min-width:400px;background:var(--surface);border:2px solid var(--border);border-radius:20px;overflow:hidden;margin:0 auto}
+  .qwixx-score-row{display:grid;grid-template-columns:50px 1fr 60px;border-bottom:1px solid var(--border)}
+  .qwixx-row-hdr{display:flex;align-items:center;justify-content:center;font-weight:900;font-size:1.1rem;color:#fff}
+  .qwixx-row-cells{display:flex}
+  .qwixx-cell{flex:1;min-width:30px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:8px 2px;cursor:pointer;transition:all .2s;position:relative;font-weight:700;font-size:.8rem;color:var(--text-dim)}
+  .qwixx-cell:hover:not(.x){background:rgba(255,255,255,0.05)}
+  .qwixx-cell.x{color:var(--text);font-size:1.1rem}
+  .qwixx-cell.good{animation:activeGlow 1.5s ease-in-out infinite;color:var(--accent)}
+  .qwixx-cell.bad{opacity:.3;cursor:not-allowed}
+  .qwixx-cell.lock{background:rgba(0,0,0,0.3);cursor:not-allowed;text-decoration:line-through}
+  .qwixx-controls{display:flex;justify-content:center;gap:12px;margin:10px 0}
+  .qwixx-ctrl-btn{padding:12px 24px;border-radius:12px;border:2px solid var(--border);background:var(--surface);color:var(--text);font-weight:800;cursor:pointer;transition:all .2s}
+  .qwixx-ctrl-btn:hover:not(:disabled){border-color:var(--accent);background:var(--surface-light)}
+  .qwixx-ctrl-btn:disabled{opacity:.4;cursor:not-allowed}
+  .qwixx-ctrl-btn.pri{background:var(--accent);border-color:var(--accent);color:#fff}
+
+  :root {
+    /* shared card sizing (the "card kit" — every game uses these) */
+    --slot-w:clamp(58px,16vw,84px);--slot-h:calc(var(--slot-w)*1.42);
+    --bcard-w:clamp(52px,15vw,74px);--bcard-h:calc(var(--bcard-w)*1.42);
+    --topbar-h:52px;
+  }
+  *{box-sizing:border-box}
+  body{font-family:'Nunito',system-ui,-apple-system,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);
+    margin:0;padding:0;min-height:100vh;overflow-x:hidden;-webkit-user-select:none;user-select:none}
+  @media (prefers-reduced-motion: reduce){*{animation-duration:.001s!important;transition-duration:.001s!important}}
+
+  /* ===== shared animation keyframes (card kit) ===== */
+  @keyframes bounceIn{0%{transform:scale(.5) translateY(14px);opacity:0}60%{transform:scale(1.06);opacity:1}80%{transform:scale(.97)}100%{transform:scale(1);opacity:1}}
+  @keyframes popIn{0%{transform:scale(0);opacity:0}70%{transform:scale(1.18)}100%{transform:scale(1);opacity:1}}
+  @keyframes flipReveal{0%{transform:perspective(600px) rotateY(0) scale(1)}50%{transform:perspective(600px) rotateY(90deg) scale(1.12)}100%{transform:perspective(600px) rotateY(0) scale(1)}}
+  @keyframes popReveal{0%{transform:scale(0) rotate(-8deg);opacity:.2}55%{transform:scale(1.22) rotate(3deg);opacity:1}75%{transform:scale(.93)}100%{transform:scale(1) rotate(0)}}
+  @keyframes pulsePile{0%,100%{transform:scale(1);box-shadow:0 0 0 4px var(--accent),0 0 22px var(--accent-glow)}50%{transform:scale(1.07);box-shadow:0 0 0 6px #60a5fa,0 0 34px rgba(96,165,250,.7)}}
+  @keyframes floatUp{0%{opacity:0;transform:translate(-50%,10px) scale(.4)}18%{opacity:1;transform:translate(-50%,-26px) scale(1.35)}30%{transform:translate(-50%,-34px) scale(1)}80%{opacity:1;transform:translate(-50%,-64px) scale(1)}100%{opacity:0;transform:translate(-50%,-92px) scale(.9)}}
+  @keyframes flyAway{0%{transform:scale(1) translateY(0) rotate(0);opacity:1}40%{transform:scale(1.15) translateY(-18px) rotate(-12deg)}100%{transform:scale(.2) translateY(-150px) rotate(80deg);opacity:0}}
+  @keyframes landBounce{0%{transform:scale(1)}35%{transform:scale(1.18,.86)}60%{transform:scale(.94,1.08)}100%{transform:scale(1)}}
+  @keyframes dealIn{0%{transform:translateY(-40px) scale(.4) rotate(-10deg);opacity:0}100%{transform:translateY(0) scale(1) rotate(0);opacity:1}}
+  @keyframes activeGlow{0%,100%{box-shadow:0 0 0 4px var(--accent-glow),0 10px 30px rgba(59,130,246,.3)}50%{box-shadow:0 0 0 7px rgba(59,130,246,.55),0 14px 40px rgba(59,130,246,.45)}}
+  @keyframes crownPop{0%{transform:scale(0) rotate(-30deg)}60%{transform:scale(1.4) rotate(8deg)}100%{transform:scale(1) rotate(0)}}
+  @keyframes turnBadge{0%{transform:translate(-50%,30px) scale(.6);opacity:0}20%{transform:translate(-50%,0) scale(1.1);opacity:1}80%{transform:translate(-50%,0) scale(1);opacity:1}100%{transform:translate(-50%,-12px) scale(.9);opacity:0}}
+  .anim-flip{animation:flipReveal .42s var(--spring-soft) both}
+  .anim-pop{animation:popReveal .45s var(--spring) both}
+  .anim-clear{animation:flyAway .75s var(--spring-soft) forwards}
+  .anim-deal{animation:dealIn .5s var(--spring) both}
+  .anim-land{animation:landBounce .4s var(--spring) both}
+
+  /* ===== layout / menus ===== */
+  #app{display:flex;flex-direction:column;min-height:100vh}
+  .screen{display:none;flex:1;flex-direction:column;align-items:center;justify-content:center;padding:20px}
+  .screen.active{display:flex;animation:bounceIn .5s var(--spring)}
+  .menu-card{background:var(--surface);border:2px solid var(--border);border-radius:24px;padding:clamp(24px,5vw,40px);
+    max-width:520px;width:100%;text-align:center;box-shadow:0 20px 50px rgba(0,0,0,.5);position:relative}
+  h1.logo{font-size:clamp(2.6rem,9vw,4rem);font-weight:900;margin:0 0 6px;background:linear-gradient(135deg,#60a5fa,#3b82f6);
+    -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+  .btn{display:block;width:100%;padding:16px;margin:12px 0;border:none;border-radius:16px;font-size:1.15rem;cursor:pointer;
+    transition:transform .18s var(--spring),box-shadow .18s var(--spring),filter .18s;background:var(--accent);color:#fff;font-weight:900;box-shadow:0 6px 0 #2563eb;font-family:inherit}
+  .btn:hover{transform:translateY(-3px) scale(1.02);box-shadow:0 9px 0 #2563eb;filter:brightness(1.1)}
+  .btn:active{transform:translateY(4px) scale(.97);box-shadow:0 2px 0 #2563eb;transition-duration:.06s}
+  .btn:disabled{opacity:.5;cursor:not-allowed;filter:grayscale(.4)}
+  .btn.secondary{background:var(--surface-light);box-shadow:0 6px 0 var(--border);color:var(--text)}
+  .btn.purple{background:#8b5cf6;box-shadow:0 6px 0 #6d28d9}
+  .btn.green{background:#10b981;box-shadow:0 6px 0 #059669}
+  .input{width:100%;padding:14px;margin:8px 0 18px;border-radius:12px;border:2px solid var(--border);background:var(--bg);color:var(--text);
+    font-size:1.1rem;outline:none;font-family:inherit;font-weight:700;text-align:center;transition:border-color .2s}
+  .input:focus{border-color:var(--accent)}
+  .label{display:block;text-align:left;font-weight:800;color:var(--text-dim);margin-bottom:5px}
+  .hidden{display:none!important}
+  .muted{color:var(--text-dim);font-weight:700}
+  .backbtn{position:absolute;top:15px;left:15px;width:auto;padding:8px 16px;margin:0;box-shadow:0 4px 0 var(--border)}
+  .seg{display:flex;gap:8px;margin:0 0 18px}
+  .seg button{flex:1;padding:12px;border-radius:12px;border:2px solid var(--border);background:var(--bg);color:var(--text-dim);
+    font-weight:800;font-family:inherit;cursor:pointer;font-size:1rem}
+  .seg button.on{border-color:var(--accent);color:#fff;background:var(--surface-light);box-shadow:0 0 0 2px var(--accent-glow)}
+
+  /* game tiles (hub picker + quick play) */
+  .game-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px;margin:8px 0}
+  .game-tile{position:relative;background:var(--bg);border:2px solid var(--border);border-radius:16px;padding:16px 12px;cursor:pointer;
+    text-align:center;transition:transform .18s var(--spring),border-color .2s,opacity .2s}
+  .game-tile:hover{transform:translateY(-4px) scale(1.03);border-color:var(--accent)}
+  .game-tile:active{transform:scale(.95)}
+  .game-tile.disabled{opacity:.4;filter:grayscale(.7);cursor:not-allowed}
+  .game-tile.disabled:hover{transform:none;border-color:var(--border)}
+  .game-tile .emoji{font-size:2.4rem;line-height:1}
+  .game-tile .gname{font-weight:900;margin-top:6px}
+  .game-tile .gdesc{font-size:.78rem;color:var(--text-dim);font-weight:700;margin-top:4px}
+  .game-tile .gsize{font-size:.72rem;color:var(--accent);font-weight:800;margin-top:6px}
+  .tile-help{position:absolute;top:6px;right:6px;width:24px;height:24px;border-radius:50%;border:2px solid var(--border);
+    background:var(--surface);color:var(--text-dim);font-weight:900;font-size:.85rem;cursor:pointer;display:flex;align-items:center;justify-content:center;font-family:inherit}
+  .tile-help:hover{border-color:var(--accent);color:var(--text)}
+
+  .room-list{text-align:left;margin-top:10px;max-height:260px;overflow:auto}
+  .room-row{display:flex;justify-content:space-between;align-items:center;gap:10px;background:var(--bg);border:2px solid var(--border);
+    border-radius:12px;padding:10px 14px;margin-bottom:8px}
+  .room-row .rc{font-weight:900;font-size:1.05rem;letter-spacing:1px}
+  .room-row .rm{color:var(--text-dim);font-size:.82rem;font-weight:700}
+  .room-row button{padding:8px 16px;border-radius:10px;border:none;background:var(--accent);color:#fff;font-weight:800;cursor:pointer;font-family:inherit}
+  .chip{display:inline-block;background:var(--surface-light);border-radius:10px;padding:4px 10px;font-weight:800;margin:3px;font-size:.95rem}
+
+  /* ===== game screen (shared card kit visuals) ===== */
+  #gameScreen{justify-content:flex-start;padding:0;gap:0}
+  .game-topbar{position:sticky;top:0;z-index:120;width:100%;height:var(--topbar-h);display:flex;align-items:center;gap:10px;
+    padding:8px 12px;background:rgba(15,23,42,.9);backdrop-filter:blur(10px);border-bottom:1px solid var(--border)}
+  .topbar-spacer{flex:1}
+  .icon-btn{width:40px;height:40px;border-radius:12px;border:2px solid var(--border);background:var(--surface);color:var(--text);
+    font-size:1.2rem;font-weight:900;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:transform .15s var(--spring),filter .15s;font-family:inherit;flex:none}
+  .icon-btn:hover{filter:brightness(1.15)} .icon-btn:active{transform:scale(.88)} .icon-btn.off{opacity:.6}
+  .room-tag{font-weight:900;letter-spacing:1px;color:var(--accent);background:var(--surface-light);padding:6px 12px;border-radius:12px;font-size:.95rem}
+  .spectate-tag{font-weight:800;color:#f59e0b;background:rgba(245,158,11,.15);border:1px solid rgba(245,158,11,.4);padding:6px 12px;border-radius:12px;font-size:.85rem}
+
+  .top-area{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;margin:10px 12px 4px;width:100%}
+  .piles{display:flex;gap:clamp(20px,8vw,48px);justify-content:center;align-items:flex-end;position:relative}
+  .pile-wrap{display:flex;flex-direction:column;align-items:center;gap:6px}
+  .pile-label{font-weight:900;color:var(--text-dim);text-transform:uppercase;letter-spacing:2px;font-size:.78rem}
+  .card-slot{width:var(--slot-w);height:var(--slot-h);border-radius:16px;display:flex;align-items:center;justify-content:center;
+    font-size:clamp(1.5rem,5vw,2.2rem);font-weight:900;position:relative;box-shadow:0 8px 15px rgba(0,0,0,.4);transition:transform .2s var(--spring);
+    background:var(--surface-light);border:3px solid var(--border);color:var(--text)}
+  .card-slot.face-down{background:var(--card-back);border:3px solid #818cf8;color:transparent}
+  .card-slot.face-down::after{content:'✦';color:rgba(255,255,255,.45);font-size:2.2rem;position:absolute}
+  .card-slot.revealed{background:#fff;border:3px solid #fff}
+  .pile-hint{animation:pulsePile 1.5s infinite;cursor:pointer;z-index:10}
+  .pile-hint:hover{transform:scale(1.1)} .pile-hint:active{transform:scale(.95);animation:none;box-shadow:none}
+  .deck-count{position:absolute;bottom:-22px;left:50%;transform:translateX(-50%);font-size:.7rem;color:var(--text-dim);font-weight:800}
+
+  .held-area-wrapper{z-index:100;margin-top:5px;min-height:60px;display:flex;justify-content:center;align-items:center}
+  .held-area{background:rgba(30,41,59,.95);backdrop-filter:blur(8px);border:2px solid var(--accent);border-radius:16px;padding:8px 18px;
+    display:flex;align-items:center;gap:14px;box-shadow:0 10px 20px rgba(0,0,0,.5);width:max-content;animation:bounceIn .45s var(--spring)}
+  .held-card-mini{width:40px!important;height:56px!important;font-size:1.3rem!important;border-radius:8px!important;border-width:2px!important;box-shadow:0 4px 8px rgba(0,0,0,.3)!important}
+  .held-text{font-weight:800;color:var(--accent);font-size:.92rem}
+  .held-sub{color:var(--text-dim);font-size:.78rem;font-weight:700}
+
+  .boards-container{display:flex;flex-wrap:wrap;gap:clamp(14px,4vw,30px);justify-content:center;align-items:flex-start;width:100%;max-width:1200px;margin:0 auto;padding:6px 12px calc(96px + env(safe-area-inset-bottom,0px))}
+  .player-board{background:var(--surface);border:3px solid var(--border);border-radius:20px;padding:clamp(12px,3.5vw,20px);position:relative;transition:transform .35s var(--spring),border-color .3s,box-shadow .3s;box-shadow:0 10px 20px rgba(0,0,0,.2)}
+  .player-board.active-turn{border-color:var(--accent);transform:translateY(-4px) scale(1.01);animation:activeGlow 2s ease-in-out infinite}
+  .player-board.me{outline:2px dashed rgba(96,165,250,.5);outline-offset:4px}
+  .board-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;font-weight:800;font-size:clamp(.95rem,3vw,1.2rem);gap:8px}
+  .score-badge{background:var(--surface-light);padding:4px 9px;border-radius:12px;font-size:clamp(.7rem,2.4vw,.95rem);color:var(--text-dim);white-space:nowrap}
+  .board-grid{display:grid;grid-template-columns:repeat(4,var(--bcard-w));gap:clamp(6px,2vw,10px);justify-content:center}
+  .board-card{width:var(--bcard-w);height:var(--bcard-h);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:clamp(1.3rem,4.6vw,1.8rem);font-weight:900;position:relative;cursor:default;box-shadow:0 4px 6px rgba(0,0,0,.3);transition:transform .2s var(--spring),filter .2s,box-shadow .2s;will-change:transform}
+  .board-card.clickable{cursor:pointer}
+  .board-card.clickable:hover{transform:translateY(-6px) scale(1.05) rotate(-1deg);filter:brightness(1.12);box-shadow:0 12px 18px rgba(0,0,0,.45)}
+  .board-card.clickable:active{transform:scale(.88);transition-duration:.06s}
+  .board-card.face-down{background:var(--card-back);border:2px solid #818cf8;color:transparent}
+  .board-card.face-down::after{content:'✦';color:#c7d2fe;font-size:1.4rem;position:absolute}
+  .board-card.revealed{background:#fff;border:2px solid #fff}
+  .board-card.cleared{opacity:0;pointer-events:none}
+  .floating-text{position:absolute;top:40%;left:50%;font-size:2.4rem;font-weight:900;z-index:100;pointer-events:none;text-shadow:0 4px 10px rgba(0,0,0,.8);animation:floatUp 1.5s var(--spring) forwards}
+
+  .mini-boards-container{display:flex;gap:10px;justify-content:flex-start;align-items:flex-start;width:100%;margin:8px 0 2px;padding:4px 12px;overflow-x:auto;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch}
+  .mini-boards-container::-webkit-scrollbar{height:6px}.mini-boards-container::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+  @media(min-width:760px){.mini-boards-container{flex-wrap:wrap;justify-content:center;overflow:visible}}
+  .board-mini{padding:10px;cursor:pointer;flex:none;scroll-snap-align:start}
+  .board-mini .board-header{font-size:.9rem;margin-bottom:8px}
+  .board-mini .board-grid{grid-template-columns:repeat(4,35px);gap:5px}
+  .board-mini .board-card{width:35px;height:50px;font-size:1rem;border-radius:6px;box-shadow:0 2px 4px rgba(0,0,0,.3);border:2px solid var(--border)}
+  .board-mini .board-card.revealed{border-color:#fff}.board-mini .board-card.face-down{border-color:#818cf8}
+  .board-mini .board-card.face-down::after{font-size:.8rem}.board-mini .score-badge{font-size:.72rem;padding:2px 6px}
+
+  .overlay{position:fixed;inset:0;background:rgba(15,23,42,.85);backdrop-filter:blur(5px);display:flex;align-items:center;justify-content:center;z-index:200;padding:16px;transition:opacity .25s ease}
+  .overlay.hidden{display:none}
+  .overlay-box{background:var(--surface);padding:clamp(24px,5vw,36px);border-radius:24px;border:3px solid var(--border);max-width:520px;width:100%;text-align:center;box-shadow:0 25px 50px rgba(0,0,0,.5);animation:bounceIn .6s var(--spring-big);max-height:90vh;overflow:auto}
+  .crown{display:inline-block;animation:crownPop .6s var(--spring-big) both}
+  .score-table{width:100%;margin:18px 0;border-collapse:collapse;font-weight:700}
+  .score-table th,.score-table td{padding:10px;border-bottom:2px solid var(--border)}
+  .score-table th{color:var(--text-dim)}
+  .winner-row{background:rgba(16,185,129,.2);color:#10b981}
+
+  .toast{position:fixed;top:24px;left:50%;transform:translateX(-50%);background:#f59e0b;color:#1a1300;font-weight:900;padding:14px 24px;border-radius:30px;z-index:300;box-shadow:0 12px 30px rgba(0,0,0,.5);font-size:1.1rem;animation:bounceIn .5s var(--spring-big);letter-spacing:.3px;max-width:92vw;text-align:center}
+  .turn-banner{position:fixed;top:90px;left:50%;transform:translateX(-50%);z-index:150;pointer-events:none;font-size:clamp(1.5rem,6vw,2rem);font-weight:900;text-shadow:0 4px 14px rgba(0,0,0,.6);animation:turnBadge 1.6s var(--spring) forwards}
+  .status-bar{position:fixed;bottom:calc(16px + env(safe-area-inset-bottom,0px));left:50%;transform:translateX(-50%);background:rgba(30,41,59,.95);backdrop-filter:blur(10px);padding:13px 26px;border-radius:30px;font-weight:800;font-size:1.05rem;box-shadow:0 10px 30px rgba(0,0,0,.5);border:2px solid var(--border);z-index:100;text-align:center;color:var(--text);max-width:92vw;transition:transform .3s var(--spring)}
+  .status-bar.bump{animation:popIn .4s var(--spring)}
+
+  /* ---- Flip 7 specific (card designs mirror the OG game) ---- */
+  .f7-row{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:6px}
+  .f7-card{width:clamp(38px,11vw,52px);height:clamp(54px,15vw,74px);border-radius:10px;display:flex;align-items:center;justify-content:center;
+    font-weight:900;font-size:clamp(1.2rem,4.2vw,1.7rem);box-shadow:0 3px 6px rgba(0,0,0,.35);border:3px solid #fff;color:#fff;
+    position:relative;animation:popReveal .4s var(--spring) both}
+  /* number cards: white inner number on a coloured face (set inline per value) */
+  .f7-card.num{text-shadow:0 1px 2px rgba(0,0,0,.35)}
+  /* modifiers: dark card, gold text */
+  .f7-card.mod{background:#1f2937;border-color:#fbbf24;color:#fbbf24;font-size:1.05rem}
+  .f7-card.modx2{background:#1f2937;border-color:#f472b6;color:#f472b6}
+  /* Second Chance: full red card, pink heart */
+  .f7-card.second{background:#dc2626;border-color:#ef4444;color:#fbcfe8;font-size:1.7rem}
+  /* Freeze: light blue, blue snowflake */
+  .f7-card.freeze{background:#bae6fd;border-color:#38bdf8;color:#0369a1;font-size:1.7rem}
+  /* Flip 3: neon yellow, white F3 */
+  .f7-card.flip3{background:#eaff00;border-color:#d4e600;color:#fff;font-size:1.2rem;font-style:italic;text-shadow:0 1px 3px rgba(0,0,0,.45)}
+  .f7-card.busted-card{opacity:.55;filter:grayscale(.35)}
+  .f7-card.bust-cause{outline:3px solid #ef4444;outline-offset:1px;animation:shakeX .5s ease}
+  @keyframes shakeX{0%,100%{transform:translateX(0)}20%{transform:translateX(-5px) rotate(-3deg)}40%{transform:translateX(5px) rotate(3deg)}60%{transform:translateX(-3px)}80%{transform:translateX(3px)}}
+  .f7-status{font-weight:800;font-size:.85rem;padding:3px 10px;border-radius:10px;margin-left:6px;text-transform:capitalize}
+  .f7-status.active{background:rgba(59,130,246,.2);color:#60a5fa}
+  .f7-status.stayed{background:rgba(16,185,129,.2);color:#10b981}
+  .f7-status.busted{background:rgba(239,68,68,.2);color:#ef4444}
+  .f7-controls{position:fixed;bottom:calc(70px + env(safe-area-inset-bottom,0px));left:50%;transform:translateX(-50%);display:flex;gap:12px;z-index:110}
+  .f7-controls .btn{margin:0;width:auto;padding:14px 28px}
+  .f7-empty{color:var(--text-dim);font-weight:700;font-size:.85rem}
+  /* dealer pile + flying-deal animation */
+  .f7-dealer{display:flex;flex-direction:column;align-items:center;gap:6px;margin:8px auto 2px}
+  .f7-deck{width:clamp(60px,16vw,84px);height:clamp(85px,22vw,118px);border-radius:14px;background:var(--card-back);
+    border:3px solid #818cf8;box-shadow:0 8px 18px rgba(0,0,0,.5),inset 0 -6px 0 rgba(0,0,0,.25);display:flex;align-items:center;justify-content:center;position:relative}
+  .f7-deck::after{content:'✦';color:rgba(255,255,255,.5);font-size:2.4rem}
+  .f7-deck .cnt{position:absolute;bottom:-20px;left:50%;transform:translateX(-50%);font-size:.7rem;color:var(--text-dim);font-weight:800;white-space:nowrap}
+  .f7-deck.deal{animation:deckNudge .25s var(--spring)}
+  @keyframes deckNudge{0%{transform:translateY(0)}50%{transform:translateY(-6px) scale(1.04)}100%{transform:translateY(0)}}
+  @media(max-width:600px){.overlay-box{padding:22px}.score-table th,.score-table td{padding:8px 6px;font-size:.95rem}}
+  @media(min-width:760px){:root{--slot-w:84px;--bcard-w:74px}.top-area{margin-top:18px}}
+
+  /* 3D DICE & QWIXX SPECIFICS */
+  .qwixx-dice-zone {
+    padding: 1rem;
+    background: linear-gradient(180deg, rgba(124,92,255,0.04) 0%, transparent 100%);
+    border-bottom: 1px solid var(--border);
+    display: flex; flex-direction: column; gap: 0.85rem; align-items: center; width: 100%;
+  }
+  .qwixx-dice-rows { display: flex; justify-content: center; gap: 1rem; flex-wrap: wrap; margin: 0.5rem 0; }
+  .qwixx-dice-row { display: flex; align-items: center; gap: 0.6rem; }
+
+  .qwixx-scene { width: 52px; height: 52px; perspective: 400px; cursor: pointer; transition: transform 0.2s; }
+  .qwixx-scene:hover { transform: scale(1.1); }
+  .qwixx-cube { width: 100%; height: 100%; position: relative; transform-style: preserve-3d; transform: translateZ(-26px); }
+  .qwixx-cube__face {
+    position: absolute; width: 52px; height: 52px; border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Fredoka', sans-serif; font-size: 1.8rem; font-weight: 700;
+    box-shadow: inset 0 0 12px rgba(0,0,0,0.15), 0 4px 8px rgba(0,0,0,0.2);
+    backface-visibility: hidden; border: 1px solid rgba(255,255,255,0.2);
+  }
+  .qwixx-cube__face--front  { transform: rotateY(  0deg) translateZ(26px); }
+  .qwixx-cube__face--right  { transform: rotateY( 90deg) translateZ(26px); }
+  .qwixx-cube__face--back   { transform: rotateY(180deg) translateZ(26px); }
+  .qwixx-cube__face--left   { transform: rotateY(-90deg) translateZ(26px); }
+  .qwixx-cube__face--top    { transform: rotateX( 90deg) translateZ(26px); }
+  .qwixx-cube__face--bottom { transform: rotateX(-90deg) translateZ(26px); }
+
+  .qwixx-cube.w .qwixx-cube__face { background: linear-gradient(145deg,#f0f0f0,#ccc); color: #333; }
+  .qwixx-cube.r .qwixx-cube__face { background: linear-gradient(145deg,var(--qwixx-red),#c0392b); color: #fff; }
+  .qwixx-cube.y .qwixx-cube__face { background: linear-gradient(145deg,var(--qwixx-yellow),#c9a00a); color: #333; }
+  .qwixx-cube.g .qwixx-cube__face { background: linear-gradient(145deg,var(--qwixx-green),#27ae60); color: #fff; }
+  .qwixx-cube.b .qwixx-cube__face { background: linear-gradient(145deg,var(--qwixx-blue),#2471a3); color: #fff; }
+
+  .qwixx-scene.can .qwixx-cube__face--front { box-shadow: 0 0 18px currentColor, inset 0 0 12px rgba(255,255,255,0.4); }
+
+  .qwixx-scorecard { min-width: 400px; background: var(--surface); border: 2px solid var(--border); border-radius: 20px; overflow: hidden; margin: 0 auto; }
+  .qwixx-score-row { display: grid; grid-template-columns: 50px 1fr 60px; border-bottom: 1px solid var(--border); }
+  .qwixx-row-hdr { display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 1.1rem; color: #fff; }
+  .qwixx-row-cells { display: flex; }
+  .qwixx-cell {
+    flex: 1; min-width: 30px; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: 8px 2px; cursor: pointer; transition: all .2s; position: relative; font-weight: 700; font-size: .8rem; color: var(--text-dim);
+  }
+  .qwixx-cell:hover:not(.x) { background: rgba(255,255,255,0.05); }
+  .qwixx-cell.x { color: var(--text); font-size: 1.1rem; }
+  .qwixx-cell.good { animation: activeGlow 1.5s ease-in-out infinite; color: var(--accent); }
+  .qwixx-cell.bad { opacity: .3; cursor: not-allowed; }
+  .qwixx-cell.lock { background: rgba(0,0,0,0.3); cursor: not-allowed; text-decoration: line-through; }
+
+  .qwixx-controls { display: flex; justify-content: center; gap: 12px; margin: 10px 0; }
+  .qwixx-ctrl-btn { padding: 12px 24px; border-radius: 12px; border: 2px solid var(--border); background: var(--surface); color: var(--text); font-weight: 800; cursor: pointer; transition: all .2s; }
+  .qwixx-ctrl-btn:hover:not(:disabled) { border-color: var(--accent); background: var(--surface-light); }
+  .qwixx-ctrl-btn:disabled { opacity: .4; cursor: not-allowed; }
+  .qwixx-ctrl-btn.pri { background: var(--accent); border-color: var(--accent); color: #fff; }
 </style>
 </head>
 <body>
@@ -294,6 +581,7 @@ function goOnline(){showScreen('onlineSetup');}
 catalogue=[
   {id:'skyjo',name:'Skyjo',minPlayers:2,maxPlayers:8,description:'Lowest score wins.',emoji:'🃏'},
   {id:'flip7',name:'Flip 7',minPlayers:2,maxPlayers:8,description:'Push your luck to 200.',emoji:'🎴'},
+  {id:'qwixx',name:'Qwixx',minPlayers:2,maxPlayers:8,description:'Dice rolling strategy game.',emoji:'🎲'},
 ];
 
 /* ---- Rulebooks (accessible from menu, pickers, and inside a game) ---- */
@@ -532,14 +820,376 @@ function quitLocal(){window._currentBots=[];resetGameUi();showScreen('menuScreen
 
 /* ====================== GAME CLIENTS REGISTRY ====================== */
 window.GameClients={
+  
+  'qwixx': (() => {
+    const COLORS = ['red', 'yellow', 'green', 'blue'];
+    const C_HEX = { red: '#e74c3c', yellow: '#f1c40f', green: '#2ecc71', blue: '#3498db' };
+
+    function getFacesHtml(val, max) {
+      const faces = ['front', 'right', 'back', 'left', 'top', 'bottom'];
+      return faces.map(f => {
+        let v = f === 'front' ? val : Math.floor(Math.random() * max) + 1;
+        return `<div class="qwixx-cube__face qwixx-cube__face--${f}">${v}</div>`;
+      }).join('');
+    }
+
+    function renderDice(dice, max, shouldAnimate) {
+      const wHtml = dice.w.map((v, i) => `
+        <div class="qwixx-scene w">
+          <div class="qwixx-cube w ${shouldAnimate ? 'rolling' : ''}">${getFacesHtml(v, max)}</div>
+        </div>
+      `).join('');
+
+      const cHtml = COLORS.filter(c => dice[c] > 0).map(c => `
+        <div class="qwixx-scene ${c[0]}">
+          <div class="qwixx-cube ${c[0]} ${shouldAnimate ? 'rolling' : ''}">${getFacesHtml(dice[c], max)}</div>
+        </div>
+      `).join('');
+
+      return `<div class="qwixx-dice-rows">
+        <div class="qwixx-dice-row"><span style="font-size:0.65rem;color:#999">white</span><div style="display:flex;gap:0.6rem">${wHtml}</div></div>
+        <div class="qwixx-dice-row"><span style="font-size:0.65rem;color:#999">colors</span><div style="display:flex;gap:0.6rem">${cHtml}</div></div>
+      </div>`;
+    }
+
+    function renderScorecard(p, state) {
+      let html = `<div class="qwixx-scorecard">`;
+      
+      COLORS.forEach(c => {
+        const row = p.rows[c];
+        const locked = state.locked.includes(c);
+        const last = row.marks.length > 0 ? row.marks[row.marks.length - 1] : -1;
+        
+        html += `<div class="qwixx-score-row">
+          <div class="qwixx-row-hdr" style="background:${C_HEX[c]}">${c[0].toUpperCase()}</div>
+          <div class="qwixx-row-cells">`;
+        
+        row.nums.forEach((n, i) => {
+          const marked = row.marks.includes(i);
+          const bad = !marked && i <= last;
+          const isLockable = i === row.nums.length - 1 && row.marks.length >= 5;
+          let cls = 'qwixx-cell';
+          if (marked) cls += ' x';
+          if (bad) cls += ' bad';
+          if (locked) cls += ' lock';
+          if (isLockable && !marked) cls += ' good';
+          
+          html += `<div class="${cls}" onclick="window.GameClients['qwixx'].act('mark', {c:'${c}',i:${i}})">${marked ? '✕' : n}</div>`;
+        });
+        
+        html += `</div><div style="display:flex;align-items:center;justify-content:center;font-weight:800;font-size:0.8rem">${locked ? '🔒' : row.marks.length}</div></div>`;
+      });
+      
+      html += `</div>`;
+      return html;
+    }
+
+    return {
+      render(view) {
+        const s = view.state;
+        const p = s.yourRows ? { rows: s.yourRows, penalties: s.yourPenalties } : { rows: {}, penalties: 0 };
+        const max = s.expansion === 'longo' ? 8 : 6;
+
+        $('topArea').style.display = 'flex';
+        const piles = $('topArea').querySelector('.piles');
+        if (piles) piles.style.display = 'none';
+        $('heldCardWrapper').style.display = 'none';
+        const oldDice = $('topArea').querySelector('.qwixx-dice-zone');
+        if (oldDice) oldDice.remove();
+
+        const diceZone = document.createElement('div');
+        diceZone.className = 'qwixx-dice-zone';
+        const isAct = s.activeSeat === view.yourSeat;
+        const isWhite = s.phase === 'WHITE_PHASE';
+        const isColor = s.phase === 'COLOR_PHASE';
+        const pendingWhite = isWhite && s.pendingWhiteDecisions.includes(view.yourSeat);
+
+        let controlsHtml = '';
+        if (isWhite) {
+           if (pendingWhite) {
+              controlsHtml = `<button class="qwixx-ctrl-btn pri" onclick="window.GameClients['qwixx'].act('skip')">Skip White</button>`;
+           } else {
+              controlsHtml = `<span class="muted">Waiting for others...</span>`;
+           }
+        } else if (isColor) {
+           if (isAct) {
+              controlsHtml = `<button class="qwixx-ctrl-btn pri" onclick="window.GameClients['qwixx'].act('finishTurn')">${!s.activeMarkedThisTurn ? 'Take Penalty & Finish' : 'Finish Turn'}</button>`;
+           }
+        }
+
+        diceZone.innerHTML = `
+          <div style="display:flex;justify-content:space-between;width:100%;font-weight:800;font-size:0.9rem;margin-bottom:8px">
+            <span>${isWhite ? '🎲 White Phase' : '🎯 Color Phase'}</span>
+            <span>Round ${s.round}</span>
+          </div>
+          ${renderDice(s.dice || {w:[0,0],r:0,y:0,g:0,b:0}, max, !!(prevView && prevView.state && prevView.state.round !== s.round))}
+          <div class="qwixx-controls">
+            ${controlsHtml}
+          </div>
+        `;
+        $('topArea').appendChild(diceZone);
+
+        const boardContainer = $('mainBoardsContainer');
+        boardContainer.innerHTML = '';
+        const board = document.createElement('div');
+        board.className = 'player-board';
+        board.innerHTML = `<div class="board-header"><span>Your Sheet</span><span class="score-badge">Penalties: ${s.yourPenalties}/4</span></div>`;
+        board.appendChild(document.createRange().createContextualFragment(renderScorecard(p, s)));
+        boardContainer.appendChild(board);
+
+        let sbText = 'Game Over';
+        if (isWhite) {
+           sbText = pendingWhite ? 'Your Turn (White Dice)!' : 'Waiting...';
+        } else if (isColor) {
+           sbText = isAct ? 'Your Turn (Color Dice)!' : 'Waiting...';
+        }
+        $('statusBar').textContent = sbText;
+
+        if (prevView && prevView.state && prevView.state.round !== s.round) {
+          setTimeout(() => {
+            document.querySelectorAll('.qwixx-cube.rolling').forEach(cube => {
+              let rx = Math.random() * 720 - 360;
+              let ry = Math.random() * 720 - 360;
+              cube.style.transition = 'none';
+              cube.style.transform = `translateZ(-26px) rotateX(${rx}deg) rotateY(${ry}deg)`;
+              
+              cube.offsetHeight; // force reflow
+              
+              cube.style.transition = 'transform 0.6s cubic-bezier(0.2, 0.8, 0.2, 1)';
+              let finalRx = 360 * (Math.floor(Math.random() * 2) + 1);
+              let finalRy = 360 * (Math.floor(Math.random() * 2) + 1);
+              cube.style.transform = `translateZ(-26px) rotateX(${finalRx}deg) rotateY(${finalRy}deg)`;
+              cube.classList.remove('rolling');
+            });
+          }, 10);
+        }
+
+        if (s.phase === "GAME_OVER") {
+           showSummary(view);
+        }
+      },
+      act(action, msg) {
+        const view = window._renderView;
+        if (mode === 'local') {
+           localAct(view.yourSeat, { action, ...msg });
+        } else {
+           net.send({ type: 'action', action, ...msg });
+        }
+      }
+    };
+  })()
+
 };
-window.LocalEngines={};});
+window.LocalEngines={};
+
+
+/* -------------------- QWIXX client -------------------- */
+(function(){
+  
+class QwixxEngine {
+  constructor(names) {
+    this.COLORS = ["red", "yellow", "green", "blue"];
+    this.players = names.map(name => ({
+      name: name || "Player",
+      rows: {},
+      penalties: 0,
+    }));
+    this.expansion = "standard";
+    this.locked = [];
+    this.pendingLocks = [];
+    this.pendingWhiteDecisions = this.players.map((_, i) => i);
+    this.activeMarkedThisTurn = false;
+    this.round = 1;
+    this.players.forEach(p => {
+      this.COLORS.forEach(c => { p.rows[c] = this.makeRow(c); });
+    });
+    this.dice = this.getDice();
+    this.activeSeat = 0;
+    this.phase = "WHITE_PHASE";
+  }
+  
+  makeRow(color) {
+    const isAsc = color === "red" || color === "yellow";
+    let nums = [];
+    if (isAsc) { for (let i = 2; i <= 12; i++) nums.push(i); }
+    else { for (let i = 12; i >= 2; i--) nums.push(i); }
+    return { nums, cellColors: nums.map(() => color), doubles: [], marks: [] };
+  }
+
+  getDice() {
+    const rnd = () => Math.floor(Math.random() * 6) + 1;
+    return { w: [rnd(), rnd()], r: rnd(), y: rnd(), g: rnd(), b: rnd() };
+  }
+
+  applyAction(seat, msg) {
+    if (this.phase === "GAME_OVER") return;
+
+    if (msg.action === "mark") {
+      const { c, i } = msg;
+      const p = this.players[seat];
+      if (!p) return;
+      const row = p.rows[c];
+      if (!row || row.marks.includes(i)) return;
+      
+      const last = row.marks.length > 0 ? row.marks[row.marks.length - 1] : -1;
+      if (i <= last) return;
+      
+      const endIdx = row.nums.length - 1;
+      if (i === endIdx && row.marks.length < 5) return;
+      
+      const isAct = seat === this.activeSeat;
+      
+      if (this.phase === "WHITE_PHASE") {
+        if (!this.pendingWhiteDecisions.includes(seat)) return;
+        const wSum = this.dice.w[0] + this.dice.w[1];
+        if (row.nums[i] !== wSum) return;
+
+        row.marks.push(i);
+        row.marks.sort((a,b)=>a-b);
+        this.pendingWhiteDecisions = this.pendingWhiteDecisions.filter(x => x !== seat);
+        if (isAct) this.activeMarkedThisTurn = true;
+        
+        if (i === endIdx && row.marks.length >= 5 && !this.locked.includes(c) && !this.pendingLocks.includes(c)) {
+          this.pendingLocks.push(c);
+        }
+
+        if (this.pendingWhiteDecisions.length === 0) {
+          this.phase = "COLOR_PHASE";
+        }
+      } else if (this.phase === "COLOR_PHASE") {
+        if (!isAct) return;
+        
+        const reqColor = row.cellColors[i];
+        const cKey = reqColor[0];
+        const sum1 = this.dice.w[0] + this.dice[cKey];
+        const sum2 = this.dice.w[1] + this.dice[cKey];
+        
+        if (row.nums[i] !== sum1 && row.nums[i] !== sum2) return;
+        
+        row.marks.push(i);
+        row.marks.sort((a,b)=>a-b);
+        this.activeMarkedThisTurn = true;
+        
+        if (i === endIdx && row.marks.length >= 5 && !this.locked.includes(c) && !this.pendingLocks.includes(c)) {
+          this.pendingLocks.push(c);
+        }
+        
+        this.applyAction(seat, { action: "finishTurn" });
+      }
+    }
+
+    if (msg.action === "skip") {
+      if (this.phase === "WHITE_PHASE") {
+        this.pendingWhiteDecisions = this.pendingWhiteDecisions.filter(x => x !== seat);
+        if (this.pendingWhiteDecisions.length === 0) {
+          this.phase = "COLOR_PHASE";
+        }
+      }
+    }
+
+    if (msg.action === "finishTurn") {
+      if (this.phase !== "COLOR_PHASE" || seat !== this.activeSeat) return;
+      
+      if (!this.activeMarkedThisTurn) {
+        this.players[this.activeSeat].penalties++;
+      }
+      
+      this.pendingLocks.forEach(c => {
+        if (!this.locked.includes(c)) this.locked.push(c);
+      });
+      this.pendingLocks = [];
+      
+      if (this.locked.length >= 2 || this.players.some(p => p.penalties >= 4)) {
+        this.phase = "GAME_OVER";
+      } else {
+        this.activeSeat = (this.activeSeat + 1) % this.players.length;
+        let tries = 0;
+        while (this.players[this.activeSeat].penalties >= 4 && tries < this.players.length) {
+          this.activeSeat = (this.activeSeat + 1) % this.players.length;
+          tries++;
+        }
+        this.phase = "WHITE_PHASE";
+        this.dice = this.getDice();
+        this.locked.forEach(c => {
+          this.dice[c[0]] = 0;
+        });
+        this.pendingWhiteDecisions = this.players.map((_, i) => i).filter(i => this.players[i].penalties < 4);
+        this.activeMarkedThisTurn = false;
+        this.round++;
+      }
+    }
+  }
+
+  getStateFor(seat) {
+    const p = this.players[seat];
+    return {
+      dice: this.dice,
+      activeSeat: this.activeSeat,
+      expansion: this.expansion,
+      locked: this.locked,
+      yourRows: p ? p.rows : {},
+      yourPenalties: p ? p.penalties : 0,
+      allPlayers: this.players.map((pl, i) => ({
+        seat: i,
+        name: pl.name,
+        penalties: pl.penalties,
+        rows: pl.rows,
+        waiting: this.phase === "WHITE_PHASE" ? this.pendingWhiteDecisions.includes(i) : false
+      })),
+      phase: this.phase,
+      round: this.round,
+      pendingWhiteDecisions: this.pendingWhiteDecisions,
+      activeMarkedThisTurn: this.activeMarkedThisTurn
+    };
+  }
+}
+
+window.LocalEngines['qwixx'] = function(names) {
+  const E = new QwixxEngine(names);
+  return {
+    apply(seat, msg) { E.applyAction(seat, msg); },
+    next() { 
+       E.players.forEach(p => {
+          p.penalties = 0;
+          E.COLORS.forEach(c => { p.rows[c] = E.makeRow(c); });
+       });
+       E.locked = [];
+       E.pendingLocks = [];
+       E.pendingWhiteDecisions = E.players.map((_, i) => i);
+       E.activeMarkedThisTurn = false;
+       E.round = 1;
+       E.dice = E.getDice();
+       E.activeSeat = 0;
+       E.phase = "WHITE_PHASE";
+    },
+    actor() {
+       if (E.phase === "WHITE_PHASE") {
+           return E.pendingWhiteDecisions.length > 0 ? E.pendingWhiteDecisions[0] : E.activeSeat;
+       }
+       return E.activeSeat;
+    },
+    viewFor(seat) {
+      const s = E.getStateFor(seat);
+      let summary;
+      if (E.phase === "GAME_OVER") {
+        const scores = E.players.map((pl, i) => {
+          let total = 0;
+          E.COLORS.forEach(c => {
+            let m = pl.rows[c].marks.length;
+            if (pl.rows[c].marks.includes(pl.rows[c].nums.length - 1)) m++;
+            total += (m * (m + 1)) / 2;
+          });
+          total -= pl.penalties * 5;
+          return { seat: i, name: pl.name, score: total, delta: 0 };
+        });
         const max = Math.max(...scores.map(x => x.score));
         summary = {
           rows: scores,
           winners: scores.filter(x => x.score === max).map(x => x.seat),
         };
-      }    }
+      }
+      return { game: 'qwixx', phase: E.phase, over: E.phase === "GAME_OVER", yourSeat: seat, summary, state: s };
+    }
   };
 };
 })();
@@ -1117,6 +1767,66 @@ const Bots=(()=>{
     return hit?{action:'hit'}:{action:'stay'};
   }
 
+  
+  /* ---------- QWIXX ---------- */
+  function qwixxValidMarks(p, s, isColorPhase) {
+     const valids = [];
+     const isAct = s.activeSeat === s.viewerSeat;
+     ['red', 'yellow', 'green', 'blue'].forEach(c => {
+         if (s.locked.includes(c)) return;
+         const row = p.rows[c];
+         const last = row.marks.length > 0 ? row.marks[row.marks.length - 1] : -1;
+         const endIdx = row.nums.length - 1;
+         if (!isColorPhase) {
+            const wSum = s.dice.w[0] + s.dice.w[1];
+            for (let i = last + 1; i <= endIdx; i++) {
+                if (row.nums[i] === wSum) {
+                   if (i === endIdx && row.marks.length < 5) continue;
+                   valids.push({ c, i });
+                }
+            }
+         } else if (isAct) {
+            const cKey = c[0];
+            if (s.dice[cKey] > 0) {
+               const sum1 = s.dice.w[0] + s.dice[cKey];
+               const sum2 = s.dice.w[1] + s.dice[cKey];
+               for (let i = last + 1; i <= endIdx; i++) {
+                   if (row.nums[i] === sum1 || row.nums[i] === sum2) {
+                      if (i === endIdx && row.marks.length < 5) continue;
+                      valids.push({ c, i });
+                   }
+               }
+            }
+         }
+     });
+     return valids;
+  }
+  function qwixxChoose(view, diff) {
+     const s = view.state;
+     const me = view.yourSeat;
+     const p = s.allPlayers[me];
+     
+     if (s.phase === "WHITE_PHASE") {
+        if (!s.pendingWhiteDecisions.includes(me)) return null;
+        const valids = qwixxValidMarks(p, s, false);
+        if (valids.length > 0) {
+           // pick one that wastes the fewest numbers, or randomly
+           const best = valids.reduce((a, b) => (b.i < a.i ? b : a), valids[0]);
+           return { action: 'mark', c: best.c, i: best.i };
+        }
+        return { action: 'skip' };
+     } else if (s.phase === "COLOR_PHASE") {
+        if (s.activeSeat !== me) return null;
+        const valids = qwixxValidMarks(p, s, true);
+        if (valids.length > 0) {
+           const best = valids.reduce((a, b) => (b.i < a.i ? b : a), valids[0]);
+           return { action: 'mark', c: best.c, i: best.i };
+        }
+        return { action: 'finishTurn' };
+     }
+     return null;
+  }
+
   /* ---------- SKYJO ---------- */
   function skyHidden(p){return p.board.map((c,i)=>!c.revealed&&!c.cleared?i:-1).filter(i=>i>=0);}
   function skyRevealed(p){return p.board.map((c,i)=>c.revealed&&!c.cleared?i:-1).filter(i=>i>=0);}
@@ -1331,6 +2041,7 @@ const Bots=(()=>{
     choose(gameId,view,diff){
       try{
         if(gameId==='skyjo')return skyjoChoose(view,diff);
+        if(gameId==='qwixx')return qwixxChoose(view,diff);
         if(gameId==='flip7')return flip7Choose(view,diff);
       }catch(e){console.warn('bot error',e);}
       return null;
@@ -1350,7 +2061,7 @@ function botSeatsFromView(view){
 function maybeRunBot(view){
   if(_botBusy)return;
   const gid=view.game;
-  const gv=view[gid];
+  const gv = gid === 'qwixx' ? view.state : view[gid];
   if(!gv)return;
   // who must act?
   let actingSeat=-1, pendingFrom=-1;
@@ -1362,12 +2073,20 @@ function maybeRunBot(view){
   } else if(gid==='flip7'){
     if(gv.pendingAction) pendingFrom=gv.pendingAction.from;
     else if(gv.phase==='PLAY') actingSeat=gv.current;
+  } else if(gid==='qwixx'){
+    if(gv.phase==='COLOR_PHASE') actingSeat=gv.activeSeat;
   }
   const bots=botSeatsFromView(view); if(!bots.length)return;
   const iAmDriver = (mode==='local') || net.isHost;
-  if(!iAmDriver)return;  // Skyjo REVEAL: drive every bot that still needs to flip (sequentially)
+  if(!iAmDriver)return;
+
+  // Parallel bot phases: Skyjo REVEAL and Qwixx WHITE_PHASE
   if(gid==='skyjo' && gv.phase==='REVEAL'){
     for(const b of bots){const p=gv.players[b.seat]; if(p.revealCount<2){scheduleBot(view,b,b.seat);return;}}
+    return;
+  }
+  if(gid==='qwixx' && gv.phase==='WHITE_PHASE'){
+    for(const b of bots){if(gv.pendingWhiteDecisions.includes(b.seat)){scheduleBot(view,b,b.seat);return;}}
     return;
   }
   const targetSeat = pendingFrom>=0?pendingFrom:actingSeat;
