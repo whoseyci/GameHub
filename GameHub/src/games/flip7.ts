@@ -5,6 +5,7 @@
 // Each action produces `state.events` — an ordered list the client replays. The
 // final `state` is authoritative; `events` describe how we got there.
 import type { GameModule, GameView } from "./types";
+import { makeSeed, shuffleInPlace, type RngStateHolder } from "../rng";
 
 type CardKind = "num" | "mod" | "act";
 interface Card { kind: CardKind; v: number | string; }
@@ -20,7 +21,8 @@ interface Player {
 // pendingAction kinds:
 //   freeze/flip3  -> choose a target to apply to
 //   give_second   -> choose an active opponent to hand a duplicate Second Chance
-interface State {
+interface State extends RngStateHolder {
+  schemaVersion: number;
   players: Player[];
   deck: Card[]; discard: Card[];
   current: number;
@@ -33,17 +35,14 @@ interface State {
   log: any;            // last event (back-compat / quick checks)
 }
 
-function buildDeck(): Card[] {
+function buildDeck(rng: RngStateHolder): Card[] {
   const d: Card[] = [];
   d.push({ kind: "num", v: 0 });
   for (let n = 1; n <= 12; n++) for (let i = 0; i < n; i++) d.push({ kind: "num", v: n });
   for (const m of ["+2", "+4", "+6", "+8", "+10", "x2"]) d.push({ kind: "mod", v: m });
   for (const a of ["freeze", "flip3", "second"]) for (let i = 0; i < 3; i++) d.push({ kind: "act", v: a });
-  shuffle(d);
+  shuffleInPlace(d, rng);
   return d;
-}
-function shuffle(d: Card[]) {
-  for (let i = d.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [d[i], d[j]] = [d[j], d[i]]; }
 }
 function newPlayer(name: string, banked = 0): Player {
   return { name, nums: [], mods: [], secondChance: false, status: "active", bustCard: null, banked, roundScore: 0 };
@@ -51,10 +50,13 @@ function newPlayer(name: string, banked = 0): Player {
 
 function emit(s: State, e: any) { e.seq = ++s.seq; s.events.push(e); s.log = e; }
 
-function fresh(names: string[], banked: number[]): State {
-  const deck = buildDeck();
+function fresh(names: string[], banked: number[], rngState = makeSeed()): State {
+  const rng = { rngState };
+  const deck = buildDeck(rng);
   const players = names.map((n, i) => newPlayer(n, banked[i] ?? 0));
   const s: State = {
+    schemaVersion: 1,
+    rngState: rng.rngState,
     players, deck, discard: [], current: 0, phase: "PLAY", round: 1,
     pendingAction: null, flip3Left: 0, flip3Target: -1, events: [], seq: 0, log: null,
   };
@@ -62,7 +64,7 @@ function fresh(names: string[], banked: number[]): State {
   // starts frozen). No drama events for the opening deal.
   for (let i = 0; i < players.length; i++) {
     let c = draw(s); let guard = 0;
-    while (c.kind === "act" && guard++ < 200) { s.deck.unshift(c); shuffle(s.deck); c = draw(s); }
+    while (c.kind === "act" && guard++ < 200) { s.deck.unshift(c); shuffleInPlace(s.deck, s); c = draw(s); }
     placeCard(s, i, c);
   }
   s.current = firstActive(s, 0);
@@ -71,7 +73,7 @@ function fresh(names: string[], banked: number[]): State {
 
 // Discard only reshuffles when the deck is fully empty (card-counting friendly).
 function draw(s: State): Card {
-  if (s.deck.length === 0) { s.deck = s.discard; s.discard = []; shuffle(s.deck); emit(s, { type: "reshuffle" }); }
+  if (s.deck.length === 0) { s.deck = s.discard; s.discard = []; shuffleInPlace(s.deck, s); emit(s, { type: "reshuffle" }); }
   return s.deck.pop()!;
 }
 function firstActive(s: State, from: number): number {
@@ -226,7 +228,7 @@ export const Flip7: GameModule = {
       if (msg.action === "next_round") {
         const over = state.phase === "GAME_OVER";
         const banked = state.players.map((p) => p.banked);
-        const ns = fresh(state.players.map((p) => p.name), over ? state.players.map(() => 0) : banked);
+        const ns = fresh(state.players.map((p) => p.name), over ? state.players.map(() => 0) : banked, state.rngState);
         ns.seq = state.seq + 1;
         if (!over) ns.round = state.round + 1;
         Object.assign(state, ns);

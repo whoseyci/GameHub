@@ -161,9 +161,11 @@ npm install
 npm run dev        # wrangler dev — runs Worker + DOs + static client locally
 # open the printed http://localhost:8787
 npm run typecheck  # tsc --noEmit
+npm test -- --run  # Vitest contract/regression tests
+npm run deploy:dry-run
 ```
 
-`npx wrangler deploy --dry-run` validates the build without deploying (no login needed).
+`npm run deploy:dry-run` validates the Worker bundle, Durable Object bindings, and static assets without deploying (no login needed).
 
 ---
 

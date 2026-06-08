@@ -5,7 +5,9 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest",
+    "deploy:dry-run": "wrangler deploy --dry-run"
   },
   "dependencies": {
     "partyserver": "^0.0.71"
@@ -13,6 +15,7 @@
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20250606.0",
     "typescript": "^5.4.0",
+    "vitest": "^4.1.8",
     "wrangler": "^4.20.0"
   }
 }

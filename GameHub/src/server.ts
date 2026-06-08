@@ -16,6 +16,7 @@ import {
   Server, Connection, ConnectionContext, routePartykitRequest, getServerByName,
 } from "partyserver";
 import { getGame, GAME_CATALOGUE, TICK_RUNNERS } from "./games/registry";
+import { parseClientMessage } from "./protocol";
 
 export interface Env {
   Room: DurableObjectNamespace<Room>;
@@ -185,12 +186,13 @@ export class Room extends Server<Env> {
   }
 
   async onMessage(conn: Connection<ConnState>, raw: string) {
-    let msg: any; try { msg = JSON.parse(raw as string); } catch { return; }
+    const msg = parseClientMessage(raw as string);
+    if (!msg) return;
 
     /* ---- join / reconnect ---- */
     if (msg.type === "join") {
       const pid: string = msg.pid;
-      const name: string = (msg.name || "Player").slice(0, 20);
+      const name: string = msg.name;
       conn.setState({ pid });
       this.touch();
 

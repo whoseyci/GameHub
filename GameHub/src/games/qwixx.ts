@@ -1,4 +1,5 @@
 import type { GameModule, GameView } from "./types";
+import { makeSeed, randomInt, shuffleInPlace, type RngStateHolder } from "../rng";
 
 export interface QwixxRow {
   nums: number[];
@@ -13,7 +14,8 @@ export interface QwixxPlayer {
   penalties: number;
 }
 
-export interface QwixxState {
+export interface QwixxState extends RngStateHolder {
+  schemaVersion: number;
   players: QwixxPlayer[];
   dice: { w: number[]; r: number; y: number; g: number; b: number } | null;
   activeSeat: number;
@@ -35,7 +37,7 @@ const EXPANSIONS = {
   double: { rowMax: 12, dieMax: 6 },
 };
 
-function makeRow(color: string, expansion: string): QwixxRow {
+function makeRow(color: string, expansion: string, rng: RngStateHolder): QwixxRow {
   const isAsc = color === "red" || color === "yellow";
   const rowMax = EXPANSIONS[expansion as keyof typeof EXPANSIONS]?.rowMax || 12;
   let nums: number[] = [];
@@ -47,18 +49,18 @@ function makeRow(color: string, expansion: string): QwixxRow {
   }
   
   if (expansion === "num_mixx") {
-    nums.sort(() => Math.random() - 0.5);
+    shuffleInPlace(nums, rng);
   }
   
   let cellColors = nums.map(() => color);
   if (expansion === "col_mixx") {
-    cellColors = nums.map(() => COLORS[Math.floor(Math.random() * COLORS.length)]);
+    cellColors = nums.map(() => COLORS[randomInt(rng, COLORS.length)]);
   }
   
   let doubles: number[] = [];
   if (expansion === "double") {
     while (doubles.length < 2) {
-      let r = Math.floor(Math.random() * nums.length);
+      let r = randomInt(rng, nums.length);
       if (!doubles.includes(r)) doubles.push(r);
     }
   }
@@ -66,8 +68,8 @@ function makeRow(color: string, expansion: string): QwixxRow {
   return { nums, cellColors, doubles, marks: [] };
 }
 
-function getDice() {
-  const rnd = () => Math.floor(Math.random() * 6) + 1;
+function getDice(rng: RngStateHolder) {
+  const rnd = () => randomInt(rng, 6) + 1;
   return { w: [rnd(), rnd()], r: rnd(), y: rnd(), g: rnd(), b: rnd() };
 }
 
@@ -83,6 +85,7 @@ export const Qwixx: GameModule = {
 
   create(names: string[]) {
     const expansion = "standard";
+    const rng = { rngState: makeSeed() };
     const players: QwixxPlayer[] = names.map((name) => ({
       name: name || "Player",
       rows: {},
@@ -90,12 +93,15 @@ export const Qwixx: GameModule = {
     }));
     
     players.forEach(p => {
-      COLORS.forEach(c => { p.rows[c] = makeRow(c, expansion); });
+      COLORS.forEach(c => { p.rows[c] = makeRow(c, expansion, rng); });
     });
+    const dice = getDice(rng);
     
     return {
+      schemaVersion: 1,
+      rngState: rng.rngState,
       players,
-      dice: getDice(),
+      dice,
       activeSeat: 0,
       phase: "WHITE_PHASE",
       expansion,
@@ -196,7 +202,7 @@ export const Qwixx: GameModule = {
           tries++;
         }
         s.phase = "WHITE_PHASE";
-        s.dice = getDice();
+        s.dice = getDice(s);
         s.locked.forEach(c => {
           s.dice![c[0] as keyof typeof s.dice] = 0 as any;
         });

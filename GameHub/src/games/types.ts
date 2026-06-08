@@ -10,6 +10,7 @@
 // Rules for authors (so games never break each other or the hub):
 //   1. State MUST be JSON-serializable (no class instances, functions, Dates).
 //      Store everything as plain objects/arrays/numbers/strings/booleans.
+//      Include `schemaVersion: 1` so future migrations are explicit.
 //   2. NEVER read wall-clock or random outside create()/applyAction()/tick().
 //   3. viewFor() must hide other players' hidden info (deal personalized views).
 //   4. Keep state small — it is persisted to DO storage on every change.

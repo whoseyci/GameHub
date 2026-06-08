@@ -1,5 +1,7 @@
 // engine.ts — Authoritative Skyjo game logic (server-side, framework-free).
 
+import { makeSeed, shuffleInPlace, type RngStateHolder } from "./rng";
+
 export interface Card { value: number; revealed: boolean; cleared: boolean; }
 export interface Player {
   name: string;
@@ -11,20 +13,19 @@ export interface Player {
 export type Phase = "REVEAL" | "PLAY" | "FINAL_TURNS" | "ROUND_END" | "GAME_OVER";
 export type TurnAction = null | "deck" | "discard" | "must_reveal" | "turn_end_delay";
 
-export function createDeck(): number[] {
+export function createDeck(rng: RngStateHolder = { rngState: makeSeed() }): number[] {
   const d: number[] = [];
   for (let i = 0; i < 5; i++) d.push(-2);
   for (let i = 0; i < 10; i++) d.push(-1);
   for (let i = 0; i < 15; i++) d.push(0);
   for (let v = 1; v <= 12; v++) for (let i = 0; i < 10; i++) d.push(v);
-  for (let i = d.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [d[i], d[j]] = [d[j], d[i]];
-  }
+  shuffleInPlace(d, rng);
   return d;
 }
 
 export class GameEngine {
+  schemaVersion = 1;
+  rngState = makeSeed();
   players: Player[];
   deck: number[] = [];
   discard: number[] = [];
@@ -57,7 +58,7 @@ export class GameEngine {
   }
 
   private deal() {
-    this.deck = createDeck();
+    this.deck = createDeck(this);
     for (const p of this.players) {
       for (const c of p.board) { c.value = this.deck.pop()!; c.revealed = false; c.cleared = false; }
       p.revealCount = 0; p.roundScore = 0;
@@ -129,10 +130,7 @@ export class GameEngine {
     if (this.deck.length === 0) {
       this.deck = this.discard.slice(0, -1);
       this.discard = [this.discard[this.discard.length - 1]];
-      for (let i = this.deck.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [this.deck[i], this.deck[j]] = [this.deck[j], this.deck[i]];
-      }
+      shuffleInPlace(this.deck, this);
     }
     this.drawnCard = this.deck.pop()!;
     this.turnAction = "deck";

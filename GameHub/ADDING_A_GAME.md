@@ -85,9 +85,31 @@ Quick Play and room pickers automatically once it's in `GAMES`.
 - **Quick Play sharding** — solo matchmaking + auto-roll to a new room when one fills.
 - **Host max-players** — respected automatically; clamp is enforced server-side.
 
+## Before opening a PR
+
+Run the full local gate:
+
+```bash
+npm run typecheck
+npm test -- --run
+npm run deploy:dry-run
+```
+
+Add focused tests in `tests/` for the new game, especially:
+- invalid actions do not mutate state
+- `viewFor(state, -1)` works for spectators
+- hidden information is absent from opponent/spectator views
+- state and views stay JSON-serializable after every action
+- scoring/end-summary edge cases are covered
+
+If your game uses randomness, use the shared deterministic helpers in `src/rng.ts`
+and store the numeric `rngState` in the game's plain JSON state. That keeps bug
+reports and bot simulations reproducible.
+
 ## Why existing games are safe
 - Each game's logic lives in its own file; the hub only calls the interface methods.
 - The registry is additive. Removing or breaking a game you didn't touch is impossible
   unless you edit its file.
 - Shared visuals live in the Card Kit, so restyling is centralized — no per-game
   redesign needed.
+- CI runs typecheck, tests, and a Wrangler dry-run so infra breakage is caught before deploy.
