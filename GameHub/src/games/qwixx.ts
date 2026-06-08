@@ -247,6 +247,7 @@ export const Qwixx: GameModule = {
           seat: i,
           name: pl.name,
           penalties: pl.penalties,
+          rows: pl.rows,
           waiting: s.phase === "WHITE_PHASE" ? s.pendingWhiteDecisions.includes(i) : false
         })),
         phase: s.phase,
