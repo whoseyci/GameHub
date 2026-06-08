@@ -1,32 +1,29 @@
-// src/games/qwixx.ts
 import type { GameModule, GameView } from "./types";
 
 export interface QwixxRow {
   nums: number[];
   cellColors: string[];
   doubles: number[];
-  marks: number[]; // indices of crossed numbers
+  marks: number[];
 }
 
 export interface QwixxPlayer {
   name: string;
   rows: Record<string, QwixxRow>;
   penalties: number;
-  turnMarks: { c: string; i: number; n: number }[];
 }
 
 export interface QwixxState {
   players: QwixxPlayer[];
   dice: { w: number[]; r: number; y: number; g: number; b: number } | null;
   activeSeat: number;
-  phase: "ACTIVE" | "OTHERS_WHITE" | "GAME_OVER";
+  phase: "WHITE_PHASE" | "COLOR_PHASE" | "GAME_OVER";
   expansion: string;
   locked: string[];
   pendingLocks: string[];
-  activeMarks: { c: string; i: number; n: number; reqColor: string }[];
-  playerTurnMarks: Record<number, { c: string; i: number; n: number }[]>;
+  pendingWhiteDecisions: number[];
+  activeMarkedThisTurn: boolean;
   round: number;
-  mc: number;
 }
 
 const COLORS = ["red", "yellow", "green", "blue"] as const;
@@ -69,27 +66,9 @@ function makeRow(color: string, expansion: string): QwixxRow {
   return { nums, cellColors, doubles, marks: [] };
 }
 
-function isValidActivePlayerMarks(marks: { c: string; i: number; n: number; reqColor: string }[], dice: any) {
-  if (marks.length === 0) return true;
-  if (marks.length > 2) return false;
-  const wSum = dice.w[0] + dice.w[1];
-  const isW = (m: any) => m.n === wSum;
-  const isC = (m: any) => m.n === dice.w[0] + dice[m.reqColor] || m.n === dice.w[1] + dice[m.reqColor];
-  
-  if (marks.length === 1) return isW(marks[0]) || isC(marks[0]);
-  
-  if (marks.length === 2) {
-    let m1 = marks[0], m2 = marks[1];
-    if (m1.c === m2.c) {
-      // White sum must strictly precede Color sum chronologically
-      let left = m1.i < m2.i ? m1 : m2;
-      let right = m1.i < m2.i ? m2 : m1;
-      return isW(left) && isC(right);
-    } else {
-      return (isW(m1) && isC(m2)) || (isC(m1) && isW(m2));
-    }
-  }
-  return false;
+function getDice() {
+  const rnd = () => Math.floor(Math.random() * 6) + 1;
+  return { w: [rnd(), rnd()], r: rnd(), y: rnd(), g: rnd(), b: rnd() };
 }
 
 export const Qwixx: GameModule = {
@@ -108,61 +87,29 @@ export const Qwixx: GameModule = {
       name: name || "Player",
       rows: {},
       penalties: 0,
-      turnMarks: [],
     }));
     
     players.forEach(p => {
       COLORS.forEach(c => { p.rows[c] = makeRow(c, expansion); });
     });
     
-    const dieMax = 6;
-    const rnd = () => Math.floor(Math.random() * dieMax) + 1;
-
     return {
       players,
-      dice: { w: [rnd(), rnd()], r: rnd(), y: rnd(), g: rnd(), b: rnd() },
+      dice: getDice(),
       activeSeat: 0,
-      phase: "ACTIVE",
+      phase: "WHITE_PHASE",
       expansion,
       locked: [],
       pendingLocks: [],
-      activeMarks: [],
-      playerTurnMarks: {},
+      pendingWhiteDecisions: players.map((_, i) => i),
+      activeMarkedThisTurn: false,
       round: 1,
-      mc: 0,
     } as QwixxState;
   },
 
   applyAction(state: any, seat: number, msg: any) {
     const s = state as QwixxState;
     if (s.phase === "GAME_OVER") return;
-
-    if (msg.action === "setExpansion") {
-      const exp = msg.expansion as string;
-      if (!EXPANSIONS[exp as keyof typeof EXPANSIONS]) return;
-      s.expansion = exp;
-      s.players.forEach(p => {
-        COLORS.forEach(c => { p.rows[c] = makeRow(c, exp); });
-      });
-      return;
-    }
-
-    if (msg.action === "roll") {
-      if (seat !== s.activeSeat) return;
-      const dieMax = EXPANSIONS[s.expansion as keyof typeof EXPANSIONS]?.dieMax || 6;
-      const rnd = () => Math.floor(Math.random() * dieMax) + 1;
-      s.dice = {
-        w: [rnd(), rnd()],
-        r: s.locked.includes('red') ? 0 : rnd(),
-        y: s.locked.includes('yellow') ? 0 : rnd(),
-        g: s.locked.includes('green') ? 0 : rnd(),
-        b: s.locked.includes('blue') ? 0 : rnd(),
-      };
-      s.activeMarks = [];
-      s.playerTurnMarks = {};
-      s.phase = "ACTIVE";
-      return;
-    }
 
     if (msg.action === "mark") {
       const { c, i } = msg;
@@ -179,57 +126,61 @@ export const Qwixx: GameModule = {
       
       const isAct = seat === s.activeSeat;
       
-      if (s.phase === "ACTIVE") {
-        if (!isAct) {
-          // Off-turn: Only allowed to mark the white sum
-          const wSum = s.dice!.w[0] + s.dice!.w[1];
-          if (row.nums[i] !== wSum) return;
-          if (!s.playerTurnMarks[seat]) s.playerTurnMarks[seat] = [];
-          if (s.playerTurnMarks[seat].length >= 1) return;
-          
-          s.playerTurnMarks[seat].push({ c, i, n: row.nums[i] });
-          row.marks.push(i);
-          row.marks.sort((a,b)=>a-b);
-          s.mc++;
-        } else {
-          // Active Turn: Can mark White or Color
-          const reqColor = row.cellColors[i];
-          const newMark = { c, i, n: row.nums[i], reqColor };
-          const proposed = [...s.activeMarks, newMark];
-          if (proposed.length > 2) return;
-          if (!isValidActivePlayerMarks(proposed, s.dice!)) return;
-          
-          s.activeMarks = proposed;
-          row.marks.push(i);
-          row.marks.sort((a,b)=>a-b);
-          s.mc++;
-        }
-      } else if (s.phase === "OTHERS_WHITE") {
-        if (isAct) return;
+      if (s.phase === "WHITE_PHASE") {
+        if (!s.pendingWhiteDecisions.includes(seat)) return;
         const wSum = s.dice!.w[0] + s.dice!.w[1];
         if (row.nums[i] !== wSum) return;
-        if (!s.playerTurnMarks[seat]) s.playerTurnMarks[seat] = [];
-        if (s.playerTurnMarks[seat].length >= 1) return;
-        
-        s.playerTurnMarks[seat].push({ c, i, n: row.nums[i] });
+
         row.marks.push(i);
         row.marks.sort((a,b)=>a-b);
-        s.mc++;
-      }
-      
-      // Determine lock status
-      if (i === endIdx && row.marks.length >= 5 && !s.locked.includes(c)) {
-        s.pendingLocks.push(c);
+        s.pendingWhiteDecisions = s.pendingWhiteDecisions.filter(x => x !== seat);
+        if (isAct) s.activeMarkedThisTurn = true;
+        
+        if (i === endIdx && row.marks.length >= 5 && !s.locked.includes(c) && !s.pendingLocks.includes(c)) {
+          s.pendingLocks.push(c);
+        }
+
+        if (s.pendingWhiteDecisions.length === 0) {
+          s.phase = "COLOR_PHASE";
+        }
+      } else if (s.phase === "COLOR_PHASE") {
+        if (!isAct) return;
+        
+        const reqColor = row.cellColors[i];
+        const cKey = reqColor[0] as keyof typeof s.dice;
+        const sum1 = s.dice!.w[0] + (s.dice![cKey] as number);
+        const sum2 = s.dice!.w[1] + (s.dice![cKey] as number);
+        
+        if (row.nums[i] !== sum1 && row.nums[i] !== sum2) return;
+        
+        row.marks.push(i);
+        row.marks.sort((a,b)=>a-b);
+        s.activeMarkedThisTurn = true;
+        
+        if (i === endIdx && row.marks.length >= 5 && !s.locked.includes(c) && !s.pendingLocks.includes(c)) {
+          s.pendingLocks.push(c);
+        }
+        
+        Qwixx.applyAction(s, seat, { action: "finishTurn" });
       }
     }
 
-    if (msg.action === "finishActiveTurn") {
-      if (seat !== s.activeSeat) return;
-      if (s.activeMarks.length === 0) {
+    if (msg.action === "skip") {
+      if (s.phase === "WHITE_PHASE") {
+        s.pendingWhiteDecisions = s.pendingWhiteDecisions.filter(x => x !== seat);
+        if (s.pendingWhiteDecisions.length === 0) {
+          s.phase = "COLOR_PHASE";
+        }
+      }
+    }
+
+    if (msg.action === "finishTurn") {
+      if (s.phase !== "COLOR_PHASE" || seat !== s.activeSeat) return;
+      
+      if (!s.activeMarkedThisTurn) {
         s.players[s.activeSeat].penalties++;
       }
       
-      // Enforce Locks
       s.pendingLocks.forEach(c => {
         if (!s.locked.includes(c)) s.locked.push(c);
       });
@@ -238,36 +189,21 @@ export const Qwixx: GameModule = {
       if (s.locked.length >= 2 || s.players.some(p => p.penalties >= 4)) {
         s.phase = "GAME_OVER";
       } else {
-        s.phase = "OTHERS_WHITE";
-      }
-      return;
-    }
-
-    if (msg.action === "advanceTurn") {
-      s.activeSeat = (s.activeSeat + 1) % s.players.length;
-      let tries = 0;
-      // Skip over players who are eliminated (4+ penalties)
-      while (s.players[s.activeSeat].penalties >= 4 && tries < s.players.length) {
         s.activeSeat = (s.activeSeat + 1) % s.players.length;
-        tries++;
+        let tries = 0;
+        while (s.players[s.activeSeat].penalties >= 4 && tries < s.players.length) {
+          s.activeSeat = (s.activeSeat + 1) % s.players.length;
+          tries++;
+        }
+        s.phase = "WHITE_PHASE";
+        s.dice = getDice();
+        s.locked.forEach(c => {
+          s.dice![c[0] as keyof typeof s.dice] = 0 as any;
+        });
+        s.pendingWhiteDecisions = s.players.map((_, i) => i).filter(i => s.players[i].penalties < 4);
+        s.activeMarkedThisTurn = false;
+        s.round++;
       }
-      
-      s.phase = "ACTIVE";
-      
-      // Automatically roll next dice
-      const dieMax = EXPANSIONS[s.expansion as keyof typeof EXPANSIONS]?.dieMax || 6;
-      const rnd = () => Math.floor(Math.random() * dieMax) + 1;
-      s.dice = {
-        w: [rnd(), rnd()],
-        r: s.locked.includes('red') ? 0 : rnd(),
-        y: s.locked.includes('yellow') ? 0 : rnd(),
-        g: s.locked.includes('green') ? 0 : rnd(),
-        b: s.locked.includes('blue') ? 0 : rnd(),
-      };
-      s.activeMarks = [];
-      s.playerTurnMarks = {};
-      s.round++;
-      return;
     }
   },
 
@@ -276,13 +212,11 @@ export const Qwixx: GameModule = {
     const p = s.players[seat];
     let summary;
     
-    // Hub automatically detects game end and handles summary overlays
     if (s.phase === "GAME_OVER") {
       const scores = s.players.map((pl, i) => {
         let total = 0;
         COLORS.forEach(c => {
           let m = pl.rows[c].marks.length;
-          // Count padlock as a mark if the end number is crossed
           if (pl.rows[c].marks.includes(pl.rows[c].nums.length - 1)) m++;
           total += (m * (m + 1)) / 2;
         });
@@ -313,9 +247,12 @@ export const Qwixx: GameModule = {
           seat: i,
           name: pl.name,
           penalties: pl.penalties,
+          waiting: s.phase === "WHITE_PHASE" ? s.pendingWhiteDecisions.includes(i) : false
         })),
         phase: s.phase,
         round: s.round,
+        pendingWhiteDecisions: s.pendingWhiteDecisions,
+        activeMarkedThisTurn: s.activeMarkedThisTurn
       },
     };
   },
