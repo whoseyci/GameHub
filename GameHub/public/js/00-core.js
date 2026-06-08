@@ -98,7 +98,7 @@ const Kit=(()=>{
     return new Promise(res=>{
       if(!container){res();return;}
       const colorCls={white:'white',red:'red',yellow:'yellow',green:'green',blue:'blue',r:'red',y:'yellow',g:'green',b:'blue'};
-      const makeDie=(d)=>`<div class="kit-die ${colorCls[d.color]||d.color||'white'}"><b class="front"><span>${d.value}</span></b><i class="side side-r"></i><i class="side side-b"></i><i class="side side-t"></i></div>`;
+      const makeDie=(d)=>`<div class="kit-die ${colorCls[d.color]||d.color||'white'}"><b class="face front"><span>${d.value}</span></b><b class="face back"></b><b class="face right"></b><b class="face left"></b><b class="face top"></b><b class="face bottom"></b></div>`;
       if(!animate||window.matchMedia('(prefers-reduced-motion: reduce)').matches){
         container.classList.remove('rolling');
         container.innerHTML=dice.map(d=>`<div class="kit-die-static" style="--die-size:${size}px">${makeDie(d)}</div>`).join('');

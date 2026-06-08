@@ -100,7 +100,7 @@ For card games, treat every visible card transfer as a motion of a logical card 
 Do not update focus/effects in the middle of that motion. The standard event order is:
 
 ```text
-source location -> reveal if needed -> Kit.CardMotion.move(...) -> destination board -> effect/score/target prompt
+previous visible state -> focus source -> reveal if needed -> Kit.CardMotion.move(...) -> apply event to shadow state -> redraw shadow state -> effect/score/target prompt -> next event
 ```
 
 Guidelines:

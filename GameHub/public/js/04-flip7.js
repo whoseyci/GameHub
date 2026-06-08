@@ -16,6 +16,11 @@
     if(cause){c.classList.remove('busted-card');c.classList.add('bust-cause');}
     return c;
   }
+
+  function addF7Card(row,el,key){ el.dataset.cardKey=key; row.appendChild(el); return el; }
+  function captureF7Layout(){ const m=new Map(); document.querySelectorAll('.f7-focus-board .f7-card[data-card-key]').forEach(el=>m.set(el.dataset.cardKey,el.getBoundingClientRect())); return m; }
+  function animateF7Layout(before){ document.querySelectorAll('.f7-focus-board .f7-card[data-card-key]').forEach(el=>{ const a=before.get(el.dataset.cardKey); if(!a)return; const b=el.getBoundingClientRect(); const dx=a.left-b.left,dy=a.top-b.top; if(Math.abs(dx)+Math.abs(dy)<1)return; el.style.transition='none'; el.style.transform=`translate(${dx}px,${dy}px)`; el.offsetHeight; el.style.transition='transform .28s var(--spring-soft)'; el.style.transform=''; setTimeout(()=>{el.style.transition='';},320); }); }
+
   function actionVfx(kind){
     const o=document.createElement('div');o.style.cssText='position:fixed;inset:0;z-index:400;pointer-events:none;display:flex;align-items:center;justify-content:center';
     const icon=document.createElement('div');
@@ -58,11 +63,11 @@
       wrap.appendChild(head);
       const row=document.createElement('div');row.className='f7-row';
       if(!p.nums.length&&!p.mods.length&&!p.second)row.innerHTML='<span class="f7-empty">no cards yet</span>';
-      p.nums.forEach(n=>row.appendChild(cardEl('num',n,{busted})));
-      if(busted&&p.bustCard!=null)row.appendChild(cardEl('num',p.bustCard,{cause:true}));
-      p.mods.forEach(m=>row.appendChild(cardEl('mod',m,{busted})));
-      if(p.second)row.appendChild(cardEl('act','second'));
-      (p.actionCards||[]).forEach(a=>row.appendChild(cardEl('act',a)));
+      p.nums.forEach(n=>addF7Card(row,cardEl('num',n,{busted}),'num-'+n));
+      if(busted&&p.bustCard!=null)addF7Card(row,cardEl('num',p.bustCard,{cause:true}),'bust-'+p.bustCard);
+      p.mods.forEach((m,mi)=>addF7Card(row,cardEl('mod',m,{busted}),'mod-'+mi+'-'+m));
+      if(p.second)addF7Card(row,cardEl('act','second'),'second');
+      (p.actionCards||[]).forEach((a,ai)=>addF7Card(row,cardEl('act',a),'act-'+ai+'-'+a));
       wrap.appendChild(row);
       const meta=document.createElement('div');meta.className='muted';meta.style.cssText='margin-top:6px;font-size:.8rem';meta.textContent=p.unique+'/7 unique';wrap.appendChild(meta);
       const canTarget=pending&&p.status==='active'&&!(s.pendingAction.kind==='give_second'&&i===viewer);
@@ -82,11 +87,11 @@
     b.appendChild(head);
     const row=document.createElement('div');row.className='f7-row';
     if(!p.nums.length&&!p.mods.length&&!p.second)row.innerHTML='<span class="f7-empty">no cards</span>';
-    p.nums.forEach(n=>row.appendChild(cardEl('num',n,{busted})));
-    if(busted&&p.bustCard!=null)row.appendChild(cardEl('num',p.bustCard,{cause:true}));
-    p.mods.forEach(m=>row.appendChild(cardEl('mod',m,{busted})));
-    if(p.second)row.appendChild(cardEl('act','second'));
-    (p.actionCards||[]).forEach(a=>row.appendChild(cardEl('act',a)));
+    p.nums.forEach(n=>addF7Card(row,cardEl('num',n,{busted}),'num-'+n));
+    if(busted&&p.bustCard!=null)addF7Card(row,cardEl('num',p.bustCard,{cause:true}),'bust-'+p.bustCard);
+    p.mods.forEach((m,mi)=>addF7Card(row,cardEl('mod',m,{busted}),'mod-'+mi+'-'+m));
+    if(p.second)addF7Card(row,cardEl('act','second'),'second');
+    (p.actionCards||[]).forEach((a,ai)=>addF7Card(row,cardEl('act',a),'act-'+ai+'-'+a));
     b.appendChild(row);
     const meta=document.createElement('div');meta.className='muted';meta.textContent=p.unique+'/7 unique';b.appendChild(meta);
     const canTarget=pending&&p.status==='active'&&!(s.pendingAction.kind==='give_second'&&i===viewer);
@@ -174,7 +179,7 @@
       const ghost=cardEl(card?.kind||'num',card?.v??'?');
       toRowEl.appendChild(ghost);ghost.style.visibility='hidden';
       SFX.flip();
-      await Kit.CardMotion.move('flip7:deal:'+seq,deck,ghost,{value:card?.v??'?',color:card?.kind==='num'?'#111827':card?.kind==='mod'?'#7c3aed':'#b45309',startFaceDown:true,revealMidway:true,spin:true,duration:620});
+      await Kit.CardMotion.move('flip7:deal:'+seq,deck,ghost,{value:card?.v??'?',color:card?.kind==='num'?'#111827':card?.kind==='mod'?'#7c3aed':'#b45309',startFaceDown:true,revealMidway:true,spin:true,duration:620,land:false});
       ghost.remove();
       res();
     });
@@ -254,9 +259,10 @@
         if(mode==='local')eventFocus=e.player;
         draw(shadow);
         const row=rowOf(e.player); if(e.flip3)await sleep(SPEED.flip3Gap*0.2);
+        const before=captureF7Layout();
         await dealTravel(row,e.card,e.seq);
         applyShadowEvent(shadow,e);
-        draw(shadow);
+        draw(shadow); animateF7Layout(before);
         await sleep(SPEED.beat*0.18);
         break;
       }
@@ -264,9 +270,10 @@
         if(mode==='local')eventFocus=e.player;
         draw(shadow);
         const row=rowOf(e.player);
+        const before=captureF7Layout();
         await dealTravel(row,{kind:'act',v:e.kind},e.seq);
         applyShadowEvent(shadow,e);
-        draw(shadow);
+        draw(shadow); animateF7Layout(before);
         await sleep(SPEED.beat*0.2);
         break;
       }
@@ -274,7 +281,7 @@
         if(mode==='local')eventFocus=e.from;
         draw(shadow);
         const fromRow=rowOf(e.from),toRow=rowOf(e.target);
-        await Kit.CardMotion.move('flip7:action:'+e.seq,fromRow,toRow,{value:e.kind,color:'#b45309',startFaceDown:false,spin:true,duration:SPEED.actionFly});
+        await Kit.CardMotion.move('flip7:action:'+e.seq,fromRow,toRow,{value:e.kind,color:'#b45309',startFaceDown:false,spin:true,duration:SPEED.actionFly,land:false});
         applyShadowEvent(shadow,e);
         if(mode==='local')eventFocus=e.target;
         draw(shadow);
@@ -297,7 +304,7 @@
       }
       case 'second_pass':{
         draw(shadow); SFX.flip(); const fromRow=rowOf(e.from),toRow=rowOf(e.to);
-        await Kit.CardMotion.move('flip7:second:'+e.seq,fromRow,toRow,{value:'♥',color:'#b45309',startFaceDown:false,spin:true,duration:SPEED.actionFly});
+        await Kit.CardMotion.move('flip7:second:'+e.seq,fromRow,toRow,{value:'♥',color:'#b45309',startFaceDown:false,spin:true,duration:SPEED.actionFly,land:false});
         applyShadowEvent(shadow,e); draw(shadow); if(e.auto)Kit.turnBanner('\u2665 passed',true); await sleep(SPEED.beat*0.4); break;
       }
       case 'second_used':{ applyShadowEvent(shadow,e); draw(shadow); SFX.good(); Kit.turnBanner('Second Chance!',true); await sleep(SPEED.beat); break; }
