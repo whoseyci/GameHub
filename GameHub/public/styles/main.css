@@ -367,3 +367,6 @@ html,body,#app{min-height:100%;height:auto;max-height:none;overflow-x:hidden;ove
 .registry-anchor{opacity:0!important;color:transparent!important;background:transparent!important;box-shadow:none!important}
 .registry-anchor.clickable{pointer-events:auto!important}
 .kit-card-registered{will-change:top,left,width,height,transform;}
+
+/* Registry-owned Skyjo cards scale their values with the slot they occupy. */
+.kit-card-registered.board-card{line-height:1}.kit-card-registered.board-card.face-down::after{font-size:inherit}

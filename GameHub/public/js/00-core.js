@@ -15,7 +15,7 @@ function esc(v){return String(v ?? '').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':
 function showScreen(id){
   // Leaving the game screen? Tear down any body-level game widgets (Flip 7 controls/dealer)
   // so Hit/Stay etc. can never linger over a menu.
-  if(id!=='gameScreen'){const f7=$('f7Controls');if(f7)f7.remove();const dw=$('f7DealerWrap');if(dw)dw.remove();}
+  if(id!=='gameScreen'){if(typeof GameShell!=='undefined')GameShell.unmount();else{const f7=$('f7Controls');if(f7)f7.remove();const dw=$('f7DealerWrap');if(dw)dw.remove();}}
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));$(id).classList.add('active');
   if(id==='joinSetup')connectLobby();
 }
@@ -253,6 +253,7 @@ const Kit=(()=>{
       restore(it);
       const r=rect(anchor);if(!r)return;
       Object.assign(it.el.style,{top:r.top+'px',left:r.left+'px',width:r.width+'px',height:r.height+'px',opacity:'1'});
+      if(it.el.classList.contains('board-card')) it.el.style.fontSize=Math.max(8,Math.min(30,r.width*0.42))+'px';
       it.anchor=anchor;
       if(hideAnchor){it.hidden={el:anchor,visibility:anchor.style.visibility};anchor.style.visibility='hidden';}
     }
@@ -402,6 +403,7 @@ const GameShell=(()=>{
     const top=$('topArea');if(top){top.querySelectorAll('.game-shell-center,.qwixx-dice-zone,.qwixx-top-mini-strip').forEach(n=>n.remove());}
     const f7=$('f7Controls');if(f7)f7.remove();
     const dw=$('f7DealerWrap');if(dw)dw.remove();
+    if(typeof Kit!=='undefined'&&Kit.CardRegistry)Kit.CardRegistry.clear();
     $('investigateOverlay')?.classList.add('hidden');
   }
   function restoreSharedTop(){
