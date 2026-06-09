@@ -8,10 +8,10 @@ import type { GameModule, GameView } from "./types";
 import { makeSeed, shuffleInPlace, type RngStateHolder } from "../rng";
 
 type CardKind = "num" | "mod" | "act";
-interface Card { kind: CardKind; v: number | string; }
+interface Card { id: string; kind: CardKind; v: number | string; }
 
 interface Player {
-  name: string; nums: number[]; mods: string[];
+  name: string; nums: number[]; mods: string[]; tableau: Card[];
   secondChance: boolean;
   status: "active" | "stayed" | "busted";
   bustCard: number | null;
@@ -28,7 +28,7 @@ interface State extends RngStateHolder {
   current: number;
   phase: "PLAY" | "ROUND_END" | "GAME_OVER";
   round: number;
-  pendingAction: null | { kind: "freeze" | "flip3" | "give_second"; from: number };
+  pendingAction: null | { kind: "freeze" | "flip3" | "give_second"; from: number; card?: Card };
   flip3Left: number; flip3Target: number;
   events: any[];       // replay timeline for the client (cleared each applyAction)
   seq: number;         // monotonically increasing so the client can dedupe
@@ -37,28 +37,30 @@ interface State extends RngStateHolder {
 
 function buildDeck(rng: RngStateHolder): Card[] {
   const d: Card[] = [];
-  d.push({ kind: "num", v: 0 });
-  for (let n = 1; n <= 12; n++) for (let i = 0; i < n; i++) d.push({ kind: "num", v: n });
-  for (const m of ["+2", "+4", "+6", "+8", "+10", "x2"]) d.push({ kind: "mod", v: m });
-  for (const a of ["freeze", "flip3", "second"]) for (let i = 0; i < 3; i++) d.push({ kind: "act", v: a });
+  let seq = 0;
+  const add = (kind: CardKind, v: number | string) => d.push({ id: `f7c_${seq++}_${kind}_${String(v).replace(/\W/g, "")}`, kind, v });
+  add("num", 0);
+  for (let n = 1; n <= 12; n++) for (let i = 0; i < n; i++) add("num", n);
+  for (const m of ["+2", "+4", "+6", "+8", "+10", "x2"]) add("mod", m);
+  for (const a of ["freeze", "flip3", "second"]) for (let i = 0; i < 3; i++) add("act", a);
   shuffleInPlace(d, rng);
   return d;
 }
 function newPlayer(name: string, banked = 0): Player {
-  return { name, nums: [], mods: [], secondChance: false, status: "active", bustCard: null, banked, roundScore: 0 };
+  return { name, nums: [], mods: [], tableau: [], secondChance: false, status: "active", bustCard: null, banked, roundScore: 0 };
 }
 
 function normalizeFlip7Event(e: any): any {
   switch (e.type) {
     case "draw_start": return { type: "deck.wiggle", actor: e.player, prob: e.prob, legacy: e.type };
     case "card": return { type: "card.deal", actor: e.player, card: e.card, flip3: !!e.flip3, legacy: e.type };
-    case "action_card": return { type: "card.deal", actor: e.player, card: { kind: "act", v: e.kind }, actionKind: e.kind, actionCard: true, legacy: e.type };
-    case "play_action": return { type: "card.transfer", actor: e.from, target: e.target, card: { kind: "act", v: e.kind }, actionKind: e.kind, auto: !!e.auto, legacy: e.type };
-    case "second_pass": return { type: "card.transfer", actor: e.from, target: e.to, card: { kind: "act", v: "second" }, actionKind: "second", secondPass: true, auto: !!e.auto, legacy: e.type };
+    case "action_card": return { type: "card.deal", actor: e.player, card: e.card ?? { id: `action_${e.seq ?? "x"}_${e.kind}`, kind: "act", v: e.kind }, actionKind: e.kind, actionCard: true, legacy: e.type };
+    case "play_action": return { type: "card.transfer", actor: e.from, target: e.target, card: e.card ?? { id: `action_${e.seq ?? "x"}_${e.kind}`, kind: "act", v: e.kind }, actionKind: e.kind, auto: !!e.auto, legacy: e.type };
+    case "second_pass": return { type: "card.transfer", actor: e.from, target: e.to, card: e.card ?? { id: `second_${e.seq ?? "x"}`, kind: "act", v: "second" }, actionKind: "second", secondPass: true, auto: !!e.auto, legacy: e.type };
     case "bust": return { type: "effect.bust", actor: e.player, value: e.value, flip3: !!e.flip3, legacy: e.type };
     case "flip7": return { type: "effect.flip7", actor: e.player, legacy: e.type };
     case "flip3_abandon": return { type: "effect.flip3_abandon", target: e.target, legacy: e.type };
-    case "second_used": return { type: "effect.second_used", actor: e.player, value: e.value, flip3: !!e.flip3, legacy: e.type };
+    case "second_used": return { type: "effect.second_used", actor: e.player, value: e.value, card: e.card, flip3: !!e.flip3, legacy: e.type };
     case "second_discard": return { type: "effect.second_discard", actor: e.player, legacy: e.type };
     case "stay": return { type: "effect.stay", actor: e.player, legacy: e.type };
     case "freeze_done": return { type: "effect.freeze_done", target: e.target, legacy: e.type };
@@ -119,9 +121,23 @@ function bustProbability(s: State, pi: number): number {
 // Place a card WITHOUT drama (used for opening deal & internal updates).
 function placeCard(s: State, pi: number, card: Card) {
   const p = s.players[pi];
-  if (card.kind === "num") { if (!p.nums.includes(card.v as number)) { p.nums.push(card.v as number); p.nums.sort((a, b) => a - b); } }
-  else if (card.kind === "mod") p.mods.push(card.v as string);
-  else if (card.v === "second") p.secondChance = true;
+  if (card.kind === "num") { if (!p.nums.includes(card.v as number)) { p.nums.push(card.v as number); p.nums.sort((a, b) => a - b); p.tableau.push(card); } }
+  else if (card.kind === "mod") { p.mods.push(card.v as string); p.tableau.push(card); }
+  else if (card.v === "second") { p.secondChance = true; p.tableau.push(card); }
+}
+
+function removeTableauCard(p: Player, pred: (c: Card) => boolean): Card | null {
+  const i = p.tableau.findIndex(pred);
+  if (i < 0) return null;
+  return p.tableau.splice(i, 1)[0];
+}
+function orderedTableau(p: Player): Card[] {
+  return [...p.tableau].sort((a, b) => {
+    const rank = (c: Card) => c.kind === "num" ? 0 : c.kind === "mod" ? 1 : 2;
+    const r = rank(a) - rank(b); if (r) return r;
+    if (a.kind === "num" && b.kind === "num") return (a.v as number) - (b.v as number);
+    return String(a.v).localeCompare(String(b.v));
+  });
 }
 
 // Resolve a single drawn card WITH events. Returns "ok"|"bust"|"flip7"|"action".
@@ -132,53 +148,56 @@ function applyDrawnCard(s: State, pi: number, card: Card, opts: { flip3?: boolea
     if (p.nums.includes(n)) {
       if (p.secondChance) {
         p.secondChance = false; s.discard.push(card);
-        emit(s, { type: "second_used", player: pi, value: n, flip3: !!opts.flip3 });
+        const used = removeTableauCard(p, (c) => c.kind === "act" && c.v === "second");
+        if (used) s.discard.push(used);
+        emit(s, { type: "second_used", player: pi, value: n, card: used, flip3: !!opts.flip3 });
         return "ok";
       }
       p.status = "busted"; p.bustCard = n;
       emit(s, { type: "bust", player: pi, value: n, flip3: !!opts.flip3 });
       return "bust";
     }
-    p.nums.push(n); p.nums.sort((a, b) => a - b);
+    p.nums.push(n); p.nums.sort((a, b) => a - b); p.tableau.push(card);
     emit(s, { type: "card", player: pi, card, flip3: !!opts.flip3 });
     if (uniqueCount(p) >= 7) { p.status = "stayed"; emit(s, { type: "flip7", player: pi }); return "flip7"; }
     return "ok";
   }
-  if (card.kind === "mod") { p.mods.push(card.v as string); emit(s, { type: "card", player: pi, card, flip3: !!opts.flip3 }); return "ok"; }
+  if (card.kind === "mod") { p.mods.push(card.v as string); p.tableau.push(card); emit(s, { type: "card", player: pi, card, flip3: !!opts.flip3 }); return "ok"; }
   // action card
   const a = card.v as string;
   if (a === "second") {
-    if (!p.secondChance) { p.secondChance = true; emit(s, { type: "card", player: pi, card }); return "ok"; }
+    if (!p.secondChance) { p.secondChance = true; p.tableau.push(card); emit(s, { type: "card", player: pi, card }); return "ok"; }
     // already holding one: must give to an active opponent.
     const others = activeOthers(s, pi).filter((i) => !s.players[i].secondChance);
     if (others.length === 0) { s.discard.push(card); emit(s, { type: "second_discard", player: pi }); return "ok"; }
-    if (others.length === 1) { s.players[others[0]].secondChance = true; emit(s, { type: "second_pass", from: pi, to: others[0], auto: true }); return "ok"; }
-    s.pendingAction = { kind: "give_second", from: pi };
+    if (others.length === 1) { s.players[others[0]].secondChance = true; s.players[others[0]].tableau.push(card); emit(s, { type: "second_pass", from: pi, to: others[0], card, auto: true }); return "ok"; }
+    s.pendingAction = { kind: "give_second", from: pi, card };
     emit(s, { type: "await_target", kind: "give_second", from: pi });
     return "action";
   }
   // freeze / flip3
-  emit(s, { type: "action_card", player: pi, kind: a }); // the action card appears on the drawer
+  p.tableau.push(card); emit(s, { type: "action_card", player: pi, kind: a, card }); // the action card appears on the drawer
   // If the drawer is the ONLY active player, it must target themselves — auto after a beat.
   const others = activeOthers(s, pi);
   if (others.length === 0) {
     resolveAction(s, pi, a as any, pi, true);
     return "ok";
   }
-  s.pendingAction = { kind: a as any, from: pi };
+  s.pendingAction = { kind: a as any, from: pi, card };
   emit(s, { type: "await_target", kind: a, from: pi });
   return "action";
 }
 
 function resolveAction(s: State, from: number, kind: "freeze" | "flip3", target: number, auto = false): string {
+  const actionCard = s.pendingAction?.card ?? removeTableauCard(s.players[from], (c) => c.kind === "act" && c.v === kind) ?? undefined;
   s.pendingAction = null;
   const tp = s.players[target];
   if (kind === "freeze") {
-    emit(s, { type: "play_action", kind: "freeze", from, target, auto });
+    emit(s, { type: "play_action", kind: "freeze", from, target, card: actionCard, auto });
     if (tp.status === "active") { tp.status = "stayed"; emit(s, { type: "freeze_done", target }); }
     return "ok";
   }
-  emit(s, { type: "play_action", kind: "flip3", from, target, auto });
+  emit(s, { type: "play_action", kind: "flip3", from, target, card: actionCard, auto });
   s.flip3Left = 3; s.flip3Target = target;
   runFlip3(s);
   return "ok";
@@ -201,7 +220,7 @@ function runFlip3(s: State) {
           // can't pause a flip3 for a choice — auto-give or discard.
           const others = activeOthers(s, pa.from).filter((i) => !s.players[i].secondChance);
           s.pendingAction = null;
-          if (others.length) { s.players[others[0]].secondChance = true; emit(s, { type: "second_pass", from: pa.from, to: others[0], auto: true }); }
+          if (others.length) { s.players[others[0]].secondChance = true; if (pa.card) s.players[others[0]].tableau.push(pa.card); emit(s, { type: "second_pass", from: pa.from, to: others[0], card: pa.card, auto: true }); }
           else emit(s, { type: "second_discard", player: pa.from });
         } else {
           // freeze/flip3 drawn within flip3 -> apply to self (rules: resolve in order)
@@ -265,7 +284,8 @@ export const Flip7: GameModule = {
           if (t === seat) return;
           state.pendingAction = null;
           state.players[t].secondChance = true;
-          emit(state, { type: "second_pass", from: seat, to: t, auto: false });
+          const passCard = pa.card; if (passCard) state.players[t].tableau.push(passCard);
+          emit(state, { type: "second_pass", from: seat, to: t, card: passCard, auto: false });
           // giving a second chance does NOT end your turn — you keep playing
         } else {
           resolveAction(state, seat, pa.kind, t);
@@ -314,7 +334,7 @@ export const Flip7: GameModule = {
         deckCount: state.deck.length, discardCount: state.discard.length,
         seq: state.seq, events: state.events,
         players: state.players.map((p) => ({
-          name: p.name, nums: p.nums, mods: p.mods, second: p.secondChance,
+          name: p.name, nums: p.nums, mods: p.mods, second: p.secondChance, cards: orderedTableau(p).map((c) => ({ id: c.id, kind: c.kind, v: c.v })),
           status: p.status, bustCard: p.bustCard, banked: p.banked, unique: uniqueCount(p),
           live: liveScore(p),
         })),

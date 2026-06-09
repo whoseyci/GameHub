@@ -61,6 +61,19 @@
   function rectOf(el){return el?el.getBoundingClientRect():null;}
   function cloneCard(card){return card?{kind:card.kind,v:card.v}:card;}
 
+  function renderF7PlayerCards(row,p,busted){
+    const cards=Array.isArray(p.cards)?p.cards:null;
+    if(cards&&cards.length){
+      cards.forEach((c,idx)=>addF7Card(row,cardEl(c.kind,c.v,{busted}),c.id||('card-'+idx+'-'+c.kind+'-'+c.v)));
+    }else{
+      p.nums.forEach(n=>addF7Card(row,cardEl('num',n,{busted}),'num-'+n));
+      p.mods.forEach((m,mi)=>addF7Card(row,cardEl('mod',m,{busted}),'mod-'+mi+'-'+m));
+      if(p.second)addF7Card(row,cardEl('act','second'),'second');
+      (p.actionCards||[]).forEach((a,ai)=>addF7Card(row,cardEl('act',a),'act-'+ai+'-'+a));
+    }
+    if(busted&&p.bustCard!=null)addF7Card(row,cardEl('num',p.bustCard,{cause:true}),'bust-'+p.bustCard);
+  }
+
   // ---- static board render from state ----
   function draw(view,ctx=renderCtx||{}){
     renderCtx=ctx;
@@ -80,12 +93,8 @@
       head.innerHTML='<span>'+esc(p.name)+(i===viewer?' (You)':'')+' <span class="f7-status '+esc(p.status)+'">'+esc(p.status)+'</span></span><span class="score-badge">'+(busted?'BUST':'Now: '+esc(p.live))+' \u00b7 Total: '+esc(p.banked)+'</span>';
       wrap.appendChild(head);
       const row=document.createElement('div');row.className='f7-row';row.dataset.f7Seat=i;
-      if(!p.nums.length&&!p.mods.length&&!p.second)row.innerHTML='<span class="f7-empty">no cards yet</span>';
-      p.nums.forEach(n=>addF7Card(row,cardEl('num',n,{busted}),'num-'+n));
-      if(busted&&p.bustCard!=null)addF7Card(row,cardEl('num',p.bustCard,{cause:true}),'bust-'+p.bustCard);
-      p.mods.forEach((m,mi)=>addF7Card(row,cardEl('mod',m,{busted}),'mod-'+mi+'-'+m));
-      if(p.second)addF7Card(row,cardEl('act','second'),'second');
-      (p.actionCards||[]).forEach((a,ai)=>addF7Card(row,cardEl('act',a),'act-'+ai+'-'+a));
+      if(!(p.cards&&p.cards.length)&&!p.nums.length&&!p.mods.length&&!p.second)row.innerHTML='<span class="f7-empty">no cards yet</span>';
+      renderF7PlayerCards(row,p,busted);
       wrap.appendChild(row);
       const meta=document.createElement('div');meta.className='muted';meta.style.cssText='margin-top:6px;font-size:.8rem';meta.textContent=p.unique+'/7 unique';wrap.appendChild(meta);
       const canTarget=pending&&p.status==='active'&&!(s.pendingAction.kind==='give_second'&&i===viewer);
@@ -108,12 +117,8 @@
     head.innerHTML='<span>'+esc(p.name)+' <span class="f7-status '+esc(p.status)+'">'+esc(p.status)+'</span></span><span class="score-badge">'+(busted?'BUST':'Now: '+esc(p.live))+' · '+esc(p.banked)+'</span>';
     b.appendChild(head);
     const row=document.createElement('div');row.className='f7-row';row.dataset.f7Seat=i;
-    if(!p.nums.length&&!p.mods.length&&!p.second)row.innerHTML='<span class="f7-empty">no cards</span>';
-    p.nums.forEach(n=>addF7Card(row,cardEl('num',n,{busted}),'num-'+n));
-    if(busted&&p.bustCard!=null)addF7Card(row,cardEl('num',p.bustCard,{cause:true}),'bust-'+p.bustCard);
-    p.mods.forEach((m,mi)=>addF7Card(row,cardEl('mod',m,{busted}),'mod-'+mi+'-'+m));
-    if(p.second)addF7Card(row,cardEl('act','second'),'second');
-    (p.actionCards||[]).forEach((a,ai)=>addF7Card(row,cardEl('act',a),'act-'+ai+'-'+a));
+    if(!(p.cards&&p.cards.length)&&!p.nums.length&&!p.mods.length&&!p.second)row.innerHTML='<span class="f7-empty">no cards</span>';
+    renderF7PlayerCards(row,p,busted);
     b.appendChild(row);
     const meta=document.createElement('div');meta.className='muted';meta.textContent=p.unique+'/7 unique';b.appendChild(meta);
     const canTarget=pending&&p.status==='active'&&!(s.pendingAction.kind==='give_second'&&i===viewer);
@@ -127,7 +132,7 @@
     const s=view.flip7,p=s.players[seat];if(!p)return;
     const seats=s.players.map((_,i)=>i).filter(i=>i!==view.flip7.viewerSeat);
     const idx=seats.indexOf(seat),prev=seats[(idx-1+seats.length)%seats.length],next=seats[(idx+1)%seats.length];
-    const row=[...p.nums.map(n=>cardEl('num',n,{busted:p.status==='busted'})),...p.mods.map(m=>cardEl('mod',m,{busted:p.status==='busted'})),...(p.second?[cardEl('act','second')]:[]),...(p.actionCards||[]).map(a=>cardEl('act',a))];
+    const row=(p.cards&&p.cards.length?p.cards.map(c=>cardEl(c.kind,c.v,{busted:p.status==='busted'})):[...p.nums.map(n=>cardEl('num',n,{busted:p.status==='busted'})),...p.mods.map(m=>cardEl('mod',m,{busted:p.status==='busted'})),...(p.second?[cardEl('act','second')]:[]),...(p.actionCards||[]).map(a=>cardEl('act',a))]);
     const cards=document.createElement('div');cards.className='f7-row';row.forEach(c=>cards.appendChild(c));
     const box=$('investigateBox');box.innerHTML=`<div class="inspect-head"><button class="icon-btn" onclick="window.GameClients['flip7'].inspect(${prev})">‹</button><b>${esc(p.name)} · ${esc(p.status)}</b><button class="icon-btn" onclick="window.GameClients['flip7'].inspect(${next})">›</button><button class="icon-btn" onclick="$('investigateOverlay').classList.add('hidden')">✕</button></div><div class="player-board f7-focus-board"><div class="board-header"><span>${esc(p.name)}</span><span class="score-badge">Now ${esc(p.live)} · Total ${esc(p.banked)} · ${esc(p.unique)}/7</span></div></div>`;
     box.querySelector('.player-board').appendChild(cards);
@@ -242,7 +247,7 @@
     switch(e.type){
       case 'draw_start':return{type:'deck.wiggle',actor:e.player,prob:e.prob,seq:e.seq,legacy:e.type};
       case 'card':return{type:'card.deal',actor:e.player,card:e.card,flip3:!!e.flip3,seq:e.seq,legacy:e.type};
-      case 'action_card':return{type:'card.deal',actor:e.player,card:{kind:'act',v:e.kind},actionKind:e.kind,actionCard:true,seq:e.seq,legacy:e.type};
+      case 'action_card':return{type:'card.deal',actor:e.player,card:e.card||{id:'action_'+(e.seq||'x')+'_'+e.kind,kind:'act',v:e.kind},actionKind:e.kind,actionCard:true,seq:e.seq,legacy:e.type};
       case 'play_action':return{type:'card.transfer',actor:e.from,target:e.target,card:{kind:'act',v:e.kind},actionKind:e.kind,auto:!!e.auto,seq:e.seq,legacy:e.type};
       case 'second_pass':return{type:'card.transfer',actor:e.from,target:e.to,card:{kind:'act',v:'second'},actionKind:'second',secondPass:true,auto:!!e.auto,seq:e.seq,legacy:e.type};
       case 'bust':return{type:'effect.bust',actor:e.player,value:e.value,flip3:!!e.flip3,seq:e.seq,legacy:e.type};
@@ -434,8 +439,8 @@
 class Flip7Engine{
   constructor(names){this.s=this._fresh(names,names.map(()=>0));}
   static fromState(st){const e=Object.create(Flip7Engine.prototype);e.s=st;if(e.s.events==null)e.s.events=[];if(e.s.seq==null)e.s.seq=0;return e;}
-  _newP(name,banked){return{name,nums:[],mods:[],second:false,status:'active',bustCard:null,banked:banked||0,roundScore:0};}
-  _buildDeck(){const d=[];d.push({kind:'num',v:0});for(let n=1;n<=12;n++)for(let i=0;i<n;i++)d.push({kind:'num',v:n});for(const m of['+2','+4','+6','+8','+10','x2'])d.push({kind:'mod',v:m});for(const a of['freeze','flip3','second'])for(let i=0;i<3;i++)d.push({kind:'act',v:a});this._sh(d);return d;}
+  _newP(name,banked){return{name,nums:[],mods:[],tableau:[],second:false,status:'active',bustCard:null,banked:banked||0,roundScore:0};}
+  _buildDeck(){const d=[];let q=0;const add=(kind,v)=>d.push({id:'lf7c_'+(q++)+'_'+kind+'_'+String(v).replace(/\W/g,''),kind,v});add('num',0);for(let n=1;n<=12;n++)for(let i=0;i<n;i++)add('num',n);for(const m of['+2','+4','+6','+8','+10','x2'])add('mod',m);for(const a of['freeze','flip3','second'])for(let i=0;i<3;i++)add('act',a);this._sh(d);return d;}
   _sh(d){for(let i=d.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[d[i],d[j]]=[d[j],d[i]];}}
   _emit(s,e){const n=window.normalizeFlip7Event?window.normalizeFlip7Event(e):e;n.seq=++s.seq;s.events.push(n);}
   _fresh(names,banked){const s={players:names.map((n,i)=>this._newP(n,banked[i]||0)),deck:this._buildDeck(),discard:[],current:0,phase:'PLAY',round:1,pendingAction:null,flip3Left:0,flip3Target:-1,events:[],seq:0};
@@ -447,18 +452,20 @@ class Flip7Engine{
   _activeOthers(s,ex){return s.players.map((p,i)=>i).filter(i=>i!==ex&&s.players[i].status==='active');}
   _unique(p){return new Set(p.nums).size;}
   _bustProb(s,pi){const p=s.players[pi];const tot=s.deck.length||1;let d=0;for(const c of s.deck)if(c.kind==='num'&&p.nums.includes(c.v))d++;return d/tot;}
-  _place(s,pi,card){const p=s.players[pi];if(card.kind==='num'){if(!p.nums.includes(card.v)){p.nums.push(card.v);p.nums.sort((a,b)=>a-b);}}else if(card.kind==='mod')p.mods.push(card.v);else if(card.v==='second')p.second=true;}
+  _remTab(p,pred){const i=p.tableau.findIndex(pred);return i>=0?p.tableau.splice(i,1)[0]:null;}
+  _ordered(p){return [...(p.tableau||[])].sort((a,b)=>{const r=(a.kind==='num'?0:a.kind==='mod'?1:2)-(b.kind==='num'?0:b.kind==='mod'?1:2);if(r)return r;if(a.kind==='num'&&b.kind==='num')return a.v-b.v;return String(a.v).localeCompare(String(b.v));});}
+  _place(s,pi,card){const p=s.players[pi];if(card.kind==='num'){if(!p.nums.includes(card.v)){p.nums.push(card.v);p.nums.sort((a,b)=>a-b);p.tableau.push(card);}}else if(card.kind==='mod'){p.mods.push(card.v);p.tableau.push(card);}else if(card.v==='second'){p.second=true;p.tableau.push(card);}}
   _apply(s,pi,card,opts){opts=opts||{};const p=s.players[pi];
-    if(card.kind==='num'){const n=card.v;if(p.nums.includes(n)){if(p.second){p.second=false;s.discard.push(card);this._emit(s,{type:'second_used',player:pi,value:n,flip3:!!opts.flip3});return'ok';}p.status='busted';p.bustCard=n;this._emit(s,{type:'bust',player:pi,value:n,flip3:!!opts.flip3});return'bust';}p.nums.push(n);p.nums.sort((a,b)=>a-b);this._emit(s,{type:'card',player:pi,card,flip3:!!opts.flip3});if(this._unique(p)>=7){p.status='stayed';this._emit(s,{type:'flip7',player:pi});return'flip7';}return'ok';}
-    if(card.kind==='mod'){p.mods.push(card.v);this._emit(s,{type:'card',player:pi,card,flip3:!!opts.flip3});return'ok';}
-    const a=card.v;if(a==='second'){if(!p.second){p.second=true;this._emit(s,{type:'card',player:pi,card});return'ok';}const others=this._activeOthers(s,pi).filter(i=>!s.players[i].second);if(others.length===0){s.discard.push(card);this._emit(s,{type:'second_discard',player:pi});return'ok';}if(others.length===1){s.players[others[0]].second=true;this._emit(s,{type:'second_pass',from:pi,to:others[0],auto:true});return'ok';}s.pendingAction={kind:'give_second',from:pi};this._emit(s,{type:'await_target',kind:'give_second',from:pi});return'action';}
-    this._emit(s,{type:'action_card',player:pi,kind:a});const others=this._activeOthers(s,pi);if(others.length===0){this._resolve(s,pi,a,pi,true);return'ok';}s.pendingAction={kind:a,from:pi};this._emit(s,{type:'await_target',kind:a,from:pi});return'action';}
-  _resolve(s,from,kind,target,auto){const tp=s.players[target];s.pendingAction=null;if(kind==='freeze'){this._emit(s,{type:'play_action',kind:'freeze',from,target,auto:!!auto});if(tp.status==='active'){tp.status='stayed';this._emit(s,{type:'freeze_done',target});}return'ok';}this._emit(s,{type:'play_action',kind:'flip3',from,target,auto:!!auto});s.flip3Left=3;s.flip3Target=target;this._runFlip3(s);return'ok';}
-  _runFlip3(s){while(s.flip3Left>0){const t=s.flip3Target,tp=s.players[t];if(!tp||tp.status!=='active')break;s.flip3Left--;const r=this._apply(s,t,this._draw(s),{flip3:true});if(r==='bust'||r==='flip7'){this._emit(s,{type:'flip3_abandon',target:t});break;}if(r==='action'){const pa=s.pendingAction;if(pa){if(pa.kind==='give_second'){const o=this._activeOthers(s,pa.from).filter(i=>!s.players[i].second);s.pendingAction=null;if(o.length){s.players[o[0]].second=true;this._emit(s,{type:'second_pass',from:pa.from,to:o[0],auto:true});}else this._emit(s,{type:'second_discard',player:pa.from});}else this._resolve(s,pa.from,pa.kind,pa.from,true);}}}s.flip3Left=0;s.flip3Target=-1;}
+    if(card.kind==='num'){const n=card.v;if(p.nums.includes(n)){if(p.second){p.second=false;s.discard.push(card);const used=this._remTab(p,c=>c.kind==='act'&&c.v==='second');if(used)s.discard.push(used);this._emit(s,{type:'second_used',player:pi,value:n,card:used,flip3:!!opts.flip3});return'ok';}p.status='busted';p.bustCard=n;this._emit(s,{type:'bust',player:pi,value:n,flip3:!!opts.flip3});return'bust';}p.nums.push(n);p.nums.sort((a,b)=>a-b);p.tableau.push(card);this._emit(s,{type:'card',player:pi,card,flip3:!!opts.flip3});if(this._unique(p)>=7){p.status='stayed';this._emit(s,{type:'flip7',player:pi});return'flip7';}return'ok';}
+    if(card.kind==='mod'){p.mods.push(card.v);p.tableau.push(card);this._emit(s,{type:'card',player:pi,card,flip3:!!opts.flip3});return'ok';}
+    const a=card.v;if(a==='second'){if(!p.second){p.second=true;p.tableau.push(card);this._emit(s,{type:'card',player:pi,card});return'ok';}const others=this._activeOthers(s,pi).filter(i=>!s.players[i].second);if(others.length===0){s.discard.push(card);this._emit(s,{type:'second_discard',player:pi});return'ok';}if(others.length===1){s.players[others[0]].second=true;s.players[others[0]].tableau.push(card);this._emit(s,{type:'second_pass',from:pi,to:others[0],card,auto:true});return'ok';}s.pendingAction={kind:'give_second',from:pi,card};this._emit(s,{type:'await_target',kind:'give_second',from:pi});return'action';}
+    p.tableau.push(card);this._emit(s,{type:'action_card',player:pi,kind:a,card});const others=this._activeOthers(s,pi);if(others.length===0){this._resolve(s,pi,a,pi,true);return'ok';}s.pendingAction={kind:a,from:pi,card};this._emit(s,{type:'await_target',kind:a,from:pi});return'action';}
+  _resolve(s,from,kind,target,auto){const tp=s.players[target];const actionCard=(s.pendingAction&&s.pendingAction.card)||this._remTab(s.players[from],c=>c.kind==='act'&&c.v===kind);s.pendingAction=null;if(kind==='freeze'){this._emit(s,{type:'play_action',kind:'freeze',from,target,card:actionCard,auto:!!auto});if(tp.status==='active'){tp.status='stayed';this._emit(s,{type:'freeze_done',target});}return'ok';}this._emit(s,{type:'play_action',kind:'flip3',from,target,card:actionCard,auto:!!auto});s.flip3Left=3;s.flip3Target=target;this._runFlip3(s);return'ok';}
+  _runFlip3(s){while(s.flip3Left>0){const t=s.flip3Target,tp=s.players[t];if(!tp||tp.status!=='active')break;s.flip3Left--;const r=this._apply(s,t,this._draw(s),{flip3:true});if(r==='bust'||r==='flip7'){this._emit(s,{type:'flip3_abandon',target:t});break;}if(r==='action'){const pa=s.pendingAction;if(pa){if(pa.kind==='give_second'){const o=this._activeOthers(s,pa.from).filter(i=>!s.players[i].second);s.pendingAction=null;if(o.length){s.players[o[0]].second=true;if(pa.card)s.players[o[0]].tableau.push(pa.card);this._emit(s,{type:'second_pass',from:pa.from,to:o[0],card:pa.card,auto:true});}else this._emit(s,{type:'second_discard',player:pa.from});}else this._resolve(s,pa.from,pa.kind,pa.from,true);}}}s.flip3Left=0;s.flip3Target=-1;}
   _advance(s){if(this._activeCount(s)===0){this._score(s);return;}s.current=this._firstActive(s,(s.current+1)%s.players.length);}
   _score(s){let f7=-1;for(const p of s.players){if(p.status==='busted'){p.roundScore=0;continue;}const u=new Set(p.nums).size;let base=p.nums.reduce((a,b)=>a+b,0);if(p.mods.includes('x2'))base*=2;for(const m of p.mods)if(m[0]==='+')base+=parseInt(m.slice(1));if(u>=7){base+=15;f7=1;}p.roundScore=base;p.banked+=base;}s.pendingAction=null;s.flip3Left=0;s.flip3Target=-1;s.phase=s.players.some(p=>p.banked>=200)?'GAME_OVER':'ROUND_END';const mx=Math.max(...s.players.map(p=>p.banked));this._emit(s,{type:s.phase==='GAME_OVER'?'game_over':'round_end',winners:s.players.map((p,i)=>p.banked===mx?i:-1).filter(i=>i>=0),flip7:f7});}
   apply(seat,msg){const s=this.s;s.events=[];if(s.phase!=='PLAY')return;
-    if(s.pendingAction){const pa=s.pendingAction;if(msg.action==='target'&&pa.from===seat){const t=msg.target|0;if(!s.players[t]||s.players[t].status!=='active')return;if(pa.kind==='give_second'){if(t===seat)return;s.pendingAction=null;s.players[t].second=true;this._emit(s,{type:'second_pass',from:seat,to:t,auto:false});}else{this._resolve(s,seat,pa.kind,t);this._advance(s);}}return;}
+    if(s.pendingAction){const pa=s.pendingAction;if(msg.action==='target'&&pa.from===seat){const t=msg.target|0;if(!s.players[t]||s.players[t].status!=='active')return;if(pa.kind==='give_second'){if(t===seat)return;s.pendingAction=null;s.players[t].second=true;if(pa.card)s.players[t].tableau.push(pa.card);this._emit(s,{type:'second_pass',from:seat,to:t,card:pa.card,auto:false});}else{this._resolve(s,seat,pa.kind,t);this._advance(s);}}return;}
     if(seat!==s.current||s.players[seat].status!=='active')return;
     if(msg.action==='stay'){s.players[seat].status='stayed';this._emit(s,{type:'stay',player:seat});this._advance(s);}
     else if(msg.action==='hit'){const prob=this._bustProb(s,seat);const card=this._draw(s);this._emit(s,{type:'draw_start',player:seat,prob});const r=this._apply(s,seat,card,{});if(r==='action'){return;}this._advance(s);}
@@ -466,5 +473,5 @@ class Flip7Engine{
   next(){const s=this.s;const over=s.phase==='GAME_OVER';const ns=this._fresh(s.players.map(p=>p.name),over?s.players.map(()=>0):s.players.map(p=>p.banked));ns.seq=s.seq+1;if(!over)ns.round=s.round+1;this.s=ns;}
   viewFor(seat){const s=this.s;const over=s.phase==='GAME_OVER';let summary;if(s.phase==='ROUND_END'||s.phase==='GAME_OVER'){const mx=Math.max(...s.players.map(p=>p.banked));summary={rows:s.players.map((p,i)=>({seat:i,name:p.name,score:p.banked,delta:p.roundScore})),winners:s.players.map((p,i)=>p.banked===mx?i:-1).filter(i=>i>=0)};}
     const live=p=>{if(p.status==='busted')return 0;let b=p.nums.reduce((a,c)=>a+c,0);if(p.mods.includes('x2'))b*=2;for(const m of p.mods)if(m[0]==='+')b+=parseInt(m.slice(1));if(new Set(p.nums).size>=7)b+=15;return b;};
-    return{game:'flip7',phase:s.phase,over,yourSeat:seat,summary,flip7:{round:s.round,current:s.current,phase:s.phase,pendingAction:s.pendingAction,viewerSeat:seat,deckCount:s.deck.length,discardCount:s.discard.length,seq:s.seq,events:s.events,players:s.players.map(p=>({name:p.name,nums:[...p.nums],mods:[...p.mods],second:p.second,status:p.status,bustCard:p.bustCard,banked:p.banked,unique:new Set(p.nums).size,live:live(p)}))}};}
+    return{game:'flip7',phase:s.phase,over,yourSeat:seat,summary,flip7:{round:s.round,current:s.current,phase:s.phase,pendingAction:s.pendingAction,viewerSeat:seat,deckCount:s.deck.length,discardCount:s.discard.length,seq:s.seq,events:s.events,players:s.players.map(p=>({name:p.name,nums:[...p.nums],mods:[...p.mods],second:p.second,cards:this._ordered(p).map(c=>({id:c.id,kind:c.kind,v:c.v})),status:p.status,bustCard:p.bustCard,banked:p.banked,unique:new Set(p.nums).size,live:live(p)}))}};}
 }
