@@ -310,6 +310,30 @@ const Kit=(()=>{
       if(!c||!c.renderer)return null;
       return c.renderer(c.face,c.faceUp);
     }
+    // Ensure a card has an overlay element created and rendered.
+    // Used by moveTo before flight — the overlay IS the card.
+    function ensureOverlay(c){
+      if(!c)return;
+      if(!c.overlayEl){
+        c.overlayEl=document.createElement('div');
+        c.overlayEl.dataset.cmId=c.id;
+        c.overlayEl.classList.add('kit-card-registered');
+        document.body.appendChild(c.overlayEl);
+      }
+      const rendered=renderCard(c);
+      if(rendered){
+        c.overlayEl.className=rendered.className+' kit-card-registered';
+        c.overlayEl.innerHTML=rendered.innerHTML;
+        if(!rendered.innerHTML)c.overlayEl.textContent=rendered.textContent||'';
+        for(const attr of [...rendered.attributes]){
+          if(attr.name!=='class')c.overlayEl.setAttribute(attr.name,attr.value);
+        }
+        if(rendered.style.cssText)c.overlayEl.style.cssText+=';'+rendered.style.cssText;
+      }
+      c.overlayEl.style.position='fixed';
+      c.overlayEl.style.pointerEvents='none';
+      c.overlayEl.style.boxSizing='border-box';
+    }
     function pin(id,anchor,opts={}){
       const c=cards.get(id);if(!c||!anchor)return;
       restore(c);
@@ -358,41 +382,89 @@ const Kit=(()=>{
     }
     async function moveTo(id,toAnchor,opts={}){
       const c=cards.get(id);if(!c)return;
-      const fromEl=c.overlayEl||c.anchor;
-      if(!fromEl||!toAnchor)return;
-      const savedTargetVis=toAnchor.style.visibility;
-      // Hide the original overlay during flight — the clone (moveEl) is the
-      // only visible element. Prevents double-vision at the source.
-      if(c.overlayEl)c.overlayEl.style.opacity='0';
-      const rendered=renderCard(c);
-      let moveEl;
-      if(rendered){moveEl=rendered;moveEl.classList.add('kit-card-moving');}
-      else{moveEl=c.overlayEl?c.overlayEl.cloneNode(true):document.createElement('div');}
+      if(!toAnchor)return;
+
+      // ── Permanent Card: the overlay IS the card. No clone. ──
+      // Ensure overlay exists and is rendered.
+      ensureOverlay(c);
+      const el=c.overlayEl;
       const duration=opts.duration??520;
-      const fromRect=fromEl.getBoundingClientRect();
-      const toRect=stableRect(toAnchor)||toAnchor.getBoundingClientRect();
-      Object.assign(moveEl.style,{position:'fixed',top:fromRect.top+'px',left:fromRect.left+'px',width:fromRect.width+'px',height:fromRect.height+'px',margin:'0',zIndex:opts.zIndex??1000,pointerEvents:'none',boxSizing:'border-box',transition:`top ${duration}ms var(--spring-soft),left ${duration}ms var(--spring-soft),width ${duration}ms var(--spring-soft),height ${duration}ms var(--spring-soft),transform ${duration}ms var(--spring-soft),opacity ${duration}ms ease`});
+
+      // If card has a current anchor, unhide it (card is leaving)
+      restore(c);
+      c.anchor=null;
+
+      // Snapshot source position from current overlay
+      const fromRect=el.getBoundingClientRect();
+
+      // Show card-back before flight if requested
       if(opts.startFaceDown&&opts.backHTML){
         const back=nodeFromHTML(opts.backHTML);
-        if(back){moveEl.innerHTML=back.innerHTML;moveEl.style.background=getComputedStyle(back).background||'var(--card-back)';}
+        if(back){el.innerHTML=back.innerHTML;el.style.background=getComputedStyle(back).background||'var(--card-back)';el.style.color='';}
       }
+
+      // Raise z-index during flight so card flies above everything
+      el.style.zIndex=opts.zIndex??1000;
+      el.style.transition=`top ${duration}ms var(--spring-soft),left ${duration}ms var(--spring-soft),width ${duration}ms var(--spring-soft),height ${duration}ms var(--spring-soft),transform ${duration}ms var(--spring-soft)`;
+      el.classList.add('kit-card-moving');
+      el.offsetHeight; // force reflow
+
+      // Hide the target anchor content (the overlay will cover it on arrival)
+      const savedTargetVis=toAnchor.style.visibility;
+
+      // Arc: fly to midpoint
+      const toRect=stableRect(toAnchor)||toAnchor.getBoundingClientRect();
+      const midX=(fromRect.left+toRect.left)/2,midY=Math.min(fromRect.top,toRect.top)-(opts.arc??46);
+      requestAnimationFrame(()=>{
+        el.style.top=midY+'px';
+        el.style.left=midX+'px';
+        el.style.transform=(opts.spin?'rotateZ(180deg) ':'')+'scale('+(opts.midScale??1.12)+')';
+      });
+
+      // Reveal face at midpoint
       if(opts.startFaceDown&&opts.revealMidway){
         setTimeout(()=>{
           const front=renderCard(c);
-          if(front){moveEl.className=front.className+' kit-card-moving';moveEl.innerHTML=front.innerHTML;moveEl.style.background='';moveEl.style.animation='popReveal .26s var(--spring)';}
+          if(front){
+            el.className=front.className+' kit-card-registered kit-card-moving';
+            el.innerHTML=front.innerHTML;
+            if(front.style.cssText)el.style.cssText+=';'+front.style.cssText;
+            el.style.animation='popReveal .26s var(--spring)';
+          }
           if(opts.onReveal)opts.onReveal();
         },Math.floor(duration*(opts.revealAt??0.42)));
       }
-      document.body.appendChild(moveEl);moveEl.offsetHeight;
-      const midX=(fromRect.left+toRect.left)/2,midY=Math.min(fromRect.top,toRect.top)-(opts.arc??46);
-      requestAnimationFrame(()=>{moveEl.style.top=midY+'px';moveEl.style.left=midX+'px';moveEl.style.transform=(opts.spin?'rotateZ(180deg) ':'')+'scale('+(opts.midScale??1.12)+')';});
-      setTimeout(()=>{moveEl.style.top=toRect.top+'px';moveEl.style.left=toRect.left+'px';moveEl.style.width=toRect.width+'px';moveEl.style.height=toRect.height+'px';moveEl.style.transform=(opts.spin?'rotateZ(360deg) ':'')+'scale(1)';},Math.floor(duration*0.5));
+
+      // Fly to destination
+      setTimeout(()=>{
+        el.style.top=toRect.top+'px';
+        el.style.left=toRect.left+'px';
+        el.style.width=toRect.width+'px';
+        el.style.height=toRect.height+'px';
+        el.style.transform=(opts.spin?'rotateZ(360deg) ':'')+'scale(1)';
+      },Math.floor(duration*0.5));
+
       await sleep(duration+45);
-      moveEl.remove();
-      toAnchor.style.visibility=savedTargetVis||'';
+
+      // Clean up flight state
+      el.classList.remove('kit-card-moving');
+      el.style.transition='';
+      el.style.transform='';
+      el.style.animation='';
+
+      // Update location
       if(opts.toLocation)c.location={...opts.toLocation};
-      // pin() restores the overlay opacity via positionOverlay (sets opacity:1)
-      pin(id,toAnchor,{hideAnchor:opts.hideTarget!==false});
+
+      // Pin at destination (restores anchor visibility, positions overlay)
+      toAnchor.style.visibility=savedTargetVis||'';
+      c.anchor=toAnchor;
+      positionOverlay(el,toAnchor);
+      el.style.zIndex=opts.zIndex||80;
+      if(opts.hideTarget!==false){
+        c.hidden={el:toAnchor,visibility:savedTargetVis||''};
+        toAnchor.style.visibility='hidden';
+      }
+
       if(opts.land!==false)await Card.bounce(toAnchor,{duration:260});
       if(opts.onArrive)opts.onArrive(toAnchor);
     }
