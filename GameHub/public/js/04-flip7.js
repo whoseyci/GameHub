@@ -397,6 +397,10 @@
         const travelResult=await dealTravel(row,e.card,e.seq,before); if(!tokenAlive(token)) return;
         applyShadowEvent(shadow,e);
         draw(shadow);
+        // Force an immediate sync so the permanent card overlay is at its
+        // correct position BEFORE we remove the flying card — prevents a
+        // visible gap even for a single frame.
+        Kit.CardRegistry.sync();
         // NOW safe to clean up — the board rebuild has created permanent
         // registry cards, so removing the flying card causes no visible gap.
         if(travelResult?.flyId) Kit.CardRegistry.remove(travelResult.flyId);

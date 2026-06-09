@@ -256,10 +256,54 @@ const Kit=(()=>{
     }
     function restore(it){if(it?.hidden){it.hidden.el.style.visibility=it.hidden.visibility||'';it.hidden=null;}}
     function rect(anchor){return anchor?anchor.getBoundingClientRect():null;}
+    // Get the "true" screen position of an anchor, undoing any CSS animation or
+    // transform that a parent (like .screen.active with bounceIn) is applying.
+    // The overlay lives under <body> which is NOT inside the animated screen,
+    // so it must be placed at the anchor's final resting position, not the
+    // mid-animation position that getBoundingClientRect reports.
+    function stableRect(anchor){
+      if(!anchor)return null;
+      const r=anchor.getBoundingClientRect();
+      // Walk up to find an element with an active CSS animation or transition.
+      // If found, compute where the anchor WOULD be at animation-end (scale 1,
+      // translate 0).  We do this by checking the running animation's current
+      // transform and inverting it.
+      let el=anchor.parentElement;
+      while(el&&el!==document.body){
+        const cs=getComputedStyle(el);
+        const t=cs.transform;
+        // identity or "none" means no transform to undo
+        if(t&&t!=='none'){
+          // Parse the matrix — if it's not an identity matrix, the parent is
+          // scaled/translated and getBoundingClientRect already incorporates
+          // that.  The overlay is under <body> which is NOT inside this parent,
+          // so the overlay should be at the rect the anchor would have WITHOUT
+          // the parent transform.
+          //
+          // Rather than parsing the matrix, we use a simpler approach: measure
+          // the parent's own animation offset and subtract it.
+          const pr=el.getBoundingClientRect();
+          const parentNaturalWidth=el.offsetWidth, parentNaturalHeight=el.offsetHeight;
+          // If the parent's rendered size doesn't match its layout size, it's
+          // being scaled. The scale factor is pr.width/parentNaturalWidth.
+          if(parentNaturalWidth>0&&Math.abs(pr.width/parentNaturalWidth-1)>0.01){
+            const sx=pr.width/parentNaturalWidth,sy=pr.height/parentNaturalHeight;
+            // The anchor's "true" position = center of parent + offset from
+            // parent center in natural coordinates.
+            const pcx=pr.left+pr.width/2, pcy=pr.top+pr.height/2;
+            const dx=r.left-pcx, dy=r.top-pcy;
+            const dyNat=dy/sy, dxNat=dx/sx;
+            return {top:pcy+dyNat, left:pcx+dxNat, width:r.width/sx, height:r.height/sy, right:pcx+dxNat+r.width/sx, bottom:pcy+dyNat+r.height/sy};
+          }
+        }
+        el=el.parentElement;
+      }
+      return r;
+    }
     function setAt(it,anchor,{hideAnchor=false}={}){
       if(!it||!anchor)return;
       restore(it);
-      const r=rect(anchor);if(!r)return;
+      const r=stableRect(anchor);if(!r)return;
       const cs=getComputedStyle(anchor);
       Object.assign(it.el.style,{
         top:r.top+'px',left:r.left+'px',width:r.width+'px',height:r.height+'px',opacity:'1',
@@ -464,7 +508,7 @@ const GameShell=(()=>{
     }
     if(main)setHTML(main,focus);
     if(sb&&status!=null)sb.innerHTML=status||'';
-    if(typeof Kit!=='undefined'&&Kit.CardRegistry){requestAnimationFrame(()=>Kit.CardRegistry.sync());setTimeout(()=>Kit.CardRegistry.sync(),80);}
+    if(typeof Kit!=='undefined'&&Kit.CardRegistry){requestAnimationFrame(()=>Kit.CardRegistry.sync());setTimeout(()=>Kit.CardRegistry.sync(),80);setTimeout(()=>Kit.CardRegistry.sync(),550);}
   }
   return {render,unmount,clearGlobal,renderTable,focus:(opts)=>SeatModel.resolve(opts)};
 })();
