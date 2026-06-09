@@ -390,7 +390,12 @@ const Kit=(()=>{
       const el=c.overlayEl;
       const duration=opts.duration??520;
 
-      // If card has a current anchor, unhide it (card is leaving)
+      // Re-seat overlay at its current anchor before flight. This guarantees
+      // correct fromRect even if anything reset the overlay's inline position
+      // between the caller's pin() and this moveTo().
+      if(c.anchor) positionOverlay(el,c.anchor);
+
+      // Unhide source anchor (card is leaving it)
       restore(c);
       c.anchor=null;
 
