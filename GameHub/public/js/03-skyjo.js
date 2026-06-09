@@ -86,24 +86,28 @@
   }
 
   function drawBoards(s,viewer){
-    const mainBc=$('mainBoardsContainer'),miniBc=$('miniBoardsContainer');mainBc.innerHTML='';miniBc.innerHTML='';
     let mainIdx=[];
     if(mode==='local'){
       const humanSeats=(typeof localSeats!=='undefined')?localSeats.map((x,i)=>!x.bot?i:-1).filter(i=>i>=0):[];
       if(s.phase==='ROUND_END'||s.phase==='GAME_OVER')mainIdx=humanSeats.length?humanSeats:s.players.map((_,i)=>i);
       else if(s.phase==='REVEAL'){
-        // Show local human boards for setup/reveal; bots behave like remote seats.
         mainIdx=humanSeats.length?humanSeats:[viewer>=0?viewer:0];
       } else {
-        // renderLocal() chooses the same-device human that should be focused.
-        // Do not override that with currentPlayer, because currentPlayer may be a bot.
         mainIdx=[viewer>=0?viewer:(humanSeats[0]??s.currentPlayer??0)];
       }
     }
     else if(viewer<0)mainIdx=[s.currentPlayer>=0?s.currentPlayer:0];
     else mainIdx=[viewer];
-    s.players.forEach((p,pi)=>{const isMain=mainIdx.includes(pi);const interactive=(mode==='local'&&!((typeof localSeats!=='undefined')&&localSeats[pi]?.bot))||(pi===viewer);const dom=boardDOM(s,p,pi,isMain,interactive,viewer);(isMain?mainBc:miniBc).appendChild(dom);});
+    const mainFrag=document.createDocumentFragment(),miniFrag=document.createDocumentFragment();
+    s.players.forEach((p,pi)=>{
+      const isMain=mainIdx.includes(pi);
+      const interactive=(mode==='local'&&!((typeof localSeats!=='undefined')&&localSeats[pi]?.bot))||(pi===viewer);
+      const dom=boardDOM(s,p,pi,isMain,interactive,viewer);
+      (isMain?mainFrag:miniFrag).appendChild(dom);
+    });
+    GameShell.renderTable({game:'skyjo',opponents:miniFrag,focus:mainFrag,topMode:'piles',status:null});
   }
+
   function boardDOM(s,p,pi,isMain,interactive,viewer){
     const wrap=document.createElement('div');
     const active=s.currentPlayer===pi&&(s.phase==='PLAY'||s.phase==='FINAL_TURNS')&&isMain;

@@ -41,22 +41,14 @@
   function draw(view){
     removeQwixxUi();
     const s=view.flip7,viewer=s.viewerSeat;
-    $('topArea').style.display='none';
-    const mini=$('miniBoardsContainer');mini.innerHTML='';mini.classList.add('f7-mini-strip');
-    // dealer pile
-    let dealerWrap=$('f7DealerWrap');
-    if(!dealerWrap){dealerWrap=document.createElement('div');dealerWrap.id='f7DealerWrap';dealerWrap.className='f7-dealer';
-      dealerWrap.innerHTML='<div class="pile-label">Dealer</div><div id="f7Deck" class="f7-deck"><span class="cnt"></span></div>';
-      $('topArea').parentNode.insertBefore(dealerWrap,$('topArea'));}
-    dealerWrap.style.display=(s.phase==='PLAY')?'flex':'none';
-    const cntEl=dealerWrap.querySelector('.cnt');if(cntEl)cntEl.textContent='deck '+s.deckCount+' \u00b7 out '+s.discardCount;
-    const main=$('mainBoardsContainer');main.innerHTML='';
     const pending=s.pendingAction&&s.pendingAction.from===viewer;
     const localHumanSeats=(typeof localSeats!=='undefined')?localSeats.map((x,idx)=>!x.bot?idx:-1).filter(idx=>idx>=0):[];
     const localFocus = (eventFocus!=null && !(typeof localSeats!=='undefined'&&localSeats[eventFocus]?.bot)) ? eventFocus : (viewer>=0 ? viewer : (localHumanSeats[0]??s.current));
     const focus = mode==='local' ? localFocus : (viewer>=0 ? viewer : s.current);
+    const miniFrag=document.createDocumentFragment();
+    const mainFrag=document.createDocumentFragment();
     s.players.forEach((p,i)=>{
-      if(i!==focus){mini.appendChild(miniDOM(s,p,i,viewer,pending));return;}
+      if(i!==focus){miniFrag.appendChild(miniDOM(s,p,i,viewer,pending));return;}
       const wrap=document.createElement('div');const busted=p.status==='busted';
       wrap.className='player-board f7-focus-board'+(s.current===i&&s.phase==='PLAY'?' active-turn':'')+(i===viewer?' me':'');
       wrap.dataset.f7Seat=i;
@@ -75,10 +67,13 @@
       const meta=document.createElement('div');meta.className='muted';meta.style.cssText='margin-top:6px;font-size:.8rem';meta.textContent=p.unique+'/7 unique';wrap.appendChild(meta);
       const canTarget=pending&&p.status==='active'&&!(s.pendingAction.kind==='give_second'&&i===viewer);
       if(canTarget){wrap.style.cursor='pointer';wrap.style.outline='2px dashed #f59e0b';wrap.onclick=()=>net.spectating?null:act(viewer,{action:'target',target:i});}
-      main.appendChild(wrap);
+      mainFrag.appendChild(wrap);
     });
+    const center=s.phase==='PLAY'?`<div id="f7DealerWrap" class="f7-dealer"><div class="pile-label">Dealer</div><div id="f7Deck" class="f7-deck"><span class="cnt">deck ${esc(s.deckCount)} · out ${esc(s.discardCount)}</span></div></div>`:'';
+    GameShell.renderTable({game:'flip7',opponents:miniFrag,center,focus:mainFrag,status:'',topMode:s.phase==='PLAY'?'custom':'hidden',opponentClass:'f7-mini-strip'});
     drawControls(view);
   }
+
   function miniDOM(s,p,i,viewer,pending){
     const b=document.createElement('button');
     b.className='player-board f7-opponent-board'+(s.current===i?' active-turn':'')+(p.status==='busted'?' busted':'');

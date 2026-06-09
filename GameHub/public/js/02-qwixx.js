@@ -192,13 +192,6 @@ window.GameClients = window.GameClients || {};
   function render(view){
     const s = view.state;
     const dice = s.dice || { w:[0,0], r:0, y:0, g:0, b:0 };
-    removeQwixxUi();
-    const mini=$('miniBoardsContainer');if(mini){mini.innerHTML='';mini.className='mini-boards-container';}
-    $('topArea').style.display = 'flex';
-    const piles = $('topArea').querySelector('.piles');
-    if(piles) piles.style.display = 'none';
-    $('heldCardWrapper').style.display = 'none';
-
     const isAct = s.activeSeat === view.yourSeat;
     const isWhite = s.phase === 'WHITE_PHASE';
     const isColor = s.phase === 'COLOR_PHASE';
@@ -221,17 +214,11 @@ window.GameClients = window.GameClients || {};
     } else if(isColor){
       controlsHtml = isAct
         ? `<button class="qwixx-ctrl-btn pri" onclick="window.GameClients['qwixx'].act('finishTurn')">${!s.activeMarkedThisTurn ? 'Take Penalty / Finish' : 'Finish Turn'}</button>`
-        : `<span class="muted">${activeName} may take one color mark…</span>`;
+        : `<span class="muted">${esc(activeName)} may take one color mark…</span>`;
     }
 
-    const miniTop = document.createElement('div');
-    miniTop.className = 'qwixx-top-mini-strip';
-    miniTop.innerHTML = others.map(player => `<button class="qwixx-mini-wrap${player.active ? ' active' : ''}" onclick="window.GameClients['qwixx'].inspect(${player.seat})">${renderMiniBoard(player, displayState, view.yourSeat)}</button>`).join('');
-    if(others.length) $('topArea').appendChild(miniTop);
-
-    const diceZone = document.createElement('div');
-    diceZone.className = 'qwixx-dice-zone';
-    diceZone.innerHTML = `
+    const opponents = others.map(player => `<button class="qwixx-mini-wrap${player.active ? ' active' : ''}" onclick="window.GameClients['qwixx'].inspect(${player.seat})">${renderMiniBoard(player, displayState, view.yourSeat)}</button>`).join('');
+    const center = `<div class="qwixx-dice-zone">
       <div class="qwixx-turn-head">
         <span>${!diceRevealed ? '🎲 New throw' : (isWhite ? '🎲 Everyone: white dice' : '🎯 Active player: one color combo')}</span>
         <span>Round ${s.round}</span>
@@ -240,40 +227,29 @@ window.GameClients = window.GameClients || {};
       <div class="qwixx-combos">
         ${diceRevealed ? `<span class="qwixx-combo white">White: ${dice.w[0]}+${dice.w[1]}=${dice.w[0]+dice.w[1]}</span>${COLORS.map(c => dice[COLOR_KEY[c]] ? `<span class="qwixx-combo ${c}">${c[0].toUpperCase()}: ${dice.w[0]}+${dice[COLOR_KEY[c]]} / ${dice.w[1]}+${dice[COLOR_KEY[c]]}</span>` : '').join('')}` : '<span class="qwixx-combo white">Dice hidden until throw</span>'}
       </div>
-      <div class="qwixx-controls">${controlsHtml}</div>`;
-    $('topArea').appendChild(diceZone);
+      <div class="qwixx-controls">${controlsHtml}</div>
+    </div>`;
+    const rec = focused.seat === s.activeSeat ? `<div class="qwixx-reco">💡 ${diceRevealed ? recommendedMove(s, focused) : 'Throw dice to reveal options.'}</div>` : '';
+    const focus = `<div class="qwixx-table"><div class="qwixx-focus-card player-board${focused.active ? ' active' : ''}">
+      <div class="board-header"><span>${focused.active ? '🎲 ' : ''}${esc(focused.name)}${focused.seat === view.yourSeat ? ' (you)' : ''}</span><span class="score-badge">Active: ${esc(activeName)} · total ${esc(focused.score)}</span></div>
+      ${rec}
+      ${renderScorecard(focused, displayState, view.yourSeat, false)}
+    </div></div>`;
+    const status = s.phase === 'GAME_OVER' ? 'Game Over'
+      : !diceRevealed ? 'Throw dice to reveal this turn'
+      : isWhite ? (pendingWhite ? `Mark one white ${dice.w[0]+dice.w[1]} or skip` : 'Waiting for other players')
+      : isAct ? 'Take one white+color mark or finish' : `Waiting for ${esc(activeName)}`;
+
+    GameShell.renderTable({game:'qwixx',opponents,center,focus,status,topMode:'custom',opponentClass:'qwixx-top-mini-strip'});
+
     const shouldRoll = !diceRevealed;
     const diceTray = $('qwixxDiceKit'), throwBtn = $('qwixxThrowBtn');
     const doThrow = () => { if(throwBtn) throwBtn.classList.add('hidden'); window._qwixxDiceSig = diceSig; Kit.rollDice(diceTray, diceList(dice), {size: innerWidth < 760 ? 30 : 42, animate: true, originEl: throwBtn}).then(()=>{ if(window._renderView&&window._renderView.game==='qwixx') render(window._renderView); }); };
-    if(shouldRoll){
-      diceTray.innerHTML='';
-      if(throwBtn){ throwBtn.classList.remove('hidden'); throwBtn.onclick=doThrow; }
-    } else {
-      if(throwBtn) throwBtn.classList.add('hidden');
-      Kit.rollDice(diceTray, diceList(dice), {size: innerWidth < 760 ? 30 : 42, animate: false});
-    }
-
-    const boardContainer = $('mainBoardsContainer');
-    boardContainer.innerHTML = '';
-    const boards = document.createElement('div');
-    boards.className = 'qwixx-table';
-    const rec = focused.seat === s.activeSeat ? `<div class="qwixx-reco">💡 ${diceRevealed ? recommendedMove(s, focused) : 'Throw dice to reveal options.'}</div>` : '';
-    boards.innerHTML = `
-      <div class="qwixx-focus-card player-board${focused.active ? ' active' : ''}">
-        <div class="board-header"><span>${focused.active ? '🎲 ' : ''}${esc(focused.name)}${focused.seat === view.yourSeat ? ' (you)' : ''}</span><span class="score-badge">Active: ${esc(activeName)} · total ${esc(focused.score)}</span></div>
-        ${rec}
-        ${renderScorecard(focused, displayState, view.yourSeat, false)}
-      </div>`;
-    boardContainer.appendChild(boards);
-
-    $('statusBar').textContent = s.phase === 'GAME_OVER' ? 'Game Over'
-      : !diceRevealed ? 'Throw dice to reveal this turn'
-      : isWhite ? (pendingWhite ? `Mark one white ${dice.w[0]+dice.w[1]} or skip` : 'Waiting for other players')
-      : isAct ? 'Take one white+color mark or finish' : `Waiting for ${activeName}`;
+    if(shouldRoll){ diceTray.innerHTML=''; if(throwBtn){ throwBtn.classList.remove('hidden'); throwBtn.onclick=doThrow; } }
+    else { if(throwBtn) throwBtn.classList.add('hidden'); Kit.rollDice(diceTray, diceList(dice), {size: innerWidth < 760 ? 30 : 42, animate: false}); }
 
     if(s.phase === 'GAME_OVER') showSummary(view);
   }
-
 
   function inspect(seat){
     const view=window._renderView;if(!view||view.game!=='qwixx')return;

@@ -204,25 +204,66 @@ const SeatModel={
 };
 const GameShell=(()=>{
   let current=null;
+  function el(content){
+    if(content==null)return null;
+    if(content instanceof Node)return content;
+    const t=document.createElement('template');t.innerHTML=String(content).trim();
+    return t.content;
+  }
+  function setHTML(target,content){
+    if(!target)return;
+    target.innerHTML='';
+    const node=el(content); if(node)target.appendChild(node);
+  }
   function clearGlobal(){
     const mini=$('miniBoardsContainer');if(mini){mini.innerHTML='';mini.className='mini-boards-container';}
     const main=$('mainBoardsContainer');if(main)main.innerHTML='';
+    const top=$('topArea');if(top){top.querySelectorAll('.game-shell-center,.qwixx-dice-zone,.qwixx-top-mini-strip').forEach(n=>n.remove());}
     const f7=$('f7Controls');if(f7)f7.remove();
     const dw=$('f7DealerWrap');if(dw)dw.remove();
-    if(typeof removeQwixxUi==='function')removeQwixxUi();
     $('investigateOverlay')?.classList.add('hidden');
+  }
+  function restoreSharedTop(){
+    const top=$('topArea');if(!top)return;
+    top.style.display='';
+    const piles=top.querySelector('.piles');if(piles)piles.style.display='flex';
+    const held=$('heldCardWrapper');if(held)held.style.display='';
   }
   function unmount(next=null){
     if(current&&window.GameClients?.[current]?.unmount)window.GameClients[current].unmount();
-    clearGlobal();
-    current=next;
+    clearGlobal(); restoreSharedTop(); current=next;
   }
   function render(view,client){
     if(current!==view.game){unmount(view.game);}
     if(client.mount&&!client._mounted){client.mount();client._mounted=true;}
-    client.render(view);
+    client.render(view,ctx(view));
   }
-  return {render,unmount,clearGlobal,focus:(opts)=>SeatModel.resolve(opts)};
+  function ctx(view){
+    return {
+      mode,
+      controlledSeats:SeatModel.controlled(),
+      focus:(opts={})=>SeatModel.resolve(opts),
+      inspect:(html)=>{setHTML($('investigateBox'),html);$('investigateOverlay').classList.remove('hidden');},
+      renderTable,
+      clear:clearGlobal,
+    };
+  }
+  // Declarative table renderer. Games provide fragments; the shell owns where
+  // they go and guarantees prior game fragments are removed.
+  function renderTable({game='',opponents='',center='',focus='',status='',topMode='custom',opponentClass=''}={}){
+    const mini=$('miniBoardsContainer'),top=$('topArea'),main=$('mainBoardsContainer'),sb=$('statusBar');
+    if(mini){mini.innerHTML='';mini.className='mini-boards-container '+opponentClass;const node=el(opponents);if(node)mini.appendChild(node);}
+    if(top){
+      top.querySelectorAll('.game-shell-center,.qwixx-dice-zone,.qwixx-top-mini-strip').forEach(n=>n.remove());
+      const piles=top.querySelector('.piles'),held=$('heldCardWrapper');
+      if(topMode==='piles'){top.style.display='';if(piles)piles.style.display='flex';if(held)held.style.display='';}
+      else if(topMode==='hidden'){top.style.display='none';}
+      else {top.style.display='flex';if(piles)piles.style.display='none';if(held)held.style.display='none';const c=document.createElement('div');c.className='game-shell-center '+game;const node=el(center);if(node)c.appendChild(node);top.appendChild(c);}
+    }
+    if(main)setHTML(main,focus);
+    if(sb&&status!=null)sb.innerHTML=status||'';
+  }
+  return {render,unmount,clearGlobal,renderTable,focus:(opts)=>SeatModel.resolve(opts)};
 })();
 
 /* ====================== CATALOGUE (defaults; server confirms) ====================== */

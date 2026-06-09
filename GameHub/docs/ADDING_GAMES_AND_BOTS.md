@@ -52,6 +52,8 @@ Build one renderer for both online multiplayer and local multiplayer. The shared
 "which seats does this device control?" model. A game should not decide global
 cleanup or bot/human focus by itself unless it is rendering a game-specific event.
 
+Use `GameShell.renderTable({ opponents, center, focus, status, topMode })` for new games instead of directly mutating `miniBoardsContainer`, `topArea`, `mainBoardsContainer`, and `statusBar`. Existing games now route their main table regions through this shell so stale UI from another game is cleaned up automatically.
+
 A browser client registers itself as:
 
 ```js
