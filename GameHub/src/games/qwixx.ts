@@ -114,27 +114,24 @@ function lifecyclePhase(internalPhase: string): string {
 /** Build a standardized GameViewState so the hub stays game-agnostic. */
 function buildQwixxViewState(s: QwixxState): GameViewState {
   const isWhitePhase = s.phase === "WHITE_PHASE";
-  const actingPlayers = isWhitePhase
-    ? s.pendingWhiteDecisions.length
-    : (s.activeSeat >= 0 && s.players[s.activeSeat]?.penalties < 4 ? 1 : 0);
   return {
     currentSeat: isWhitePhase ? -1 : s.activeSeat,
     pendingAction: isWhitePhase
       ? (s.activeColorUsed ? "finishTurn" : "white_choice")
       : (s.phase === "COLOR_PHASE" ? "color_choice" : null),
-    players: s.players.map((p, i) => {
-      const lockedColors = s.locked.filter((c: string) => COLORS.includes(c as Color) && p.rows[c]?.marks.includes(p.rows[c].nums.length - 1));
-      const isOut = lockedColors.length >= 1 || p.penalties >= 4;
-      return {
-        seat: i,
-        name: p.name,
-        status: isOut ? "out" :
-                (isWhitePhase ? (s.pendingWhiteDecisions.includes(i) ? "active" : "waiting") :
-                i === s.activeSeat ? "active" : "waiting"),
-        score: p.penalties,
-      };
-    }),
-    actingCount: actingPlayers,
+    players: s.players.map((p, i) => ({
+      seat: i,
+      name: p.name,
+      // Locking a row does not eliminate a player from the game; only four
+      // penalties fully knock them out of future decisions.
+      status: p.penalties >= 4
+        ? "out"
+        : (isWhitePhase
+            ? (s.pendingWhiteDecisions.includes(i) ? "active" : "waiting")
+            : (i === s.activeSeat ? "active" : "waiting")),
+      score: scorePlayer(p),
+    })),
+    actingCount: isWhitePhase ? s.pendingWhiteDecisions.length : (s.activeSeat >= 0 ? 1 : 0),
     autoAdvanceMs: undefined,
   };
 }

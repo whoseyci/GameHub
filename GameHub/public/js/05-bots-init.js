@@ -13,33 +13,24 @@
 /* ====================== BACKWARD-COMPAT Bots INTERFACE ====================== */
 const Bots = (() => {
   /**
-   * Legacy compatibility layer. Routes to BotDriver for registered games,
-   * falls back to built-in strategies for unregistered ones.
+   * Legacy compatibility layer.
+   *
+   * New code should prefer BotDriver.choose(view, seat, difficulty) because the
+   * scheduler already knows exactly which bot seat it is driving. This facade is
+   * kept so older call sites do not explode if the modular driver is unavailable.
    */
   return {
-    choose(gameId, view, difficulty) {
-      // Try the modular BotDriver first
+    choose(gameId, view, difficulty, seat = null) {
       if (typeof BotDriver !== 'undefined') {
-        const gv = view[gameId] || view.state;
-        if (!gv) return null;
-
-        // For games registered with BotDriver, use the modular strategy
-        const strategy = BotDriver;
-        if (strategy.needsBot(view)) {
-          const actingSeat = strategy.getActingSeat(view);
-          if (actingSeat >= 0) {
-            // Check if this seat is a bot
-            const bots = window._currentBots || [];
-            const bot = bots.find(b => b.seat === actingSeat);
-            if (bot) {
-              return strategy.choose(view, actingSeat, difficulty);
-            }
-          }
+        if (seat != null) return BotDriver.choose(view, seat, difficulty);
+        if (BotDriver.needsBot(view)) {
+          const actingSeat = BotDriver.getActingSeat(view);
+          if (actingSeat != null && actingSeat >= 0) return BotDriver.choose(view, actingSeat, difficulty);
         }
       }
 
-      // Fallback: built-in strategies (for legacy games not yet modularized)
-      console.warn(`Bot fallback for ${gameId} — consider registering with BotDriver`);
+      // Fallback: legacy games should return null instead of guessing.
+      console.warn(`Bot fallback for ${gameId} — no modular strategy registered`);
       return null;
     }
   };
@@ -136,7 +127,9 @@ function scheduleBot(view, bot, seat) {
       vv = { ...v, skyjo: sg };
     }
 
-    const msg = Bots.choose(gid, vv, bot.difficulty);
+    const msg = (typeof BotDriver !== 'undefined')
+      ? BotDriver.choose(vv, seat, bot.difficulty)
+      : Bots.choose(gid, vv, bot.difficulty, seat);
     _botBusy = false;
     if (!msg) return;
     if (mode === 'local') { localAct(seat, msg); }
