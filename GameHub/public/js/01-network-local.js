@@ -183,14 +183,22 @@ function startLocalGame(){
   resetGameUi();showScreen('gameScreen');$('gameRoomTag').classList.add('hidden');$('spectateTag').classList.add('hidden');
   renderLocal();
 }
-function renderLocal(){const v=localEngine.viewFor(localEngine.actor());dispatchView(v);}
+function isLocalBotSeat(seat){return !!localSeats[seat]?.bot;}
+function firstLocalHumanSeat(){const i=localSeats.findIndex(s=>!s.bot);return i>=0?i:0;}
+function localDisplaySeat(preferred=null){
+  const actor=localEngine.actor();
+  if(preferred!=null&&!isLocalBotSeat(preferred))return preferred;
+  if(actor!=null&&!isLocalBotSeat(actor))return actor;
+  return firstLocalHumanSeat();
+}
+function renderLocal(){const v=localEngine.viewFor(localDisplaySeat());dispatchView(v);}
 function localAct(seat,msg){
   localEngine.apply(seat,msg);
-  // Animated games should replay the acting seat's event timeline first, then
-  // hand focus to the next actor after the client runner finishes. Without this,
-  // local pass-and-play jumps to the next player while the previous player's card
-  // is still moving.
-  const actedView=localEngine.viewFor(seat);
+  // Human same-device seats keep focus for their own event timelines. Bots are
+  // treated like another device: they may act, but the local UI remains on a
+  // human-controlled board.
+  const displaySeat=localDisplaySeat(seat);
+  const actedView=localEngine.viewFor(displaySeat);
   const gameState=actedView&&actedView[actedView.game];
   if(gameState&&Array.isArray(gameState.events)&&gameState.events.length){dispatchView(actedView);return;}
   renderLocal();
