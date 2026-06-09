@@ -277,6 +277,11 @@
     prevView=cloneView(view);curView=cloneView(view);
     maybeSummary(view);
     flushView();
+    // In local pass-and-play, keep the acting board visible through the whole
+    // animation, then switch to the next human/device actor afterwards.
+    if(mode==='local'&&view.flip7.phase==='PLAY'&&!view.flip7.pendingAction&&view.flip7.current!==view.flip7.viewerSeat){
+      setTimeout(()=>{ if(mode==='local'&&localGameId==='flip7') renderLocal(); }, 650);
+    }
   }
   function maybeSummary(view){
     const s=view.flip7;

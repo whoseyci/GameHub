@@ -176,6 +176,16 @@ function startLocalGame(){
   renderLocal();
 }
 function renderLocal(){const v=localEngine.viewFor(localEngine.actor());dispatchView(v);}
-function localAct(seat,msg){localEngine.apply(seat,msg);renderLocal();}
+function localAct(seat,msg){
+  localEngine.apply(seat,msg);
+  // Animated games should replay the acting seat's event timeline first, then
+  // hand focus to the next actor after the client runner finishes. Without this,
+  // local pass-and-play jumps to the next player while the previous player's card
+  // is still moving.
+  const actedView=localEngine.viewFor(seat);
+  const gameState=actedView&&actedView[actedView.game];
+  if(gameState&&Array.isArray(gameState.events)&&gameState.events.length){dispatchView(actedView);return;}
+  renderLocal();
+}
 function localNext(){localEngine.next();resetGameUi();renderLocal();}
 function quitLocal(){window._currentBots=[];resetGameUi();showScreen('menuScreen');}

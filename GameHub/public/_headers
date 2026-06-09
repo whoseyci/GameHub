@@ -1,6 +1,10 @@
 /*
-  Cache-Control: public, max-age=0, must-revalidate
+  Cache-Control: no-store, no-cache, must-revalidate, max-age=0
 /index.html
   Cache-Control: no-store, no-cache, must-revalidate, max-age=0
 /
+  Cache-Control: no-store, no-cache, must-revalidate, max-age=0
+/js/*
+  Cache-Control: no-store, no-cache, must-revalidate, max-age=0
+/styles/*
   Cache-Control: no-store, no-cache, must-revalidate, max-age=0
