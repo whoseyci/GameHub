@@ -38,7 +38,6 @@
     document.querySelectorAll('[data-card-reg^="flip7:table:"]').forEach(anchor=>{
       const id=anchor.dataset.cardReg,kind=anchor.dataset.kind,val=kind==='num'?Number(anchor.dataset.value):anchor.dataset.value;
       active.push(id);
-      // Use CardManager directly: update renderer + pin
       if(!Kit.CardManager.has(id)){
         Kit.CardManager.create({kind,value:val},{zone:'grid',player:Number(anchor.closest('[data-f7-seat]')?.dataset?.f7Seat)||0,slot:active.length-1},{id,renderer:(face,faceUp)=>cardEl(face.kind==='num'?'num':(face.value==='second'||face.value==='freeze'||face.value==='flip3')?'act':'mod',face.value,{busted:anchor.dataset.busted==='1',cause:anchor.dataset.cause==='1'}),faceUp:true});
       }else{
@@ -46,6 +45,12 @@
       }
       Kit.CardManager.pin(id,anchor,{hideAnchor:false,updateContent:true});
     });
+    // Preserve permanent cards that have no DOM anchor yet (in-flight).
+    // reconcile destroys anything not in `active` — but a card flying from
+    // deck to board hasn't been pinned to a real anchor yet.
+    for(const id of Kit.CardManager.ids()){
+      if(id.startsWith('flip7:table:')&&!active.includes(id))active.push(id);
+    }
     Kit.CardManager.reconcile('flip7:table:',active);
     requestAnimationFrame(()=>Kit.CardManager.sync());
   }
