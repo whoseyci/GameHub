@@ -3,6 +3,9 @@
   const C=Kit.cardColor;
   function boardEl(pi){return document.getElementById('main-board-'+pi)||document.getElementById('mini-board-'+pi);}
   function cardAt(pi,idx){const b=boardEl(pi);return b?b.querySelectorAll('.board-card')[idx]:null;}
+  function skyjoVisual(c){const el=document.createElement('div');if(c.cleared)el.className='board-card cleared';else if(c.revealed){el.className='board-card revealed';el.textContent=c.value;el.style.color=C(c.value);}else el.className='board-card face-down';return el;}
+  function skyjoCardId(s,pi,ci){return `skyjo:table:r${s.round}:p${pi}:c${ci}`;}
+  function syncSkyjoCards(s){const active=[];s.players.forEach((p,pi)=>p.board.forEach((c,ci)=>{const id=skyjoCardId(s,pi,ci),anchor=document.querySelector(`[data-card-reg="${id}"]`);if(anchor){active.push(id);Kit.CardRegistry.renderSlot(id,anchor,{render:()=>skyjoVisual(c)});}}));Kit.CardRegistry.reconcile('skyjo:table:',active);}
 
   let renderCtx=null;
   function render(view,ctx={}){
@@ -106,6 +109,7 @@
       (isMain?mainFrag:miniFrag).appendChild(dom);
     });
     GameShell.renderTable({game:'skyjo',opponents:miniFrag,focus:mainFrag,topMode:'piles',status:null});
+    syncSkyjoCards(s);
   }
 
   function boardDOM(s,p,pi,isMain,interactive,viewer){
@@ -120,9 +124,7 @@
     wrap.appendChild(h);
     const grid=document.createElement('div');grid.className='board-grid';
     p.board.forEach((c,ci)=>{const card=document.createElement('div');
-      if(c.cleared)card.className='board-card cleared';
-      else if(c.revealed){card.className='board-card revealed';card.textContent=c.value;card.style.color=C(c.value);}
-      else card.className='board-card face-down';
+      card.className='board-card registry-anchor';card.dataset.cardReg=skyjoCardId(s,pi,ci);
       if(interactive&&isMain&&!c.cleared&&canClick(s,pi,ci,c,viewer)){card.classList.add('clickable');card.onclick=()=>cardClick(s,pi,ci,c);}
       grid.appendChild(card);});
     wrap.appendChild(grid);return wrap;

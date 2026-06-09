@@ -28,6 +28,8 @@ describe("shared game shell", () => {
   it("defines reusable card animation API and Skyjo uses it", () => {
     expect(core).toContain("const Card=(()=>");
     expect(core).toContain("const CardRegistry");
+    expect(core).toContain("renderSlot");
+    expect(core).toContain("reconcile");
     expect(core).toContain("const CardEffects");
     expect(core).toContain("async function move");
     expect(core).toContain("async function moveToSlot");
@@ -36,7 +38,10 @@ describe("shared game shell", () => {
     expect(skyjo).toContain("Kit.Card.move");
     expect(skyjo).toContain("Kit.Card.reveal");
     expect(skyjo).toContain("Kit.CardEffects.triplet");
+    expect(skyjo).toContain("Kit.CardRegistry.renderSlot");
+    expect(skyjo).toContain("Kit.CardRegistry.reconcile");
     expect(flip7).toContain("Kit.CardRegistry.move");
+    expect(flip7).toContain("Kit.CardRegistry.renderSlot");
   });
 
   it("migrates built-in games to GameShell.renderTable", () => {

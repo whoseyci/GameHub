@@ -362,3 +362,8 @@ html,body,#app{min-height:100%;height:auto;max-height:none;overflow-x:hidden;ove
 
 /* Flip7 board cards are persistent state, not reveal animations; don't bounce on every redraw. */
 .f7-row .f7-card{animation:none}.f7-card.bust-cause{animation:shakeX .5s ease}.f7-flying-card{animation:none}.f7-card.reveal-pop{animation:popReveal .26s var(--spring)}
+
+/* Persistent card registry anchors: occupy layout/click space; registry visual owns appearance. */
+.registry-anchor{opacity:0!important;color:transparent!important;background:transparent!important;box-shadow:none!important}
+.registry-anchor.clickable{pointer-events:auto!important}
+.kit-card-registered{will-change:top,left,width,height,transform;}

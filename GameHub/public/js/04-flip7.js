@@ -17,7 +17,30 @@
     return c;
   }
 
-  function addF7Card(row,el,key){ el.dataset.cardKey=key; row.appendChild(el); return el; }
+  function addF7Card(row,el,key){
+    const seat=row?.dataset?.f7Seat||'x';
+    const id=`flip7:table:p${seat}:${key}`;
+    const anchor=el.cloneNode(false);
+    anchor.className=el.className+' registry-anchor';
+    anchor.textContent=el.textContent;
+    anchor.dataset.cardKey=key;anchor.dataset.cardReg=id;
+    anchor.dataset.kind=el.classList.contains('num')?'num':(el.classList.contains('mod')||el.classList.contains('modx2'))?'mod':'act';
+    anchor.dataset.value=el.textContent||'';
+    if(el.classList.contains('second'))anchor.dataset.value='second';
+    if(el.classList.contains('freeze'))anchor.dataset.value='freeze';
+    if(el.classList.contains('flip3'))anchor.dataset.value='flip3';
+    anchor.dataset.busted=el.classList.contains('busted-card')?'1':'';
+    anchor.dataset.cause=el.classList.contains('bust-cause')?'1':'';
+    row.appendChild(anchor);return anchor;
+  }
+  function syncF7Cards(){
+    const active=[];
+    document.querySelectorAll('[data-card-reg^="flip7:table:"]').forEach(anchor=>{
+      const id=anchor.dataset.cardReg,kind=anchor.dataset.kind,val=kind==='num'?Number(anchor.dataset.value):anchor.dataset.value;
+      active.push(id);Kit.CardRegistry.renderSlot(id,anchor,{render:()=>cardEl(kind,val,{busted:anchor.dataset.busted==='1',cause:anchor.dataset.cause==='1'})});
+    });
+    Kit.CardRegistry.reconcile('flip7:table:',active);
+  }
   function captureF7Layout(){ const m=new Map(); document.querySelectorAll('.f7-focus-board .f7-card[data-card-key]').forEach(el=>m.set(el.dataset.cardKey,el.getBoundingClientRect())); return m; }
   function animateF7Layout(before){ document.querySelectorAll('.f7-focus-board .f7-card[data-card-key]').forEach(el=>{ const a=before.get(el.dataset.cardKey); if(!a)return; const b=el.getBoundingClientRect(); const dx=a.left-b.left; if(Math.abs(dx)<3)return; el.style.transition='none'; el.style.transform=`translateX(${dx}px)`; el.offsetHeight; el.style.transition='transform .16s ease-out'; el.style.transform=''; setTimeout(()=>{el.style.transition='';},190); }); }
 
@@ -56,7 +79,7 @@
       const head=document.createElement('div');head.className='board-header';
       head.innerHTML='<span>'+esc(p.name)+(i===viewer?' (You)':'')+' <span class="f7-status '+esc(p.status)+'">'+esc(p.status)+'</span></span><span class="score-badge">'+(busted?'BUST':'Now: '+esc(p.live))+' \u00b7 Total: '+esc(p.banked)+'</span>';
       wrap.appendChild(head);
-      const row=document.createElement('div');row.className='f7-row';
+      const row=document.createElement('div');row.className='f7-row';row.dataset.f7Seat=i;
       if(!p.nums.length&&!p.mods.length&&!p.second)row.innerHTML='<span class="f7-empty">no cards yet</span>';
       p.nums.forEach(n=>addF7Card(row,cardEl('num',n,{busted}),'num-'+n));
       if(busted&&p.bustCard!=null)addF7Card(row,cardEl('num',p.bustCard,{cause:true}),'bust-'+p.bustCard);
@@ -71,6 +94,7 @@
     });
     const center=s.phase==='PLAY'?`<div id="f7DealerWrap" class="f7-dealer"><div class="pile-label">Dealer</div><div id="f7Deck" class="f7-deck"><span class="cnt">deck ${esc(s.deckCount)} · out ${esc(s.discardCount)}</span></div></div>`:'';
     GameShell.renderTable({game:'flip7',opponents:miniFrag,center,focus:mainFrag,status:'',topMode:s.phase==='PLAY'?'custom':'hidden',opponentClass:'f7-mini-strip'});
+    syncF7Cards();
     drawControls(view);
   }
 
@@ -83,7 +107,7 @@
     const head=document.createElement('div');head.className='board-header';
     head.innerHTML='<span>'+esc(p.name)+' <span class="f7-status '+esc(p.status)+'">'+esc(p.status)+'</span></span><span class="score-badge">'+(busted?'BUST':'Now: '+esc(p.live))+' · '+esc(p.banked)+'</span>';
     b.appendChild(head);
-    const row=document.createElement('div');row.className='f7-row';
+    const row=document.createElement('div');row.className='f7-row';row.dataset.f7Seat=i;
     if(!p.nums.length&&!p.mods.length&&!p.second)row.innerHTML='<span class="f7-empty">no cards</span>';
     p.nums.forEach(n=>addF7Card(row,cardEl('num',n,{busted}),'num-'+n));
     if(busted&&p.bustCard!=null)addF7Card(row,cardEl('num',p.bustCard,{cause:true}),'bust-'+p.bustCard);

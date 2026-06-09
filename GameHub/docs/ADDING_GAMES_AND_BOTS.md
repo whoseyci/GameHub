@@ -93,7 +93,7 @@ window.LocalEngines['hearts'] = function(names) {
 
 Use existing helpers:
 
-- `Kit.CardRegistry.create/place/move/flip/reveal/hide/remove/sync/clear` when a card must feel like one persistent visual object across zones/renders
+- `Kit.CardRegistry.create/place/renderSlot/move/flip/reveal/hide/remove/sync/reconcile/clear` when a card must feel like one persistent visual object across zones/renders
 - `Kit.Card.move(cardIdOrOpts, opts?)` for one-off card transfer; accepts generic values or custom `render(card)`/`backHTML` for game-specific card art
 - `Kit.Card.moveToSlot(...)` and `Kit.Card.reserveSlot(...)` for ordered rows where existing cards must slide aside before arrival
 - `Kit.Card.flip/reveal/hide/bounce/tilt/untilt/shake/glow/stack/discard/trigger` for lower-level card object animation
@@ -132,11 +132,12 @@ Avoid game-specific raw event names in new games. If legacy events exist, normal
 
 Guidelines:
 
-1. Give each motion a stable `cardId`, usually `${game}:${eventSeq}:<kind>`.
-2. Use `Kit.CardMotion.move(...)` instead of ad-hoc CSS transitions.
-3. Keep the board focus locked to the acting/source player while the card is moving.
-4. Only after arrival should the game show busts, score changes, target prompts, or next-player focus.
-5. If an action card targets another player, first deal it to the revealer, then animate board-to-board, then apply target effects.
+1. For board/table cards, render layout **slots** and use `Kit.CardRegistry.renderSlot(cardId, slotEl, { render })`; call `Kit.CardRegistry.reconcile(prefix, activeIds)` after each render so stale cards are removed.
+2. Give each motion a stable `cardId`, usually `${game}:${eventSeq}:<kind>`.
+3. Prefer `Kit.CardRegistry.move(...)` for cards that continue to exist across zones/renders; use `Kit.Card.move(...)` for one-off effects.
+4. Keep the board focus locked to the acting/source player while the card is moving.
+5. Only after arrival should the game show busts, score changes, target prompts, or next-player focus.
+6. If an action card targets another player, first deal it to the revealer, then animate board-to-board, then apply target effects.
 
 This prevents one card appearing in multiple places or local pass-and-play switching to
 the next player before the current animation has completed.

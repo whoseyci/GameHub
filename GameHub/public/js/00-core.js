@@ -279,9 +279,25 @@ const Kit=(()=>{
     function release(id){remove(id);}
     function sync(){for(const it of items.values())if(it.anchor)setAt(it,it.anchor,{hideAnchor:!!it.hidden});}
     function clear(prefix=''){for(const id of [...items.keys()])if(!prefix||id.startsWith(prefix))remove(id);}
-    return {create,get,has,move,place:(id,anchor,o={})=>setAt(ensure(id,o),anchor,o),flip,reveal,hide,remove,release,sync,clear};
+    function reconcile(prefix,activeIds){const keep=new Set(activeIds||[]);for(const id of [...items.keys()])if(id.startsWith(prefix)&&!keep.has(id))remove(id);}
+    function renderSlot(id,anchor,o={}){
+      const it=ensure(id,o);
+      if(o.update!==false){
+        const fresh=makeNode(o);
+        it.el.className=fresh.className+' kit-card-registered';
+        it.el.innerHTML=fresh.innerHTML;it.el.textContent=fresh.textContent||it.el.textContent;
+        for(const attr of [...fresh.attributes])if(attr.name!=='style'&&attr.name!=='class')it.el.setAttribute(attr.name,attr.value);
+        it.el.removeAttribute('style');Object.assign(it.el.style,{position:'fixed',zIndex:o.zIndex||900,pointerEvents:o.pointerEvents||'none',boxSizing:'border-box'});
+        if(fresh.style.cssText)it.el.style.cssText+=';'+fresh.style.cssText;
+      }
+      setAt(it,anchor,{hideAnchor:false});return it.el;
+    }
+    return {create,get,has,move,place:(id,anchor,o={})=>setAt(ensure(id,o),anchor,o),renderSlot,flip,reveal,hide,remove,release,sync,reconcile,clear};
+
   })();
 
+  window.addEventListener('resize',()=>CardRegistry.sync(),{passive:true});
+  window.addEventListener('scroll',()=>CardRegistry.sync(),{passive:true});
   const CardEffects={
     async triplet({cards=[],discardEl=null,value=null,color=null,boardEl=null}={}){
       if(boardEl)floatText(boardEl,'Triplet!','#eab308');
