@@ -440,8 +440,13 @@ describe("CardManager: permanent card system invariants", () => {
     expect(flip7Source).toContain("animateF7Layout(before);");
     // Card is found by its permanent ID after draw pins it
     expect(flip7Source).toContain("Kit.CardManager.get(permId);");
-    // Overlay snapped to deck then animated to destination — no create/destroy
-    expect(flip7Source).toContain("Snap overlay to deck");
+    // The deck → slot flight uses the CardManager animation API (moveTo),
+    // not hand-rolled inline style juggling — pinned to the deck, then moved.
+    expect(flip7Source).toContain("Kit.CardManager.pin(permId,deck");
+    expect(flip7Source).toContain("Kit.CardManager.moveTo(permId,destAnchor");
+    // The flight starts face-down and reveals midway via the API options.
+    expect(flip7Source).toContain("startFaceDown:true");
+    expect(flip7Source).toContain("revealMidway:true");
     // syncF7Cards pins all cards to real anchors
     expect(flip7Source).toContain("Kit.CardManager.pin(id,anchor,{hideAnchor:false");
     expect(flip7Source).toContain("Kit.CardManager.reconcile('flip7:table:'");

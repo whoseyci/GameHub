@@ -376,46 +376,44 @@
         draw(liveView);
         const row=rowOf(e.actor); if(e.flip3)await sleep(SPEED.flip3Gap*0.2); if(!tokenAlive(token)) return;
         const before=captureF7Layout();
-        // ── Permanent Card System ──
-        // 1. Advance the live view (card added) + draw — syncF7Cards pins the
-        //    permanent CardManager card at its final board position.
+        // ── Permanent Card System (animation API) ──
+        // 1. Advance the live view (card added) + draw — syncF7Cards creates and
+        //    pins the permanent CardManager card at its final board slot.
         advanceLiveView(liveView,e);
         draw(liveView);
-        // 2. Smooth layout shift for existing cards (new card skipped — no 'before' entry)
+        // 2. Smooth layout shift so existing cards slide aside to make room
+        //    (the new card has no 'before' entry, so it is skipped here).
         animateF7Layout(before);
-        // 3. Find the permanent card's overlay (already at final position)
+        // 3. Animate the new card deck → slot using the CardManager animation API.
+        //    We pin it back onto the deck (face-down), then moveTo() flies it on
+        //    an arc to its real anchor, flips face-up midway, and lands.
         const seat=row?.dataset?.f7Seat||e.actor;
         const cardKey=e.card?.id||('card-'+e.seq+'-'+(e.card?.kind||'num')+'-'+(e.card?.v??'?'));
         const permId=`flip7:table:p${seat}:${cardKey}`;
         const cmCard=Kit.CardManager.get(permId);
         const deck=$('f7Deck');
-        if(cmCard?.overlayEl&&deck){
-          const el=cmCard.overlayEl;
-          const destTop=el.style.top, destLeft=el.style.left, destWidth=el.style.width, destHeight=el.style.height;
-          const deckRect=deck.getBoundingClientRect();
-          // Deck visual pulse
+        const destAnchor=document.querySelector(`[data-card-reg="${permId}"]`);
+        if(cmCard&&deck&&destAnchor){
+          // Deck visual pulse as the card leaves the pile.
           deck.classList.remove('deal');void deck.offsetWidth;deck.classList.add('deal');
-          // Snap overlay to deck position instantly — same JS tick, browser can't paint between
-          el.style.transition='none';
-          el.style.top=deckRect.top+'px'; el.style.left=deckRect.left+'px';
-          el.style.width=deckRect.width+'px'; el.style.height=deckRect.height+'px';
-          el.style.zIndex='1000';
-          // Face-down appearance
-          el.innerHTML='<span style="color:#c7d2fe;font-size:1.5rem">✦</span>';
-          el.style.background='linear-gradient(135deg,#6366f1,#4338ca)'; el.style.border='2px solid #818cf8';
-          el.style.color=''; el.style.borderRadius='12px';
-          el.classList.add('kit-card-moving');
-          el.offsetHeight; // reflow
-          // Animate to destination via arc
-          const dur=620;
-          const midX=(deckRect.left+parseFloat(destLeft))/2,midY=Math.min(deckRect.top,parseFloat(destTop))-46;
-          el.style.transition=`top ${dur}ms var(--spring-soft),left ${dur}ms var(--spring-soft),width ${dur}ms var(--spring-soft),height ${dur}ms var(--spring-soft),transform ${dur}ms var(--spring-soft)`;
-          requestAnimationFrame(()=>{el.style.top=midY+'px';el.style.left=midX+'px';el.style.transform='rotateZ(180deg) scale(1.12)';});
-          // Reveal face midway
-          setTimeout(()=>{const r=Kit.CardManager.renderCard(cmCard);if(r){el.className=r.className+' kit-card-registered kit-card-moving';el.innerHTML=r.innerHTML;if(r.style.cssText)el.style.cssText+=';'+r.style.cssText;el.style.animation='popReveal .26s var(--spring)';}SFX.flip();},Math.floor(dur*0.42));
-          setTimeout(()=>{el.style.top=destTop;el.style.left=destLeft;el.style.width=destWidth;el.style.height=destHeight;el.style.transform='rotateZ(360deg) scale(1)';},Math.floor(dur*0.5));
-          await sleep(dur+45);
-          el.classList.remove('kit-card-moving');el.style.transition='';el.style.transform='';el.style.animation='';el.style.zIndex='';
+          // Start the card on the deck so the flight originates there.
+          Kit.CardManager.pin(permId,deck,{hideAnchor:false,updateContent:false});
+          await Kit.CardManager.moveTo(permId,destAnchor,{
+            duration:620,
+            arc:46,
+            spin:true,
+            startFaceDown:true,
+            backHTML:'<div class="f7-card f7-card-back"><span style="color:#c7d2fe;font-size:1.5rem">\u2726</span></div>',
+            backClass:'f7-card-back',
+            revealMidway:true,
+            revealAt:0.42,
+            onReveal:()=>SFX.flip(),
+            land:true,
+            toLocation:{zone:'grid',player:Number(seat)||0,slot:cmCard.location?.slot},
+          });
+          if(!tokenAlive(token)) return;
+          // Re-pin so the permanent card tracks its live anchor after the flight.
+          Kit.CardManager.pin(permId,destAnchor,{hideAnchor:false,updateContent:true});
           Kit.CardManager.sync();
         }
         await sleep(SPEED.beat*0.18);

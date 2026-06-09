@@ -8,7 +8,7 @@
    shape as Skyjo below. The hub never needs to change.
    ==================================================================== */
 const PARTYKIT_HOST = location.host; // served by the same Worker
-const BUILD_VERSION = "v23-permanent-cards-unified"; // bump on each change; shown on the menu
+const BUILD_VERSION = "v24-flip7-deal-via-anim-api"; // bump on each change; shown on the menu
 
 const $=id=>document.getElementById(id);
 function esc(v){return String(v ?? '').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));}
@@ -403,10 +403,14 @@ const Kit=(()=>{
       // Snapshot source position from current overlay
       const fromRect=el.getBoundingClientRect();
 
-      // Show card-back before flight if requested
+      // Show card-back before flight if requested. backClass (optional) lets a
+      // game apply its themed card-back styling for the face-down flight; the
+      // class is removed when the face is revealed (revealMidway) or on arrival.
+      let appliedBackClass=null;
       if(opts.startFaceDown&&opts.backHTML){
         const back=nodeFromHTML(opts.backHTML);
         if(back){el.innerHTML=back.innerHTML;el.style.background=getComputedStyle(back).background||'var(--card-back)';el.style.color='';}
+        if(opts.backClass){el.classList.add(opts.backClass);appliedBackClass=opts.backClass;}
       }
 
       // Raise z-index during flight so card flies above everything
@@ -454,6 +458,7 @@ const Kit=(()=>{
 
       // Clean up flight state
       el.classList.remove('kit-card-moving');
+      if(appliedBackClass)el.classList.remove(appliedBackClass);
       el.style.transition='';
       el.style.transform='';
       el.style.animation='';
