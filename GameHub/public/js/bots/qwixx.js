@@ -10,6 +10,13 @@ const QwixxBots = (() => {
   const COLORS = ["red", "yellow", "green", "blue"];
 
   function lastMark(row) { return row.marks.length ? Math.max(...row.marks) : -1; }
+  function diceSig(s) {
+    const d = s.dice || { w: [0, 0], r: 0, y: 0, g: 0, b: 0 };
+    return `${s.round}|${s.activeSeat}|${d.w.join(',')}|${d.r}|${d.y}|${d.g}|${d.b}`;
+  }
+  function diceRevealed(s) {
+    return window._qwixxDiceSig === diceSig(s);
+  }
 
   function validMarks(view, seat) {
     const s = view.state || view.qwixx;
@@ -108,7 +115,7 @@ const QwixxBots = (() => {
   BotDriver.register("qwixx", {
     choose(view, seat, difficulty) {
       const s = view.state || view.qwixx;
-      if (!s) return null;
+      if (!s || !diceRevealed(s)) return null;
 
       // White phase: all active players decide simultaneously
       if (s.phase === "WHITE_PHASE") {
@@ -131,7 +138,7 @@ const QwixxBots = (() => {
 
     needsBot(view) {
       const s = view.state || view.qwixx;
-      if (!s) return false;
+      if (!s || !diceRevealed(s)) return false;
       if (s.phase === "WHITE_PHASE" && s.pendingWhiteDecisions.length > 0) return true;
       if (s.phase === "COLOR_PHASE" && s.activeSeat >= 0) return true;
       return false;
@@ -139,7 +146,7 @@ const QwixxBots = (() => {
 
     getActingSeat(view) {
       const s = view.state || view.qwixx;
-      if (!s) return -1;
+      if (!s || !diceRevealed(s)) return -1;
       if (s.phase === "WHITE_PHASE") {
         // Return first bot that still needs to decide
         const bots = window._currentBots || [];
