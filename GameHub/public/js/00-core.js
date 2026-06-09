@@ -167,9 +167,13 @@ const Kit=(()=>{
       const o=asMoveArgs(cardIdOrOpts,maybeOpts);
       return run(async()=>{
         if(!o.from||!o.to)return;
+        const oldTargetVis=o.to.style.visibility, oldSourceVis=o.from.style.visibility;
+        if(o.hideTarget)o.to.style.visibility='hidden';
+        if(o.hideSource)o.from.style.visibility='hidden';
+        const finish=()=>{ if(o.hideTarget)o.to.style.visibility=oldTargetVis||''; if(o.hideSource)o.from.style.visibility=oldSourceVis||''; };
         // Generic/simple path keeps old Skyjo behaviour unless a custom renderer is supplied.
         const custom=!!(o.render||o.el||o.cloneFrom||o.html||o.backRender||o.backHTML||o.card||o.useClone);
-        if(!custom){return CardMotion.move(o.cardId,o.from,o.to,{value:o.value,color:o.color,startFaceDown:!!o.startFaceDown,revealMidway:!!o.revealMidway,spin:!!o.spin,duration:o.duration??520,land:o.land!==false});}
+        if(!custom){await CardMotion.move(o.cardId,o.from,o.to,{value:o.value,color:o.color,startFaceDown:!!o.startFaceDown,revealMidway:!!o.revealMidway,spin:!!o.spin,duration:o.duration??520,land:o.land!==false});finish();return;}
         const a=o.from.getBoundingClientRect(),b=o.to.getBoundingClientRect(),duration=o.duration??520;
         const el=materialize(o,!!o.startFaceDown);el.classList.add('kit-card-moving');fixedLike(el,a,o.zIndex??1000);
         el.style.transition=`top ${duration}ms var(--spring-soft),left ${duration}ms var(--spring-soft),width ${duration}ms var(--spring-soft),height ${duration}ms var(--spring-soft),transform ${duration}ms var(--spring-soft),opacity ${duration}ms ease`;
@@ -184,7 +188,7 @@ const Kit=(()=>{
           el.style.animation='popReveal .26s var(--spring)'; if(o.onReveal)o.onReveal(el);
         },Math.floor(duration*(o.revealAt??0.42)));
         setTimeout(()=>{el.style.top=b.top+'px';el.style.left=b.left+'px';el.style.width=b.width+'px';el.style.height=b.height+'px';el.style.transform=(o.spin?'rotateZ(360deg) ':'')+'scale(1)';},Math.floor(duration*0.5));
-        await sleep(duration+45); el.remove(); if(o.land!==false)await bounce(o.to,{duration:260}); if(o.onArrive)o.onArrive(o.to);
+        await sleep(duration+45); el.remove(); finish(); if(o.land!==false)await bounce(o.to,{duration:260}); if(o.onArrive)o.onArrive(o.to);
       });
     }
     function reserveSlot(container,{before=null,render=null,card=null,className='kit-card-ghost'}={}){
