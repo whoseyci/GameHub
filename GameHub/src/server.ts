@@ -15,7 +15,7 @@
 import {
   Server, Connection, ConnectionContext, routePartykitRequest, getServerByName,
 } from "partyserver";
-import { getGame, GAME_CATALOGUE, TICK_RUNNERS } from "./games/registry";
+import { getGame, GAME_CATALOGUE } from "./games/registry";
 import { cleanId, cleanInt, cleanName, parseClientMessage } from "./protocol";
 import { appendReplay, summarizeGameState, type ReplayEntry } from "./replay";
 
@@ -31,6 +31,14 @@ export const LOBBY_SINGLETON = "public-lobby";
 const IDLE_MS = 10 * 60 * 1000;       // close room after 10 min idle
 const EMPTY_GRACE_MS = 45 * 1000;     // close shortly after everyone leaves
 const SAFE_ROOM_CODE = /^[A-Za-z0-9_-]{1,64}$/;
+
+// Per-connection rate limit (token bucket). Each inbound message that the hub
+// acts on can fan out to N broadcasts + storage writes, so unbounded message
+// rates are an amplification vector. ~15 msgs/sec sustained with a burst of 30
+// is far above any legitimate UI cadence (taps, bot turns) but blocks floods.
+const RATE_REFILL_PER_SEC = 15;
+const RATE_BURST = 30;
+type Bucket = { tokens: number; last: number };
 
 type ConnState = { pid?: string; pids?: string[] };
 interface Member { id: string; name: string; bot?: boolean; difficulty?: string; }
@@ -50,6 +58,9 @@ export class Room extends Server<Env> {
   maxPlayers = 8;
   lastActivity = Date.now();
   actionLog: ReplayEntry[] = [];
+  // In-memory rate-limit buckets, keyed by connection id. Not persisted: after
+  // hibernation the socket is idle, and a fresh bucket on wake is safe (full).
+  private rateBuckets = new Map<string, Bucket>();
 
   // current game (null => in room lobby)
   gameId: string | null = null;
@@ -138,6 +149,36 @@ export class Room extends Server<Env> {
     return seats[0];
   }
 
+  // Is `seat` allowed to act in the current game right now? Uses the game's
+  // standardized GameViewState so this stays game-agnostic. Turn-based games
+  // expose currentSeat; simultaneous-turn games mark actable seats "active".
+  // This gates host-driven BOT moves (S1): a host may only puppet a bot when it
+  // is genuinely that bot's turn — it can't fire arbitrary out-of-turn actions
+  // for bot seats. The game's applyAction remains the final rule authority.
+  private isSeatActable(seat: number): boolean {
+    if (seat < 0) return false;
+    if (!this.gameId || !this.gameState) return false;
+    const g = getGame(this.gameId);
+    const vs = g?.viewFor(this.gameState, -1).state;
+    if (!vs) return true; // game doesn't expose turn info → defer to applyAction
+    if (vs.currentSeat >= 0) return vs.currentSeat === seat;
+    // Simultaneous-turn game: the seat must be currently active.
+    return vs.players?.[seat]?.status === "active";
+  }
+
+  // Token-bucket rate limit per connection. Returns false when the connection
+  // has exceeded its budget and the message should be dropped.
+  private allowMessage(conn: Connection<ConnState>): boolean {
+    const now = Date.now();
+    let b = this.rateBuckets.get(conn.id);
+    if (!b) { b = { tokens: RATE_BURST, last: now }; this.rateBuckets.set(conn.id, b); }
+    b.tokens = Math.min(RATE_BURST, b.tokens + ((now - b.last) / 1000) * RATE_REFILL_PER_SEC);
+    b.last = now;
+    if (b.tokens < 1) return false;
+    b.tokens -= 1;
+    return true;
+  }
+
   // Re-arm the single alarm to the soonest of: pending game tick, idle close.
   private armAlarm() {
     const idleAt = this.lastActivity + IDLE_MS;
@@ -178,9 +219,9 @@ export class Room extends Server<Env> {
     // 1) run a due game tick
     if (this.tickAt && now >= this.tickAt - 50 && this.gameId && this.gameState) {
       this.tickAt = null;
-      const runner = TICK_RUNNERS[this.gameId];
-      if (runner) {
-        runner(this.gameState);
+      const g = getGame(this.gameId);
+      if (g?.completeTick) {
+        g.completeTick(this.gameState);
         this.log({ kind: "tick", gameId: this.gameId });
       }
       this.scheduleTick();        // a tick may queue another (e.g. chained turn-ends)
@@ -233,25 +274,48 @@ export class Room extends Server<Env> {
     } catch {}
   }
 
-  /* ---- State broadcast (personalized per connection) ---- */
+  /* ---- State broadcast (personalized per connection) ----
+     viewFor() is computed at most once per seat per broadcast and shared across
+     every connection that controls that seat. Previously each connection
+     recomputed its seats' views plus an extra "primary" view, making a single
+     action O(connections × seats) view builds; now it is O(distinct seats). */
   private broadcastState() {
-    for (const conn of this.getConnections<ConnState>()) this.sendTo(conn);
+    // Per-broadcast memo: seat -> serialized GameView (and -1 for the spectator view).
+    const viewCache = new Map<number, unknown>();
+    const g = this.gameId && this.gameState ? getGame(this.gameId)! : null;
+    const viewOf = (s: number) => {
+      if (!g) return undefined;
+      if (!viewCache.has(s)) viewCache.set(s, g.viewFor(this.gameState, s));
+      return viewCache.get(s);
+    };
+    // The bot manifest is identical for every connection; build it once.
+    const bots = g
+      ? this.members.map((m, i) => (m.bot ? { seat: i, difficulty: m.difficulty } : null)).filter(Boolean)
+      : null;
+    for (const conn of this.getConnections<ConnState>()) this.sendTo(conn, viewOf, bots);
   }
-  private sendTo(conn: Connection<ConnState>) {
+  private sendTo(
+    conn: Connection<ConnState>,
+    viewOf?: (s: number) => unknown,
+    bots?: unknown,
+  ) {
     const pids = this.controlledPids(conn);
     const seat = this.primarySeatFor(conn);
     const isHost = pids.includes(this.hostId || "");
     if (this.gameId && this.gameState) {
       const g = getGame(this.gameId)!;
+      // Allow direct calls (e.g. onConnect) without a prebuilt cache.
+      const view = viewOf ?? ((s: number) => g.viewFor(this.gameState, s));
+      const botList = bots ?? this.members.map((m, i) => (m.bot ? { seat: i, difficulty: m.difficulty } : null)).filter(Boolean);
       const seats = this.controlledSeats(conn);
       conn.send(JSON.stringify({
         type: "game",
         isHost,
         controlledSeats: seats,
-        views: seats.map((s) => ({ seat: s, view: g.viewFor(this.gameState, s) })),
+        views: seats.map((s) => ({ seat: s, view: view(s) })),
         // seats that are bots + their difficulty, so the HOST can drive them
-        bots: this.members.map((m, i) => (m.bot ? { seat: i, difficulty: m.difficulty } : null)).filter(Boolean),
-        view: g.viewFor(this.gameState, seat),
+        bots: botList,
+        view: view(seat),
       }));
     } else {
       conn.send(JSON.stringify({
@@ -277,6 +341,9 @@ export class Room extends Server<Env> {
   }
 
   async onMessage(conn: Connection<ConnState>, raw: string) {
+    // Drop floods before doing any parsing/work (S3). Auto-response ping/pong
+    // frames never reach here, so this only bounds real client messages.
+    if (!this.allowMessage(conn)) return;
     const msg = parseClientMessage(raw as string);
     if (!msg) return;
 
@@ -403,7 +470,10 @@ export class Room extends Server<Env> {
       }
       if (msg.botSeat != null && isHost) {
         const bi = msg.botSeat | 0;
-        if (this.members[bi] && this.members[bi].bot) actSeat = bi;
+        // The host may only drive a BOT seat, and only when it is actually that
+        // bot's turn to act (S1). This stops a malicious/modified host from
+        // firing arbitrary out-of-turn moves on behalf of bot seats.
+        if (this.members[bi] && this.members[bi].bot && this.isSeatActable(bi)) actSeat = bi;
         else return;
       }
       if (actSeat < 0) return;
@@ -442,6 +512,7 @@ export class Room extends Server<Env> {
   }
 
   async onClose(conn: Connection<ConnState>) {
+    this.rateBuckets.delete(conn.id);
     const closingPids = this.controlledPids(conn);
     if (!closingPids.length) return;
     for (const pid of closingPids) {

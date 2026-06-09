@@ -103,8 +103,15 @@ export interface GameModule {
   applyAction(state: any, seat: number, msg: any): void;
   viewFor(state: any, seat: number): GameView;
   isOver(state: any): boolean;
-  // Optional server-driven advance. Return ms until next tick, or null for none.
+  // Optional server-driven advance. Return ms until the next tick, or null for none.
+  // The hub schedules an alarm after the returned delay and then calls completeTick().
   tick?(state: any): number | null;
+  // Optional: run the deferred step a previous tick() scheduled (mutates state).
+  // Lives with the game so the hub stays game-agnostic (no per-game registry).
+  completeTick?(state: any): void;
+  // Optional: compact, game-agnostic summary for replay/debug snapshots.
+  // Defaults to viewFor(state, -1).state when omitted.
+  summarize?(state: any): Record<string, unknown>;
   // Optional: starting score for a late joiner given current state.
   joinScore?(state: any): number;
   // Optional: add a player between games/rounds.

@@ -2,7 +2,7 @@
 // To add a game: implement a GameModule, import it here, add it to GAMES.
 // Existing games are untouched, so a new game can't break them.
 import type { GameModule, GameFeatures } from "./types";
-import { Skyjo, skyjoCompleteTurnEnd } from "./skyjo/server";
+import { Skyjo } from "./skyjo/server";
 import { Flip7 } from "./flip7/server";
 import { Qwixx } from "./qwixx/server";
 
@@ -31,9 +31,3 @@ export function getGameFeatures(id: string): GameFeatures | undefined {
 export function getGame(id: string): GameModule | null {
   return GAMES[id] ?? null;
 }
-
-// Per-game "deferred tick" runners. The hub stays game-agnostic; each game that
-// uses tick() registers how to complete its deferred step here.
-export const TICK_RUNNERS: Record<string, (state: any) => void> = {
-  skyjo: skyjoCompleteTurnEnd,
-};

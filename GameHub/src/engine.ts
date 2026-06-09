@@ -50,11 +50,36 @@ export class GameEngine {
     }));
   }
 
+  // The set of serializable state fields. Keeping it explicit lets us copy state
+  // in/out without a JSON round-trip (JSON.parse(JSON.stringify(...))) on the hot path.
+  static readonly STATE_KEYS = [
+    "schemaVersion", "rngState", "players", "deck", "discard", "phase", "round",
+    "currentPlayer", "roundEnder", "finalTurnsLeft", "drawnCard", "turnAction",
+    "tiebreakerPlayers", "lastAction", "pendingTransition",
+  ] as const;
+
   // Rehydrate from a stored plain object.
   static fromJSON(obj: any): GameEngine {
     const g = new GameEngine([]);
     Object.assign(g, obj);
     return g;
+  }
+
+  // Return the plain serializable state. All engine fields are already plain
+  // objects/arrays/primitives, so no deep clone is required — we simply expose
+  // the live references. Callers that persist this must not mutate it afterwards.
+  toState(): any {
+    const out: any = {};
+    for (const k of GameEngine.STATE_KEYS) out[k] = (this as any)[k];
+    return out;
+  }
+
+  // Write the engine's current state back onto a caller-owned plain object,
+  // in place, without a JSON round-trip. Used after applyAction so the stored
+  // game state object keeps its identity while reflecting the new state.
+  writeInto(target: any): any {
+    for (const k of GameEngine.STATE_KEYS) target[k] = (this as any)[k];
+    return target;
   }
 
   private deal() {

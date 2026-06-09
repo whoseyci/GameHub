@@ -354,6 +354,7 @@ export const Flip7: GameModule = {
   },
 
   isOver(state: State) { return state.phase === "GAME_OVER"; },
+  summarize(state: State) { return { round: state.round, current: state.current, pendingAction: state.pendingAction }; },
   joinScore(state: State) { return Math.round(state.players.reduce((a, p) => a + p.banked, 0) / Math.max(1, state.players.length)); },
   addPlayer(state: State, name, startScore) {
     const p = newPlayer(name, Math.round(startScore) || 0); p.status = "busted"; state.players.push(p);

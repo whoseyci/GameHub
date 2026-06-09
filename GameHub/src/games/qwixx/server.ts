@@ -294,5 +294,6 @@ export const Qwixx: GameModule = {
     };
   },
 
-  isOver(state: any) { return state.phase === "GAME_OVER"; }
+  isOver(state: any) { return state.phase === "GAME_OVER"; },
+  summarize(state: QwixxState) { return { round: state.round, activeSeat: state.activeSeat, locked: state.locked }; },
 };

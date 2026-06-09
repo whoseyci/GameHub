@@ -22,6 +22,8 @@ export function appendReplay(log: ReplayEntry[] | undefined, entry: Omit<ReplayE
   return out.length > MAX_REPLAY_ENTRIES ? out.slice(out.length - MAX_REPLAY_ENTRIES) : out;
 }
 
+import { getGame } from "./games/registry";
+
 export function summarizeGameState(gameId: string | null, gameState: any): Record<string, unknown> | null {
   if (!gameId || !gameState) return null;
   const players = Array.isArray(gameState.players) ? gameState.players : [];
@@ -39,8 +41,14 @@ export function summarizeGameState(gameId: string | null, gameState: any): Recor
       penalties: p?.penalties,
     })),
   };
-  if (gameId === "skyjo") Object.assign(base, { round: gameState.round, currentPlayer: gameState.currentPlayer, turnAction: gameState.turnAction });
-  if (gameId === "flip7") Object.assign(base, { round: gameState.round, current: gameState.current, pendingAction: gameState.pendingAction });
-  if (gameId === "qwixx") Object.assign(base, { round: gameState.round, activeSeat: gameState.activeSeat, locked: gameState.locked });
+  // Game-specific extras come from the module itself (no per-game branches here),
+  // keeping replay/debug game-agnostic. Falls back to the standardized view state.
+  const g = getGame(gameId);
+  let extra: Record<string, unknown> | undefined;
+  try {
+    if (g?.summarize) extra = g.summarize(gameState);
+    else if (g) extra = (g.viewFor(gameState, -1).state as unknown as Record<string, unknown>) ?? undefined;
+  } catch { /* never let a debug snapshot throw */ }
+  if (extra) Object.assign(base, extra);
   return base;
 }

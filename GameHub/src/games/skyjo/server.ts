@@ -10,11 +10,12 @@ import type {
 } from "../types";
 import { GameEngine } from "../../engine";
 
+// Rehydrate the engine from plain stored state. This is cheap (an Object.assign);
+// the previous hot-path cost came from JSON.parse(JSON.stringify(...)) on write
+// and from re-rehydrating per viewer. We now load once per call and write state
+// back in place via engine.writeInto(), with no JSON round-trip.
 function load(state: any): GameEngine {
   return GameEngine.fromJSON(state);
-}
-function dump(g: GameEngine): any {
-  return JSON.parse(JSON.stringify(g));
 }
 
 /** Map internal Skyjo phase to the canonical GameLifecyclePhase. */
@@ -88,7 +89,7 @@ export const Skyjo: GameModule = {
   create(names) {
     const g = new GameEngine(names);
     g.start();
-    return dump(g);
+    return g.toState();
   },
 
   applyAction(state, seat, msg) {
@@ -120,22 +121,36 @@ export const Skyjo: GameModule = {
         else if (g.phase === "ROUND_END") g.nextRound();
         break;
     }
-    // Copy mutated fields back onto the plain state object in place.
-    Object.assign(state, dump(g));
+    // Write mutated fields back onto the plain state object in place (no JSON clone).
+    g.writeInto(state);
   },
 
   // Server-driven advance: Skyjo uses a short "turn_end_delay" so animations land,
-  // then auto-completes. The hub calls tick() when this returns a delay.
+  // then auto-completes. The hub calls tick() when this returns a delay, then
+  // completeTick() after the delay elapses.
   tick(state) {
-    if (state.turnAction === "turn_end_delay") return 1200; // ms until completeTurnEnd
+    if (state.turnAction === "turn_end_delay") return 1200; // ms until completeTick
     return null;
   },
 
-  // Called by the hub after the tick delay elapses.
-  // (Exposed as a normal action so the hub stays game-agnostic.)
-  // We piggyback on applyAction via a synthetic "complete_turn_end".
+  // Run the deferred turn-end the previous tick() scheduled.
+  completeTick(state) {
+    const g = load(state);
+    g.completeTurnEnd();
+    g.writeInto(state);
+  },
+
   isOver(state) {
     return state.phase === "GAME_OVER";
+  },
+
+  // Compact, game-agnostic summary for replay/debug snapshots.
+  summarize(state) {
+    return {
+      round: state.round,
+      currentPlayer: state.currentPlayer,
+      turnAction: state.turnAction,
+    };
   },
 
   joinScore(state) {
@@ -145,7 +160,7 @@ export const Skyjo: GameModule = {
   addPlayer(state, name, startScore) {
     const g = load(state);
     g.addPlayer(name, startScore);
-    Object.assign(state, dump(g));
+    g.writeInto(state);
   },
 
   viewFor(state, seat): GameView {
@@ -181,10 +196,8 @@ export const Skyjo: GameModule = {
   },
 };
 
-// The hub calls this generic helper to run the deferred turn-end. Kept here so
-// the timing logic lives with the game, not the hub.
+// Backward-compatible alias for the deferred turn-end runner. New code should use
+// the GameModule.completeTick() contract method instead of this named export.
 export function skyjoCompleteTurnEnd(state: any) {
-  const g = load(state);
-  g.completeTurnEnd();
-  Object.assign(state, dump(g));
+  Skyjo.completeTick!(state);
 }
