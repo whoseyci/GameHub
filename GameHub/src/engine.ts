@@ -193,7 +193,13 @@ export class GameEngine {
         idxs.forEach((i) => (p.board[i].cleared = true));
         for (let i = 0; i < 3; i++) this.discard.push(cards[0].value);
         cleared = true;
-        this.lastAction = { type: "triplet", player: pi, value: cards[0].value, indices: idxs, t: Date.now() };
+        // Chain triplet onto swap's lastAction instead of overwriting it,
+        // so both the swap animation and triplet VFX play sequentially.
+        if (this.lastAction && this.lastAction.type === "swap") {
+          this.lastAction.triplet = { value: cards[0].value, indices: idxs };
+        } else {
+          this.lastAction = { type: "triplet", player: pi, value: cards[0].value, indices: idxs, t: Date.now() };
+        }
       }
     }
     return cleared;

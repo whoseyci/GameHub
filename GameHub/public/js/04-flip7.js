@@ -238,7 +238,9 @@
       hideTarget:true,
       onReveal:()=>SFX.flip(),
     });
-    Kit.CardRegistry.remove(id);
+    // DON'T remove the registry card here — the caller (dealTravel) will
+    // clean it up AFTER the board is rebuilt so there's no visible gap.
+    return id;
   }
 
 
@@ -258,9 +260,10 @@
       } else toRowEl.appendChild(ghost);
       if(before){ syncF7Cards(); animateF7Layout(before); }
       SFX.flip();
-      await flyF7Card(deck,ghost,card,{startFaceDown:true,revealMidway:true,spin:true,duration:620});
-      ghost.remove();
-      res();
+      const flyId=await flyF7Card(deck,ghost,card,{startFaceDown:true,revealMidway:true,spin:true,duration:620});
+      // Don't remove ghost or flying card yet — caller will clean up after
+      // the board rebuild (applyShadowEvent + draw) so there's no visible gap.
+      res({flyId,ghost});
     });
   }
 
@@ -391,10 +394,15 @@
         draw(shadow);
         const row=rowOf(e.actor); if(e.flip3)await sleep(SPEED.flip3Gap*0.2); if(!tokenAlive(token)) return;
         const before=captureF7Layout();
-        await dealTravel(row,e.card,e.seq,before); if(!tokenAlive(token)) return;
+        const travelResult=await dealTravel(row,e.card,e.seq,before); if(!tokenAlive(token)) return;
         applyShadowEvent(shadow,e);
         draw(shadow);
-        await sleep(SPEED.beat*0.18); break;
+        // NOW safe to clean up — the board rebuild has created permanent
+        // registry cards, so removing the flying card causes no visible gap.
+        if(travelResult?.flyId) Kit.CardRegistry.remove(travelResult.flyId);
+        if(travelResult?.ghost&&travelResult.ghost.parentNode) travelResult.ghost.remove();
+        await sleep(SPEED.beat*0.18);
+        break;
       }
       case 'card.transfer':{
         if(mode==='local')eventFocus=e.actor;

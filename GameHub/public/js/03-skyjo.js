@@ -80,12 +80,27 @@
 
     // held window
     const wrap=$('heldCardWrapper'),held=$('uiHeldCard');
+    // skyjo:held lifecycle: created during draw animation, kept alive through
+    // swap/discard animation, removed only after animation completes.
+    // We must NOT remove it here — drawPiles runs BEFORE runAnim, so removing
+    // would break the swap and discard_drawn fly animations.
+    // Instead, we keep the wrapper visible while the registry card exists
+    // (animation still pending) and hide it only after the card is cleaned up.
     if(myTurn&&(ta==='deck'||ta==='discard'||ta==='must_reveal')){
       wrap.classList.remove('hidden');
       if(ta==='must_reveal'){$('heldTextLabel').textContent='Discarded!';$('heldSubLabel').textContent='Now reveal a face-down card.';held.style.display='flex';held.textContent=s.lastAction&&s.lastAction.type==='discard_drawn'?s.lastAction.value:'';held.style.color=s.lastAction&&s.lastAction.type==='discard_drawn'?C(s.lastAction.value):'';held.style.borderColor='#fff';held.style.visibility='hidden';}
       else if(s.myDrawnCard!=null){held.style.visibility='';held.style.display='flex';held.textContent=s.myDrawnCard;held.style.color=C(s.myDrawnCard);held.style.borderColor='#fff';$('heldTextLabel').textContent=ta==='deck'?'Drew from Deck:':'Took from Discard:';$('heldSubLabel').textContent=ta==='deck'?'Tap a card to swap, or Discard to drop it.':'Tap a card to swap.';}
       else{held.style.visibility='';held.style.display='flex';held.textContent='?';held.style.color='';}
-    } else {held.style.visibility='';wrap.classList.add('hidden');}
+    } else {
+      held.style.visibility='';
+      // Only hide the wrapper when no registry card is alive — it means the
+      // animation is complete (or never started).  Keeping the wrapper visible
+      // while skyjo:held exists ensures the registry anchor (uiHeldCard) keeps
+      // a valid layout rect for the upcoming swap/discard fly animation.
+      if(!(typeof Kit!=='undefined'&&Kit.CardRegistry&&Kit.CardRegistry.has('skyjo:held'))){
+        wrap.classList.add('hidden');
+      }
+    }
 
     // status bar
     const sb=$('statusBar');sb.style.color='var(--text)';
@@ -170,12 +185,28 @@
     const a=s.lastAction;if(!a)return;
     if(a.type==='draw_deck'){ // everyone: card flips up on the deck (done in drawPiles via publicDrawn); active player also pulls into hand
       SFX.draw();
-      if(a.player===viewer&&s.myDrawnCard!=null){animating=true;await Kit.CardRegistry.move('skyjo:held',{from:$('uiDeck'),to:$('uiHeldCard'),value:s.myDrawnCard,color:C(s.myDrawnCard),startFaceDown:true,revealMidway:true,duration:520,land:false,hideTarget:true});animating=false;flushView();}
+      if(a.player===viewer&&s.myDrawnCard!=null){animating=true;await Kit.CardRegistry.move('skyjo:held',{from:$('uiDeck'),to:$('uiHeldCard'),value:s.myDrawnCard,color:C(s.myDrawnCard),startFaceDown:true,revealMidway:true,duration:520,land:false,hideTarget:true});
+        // Clear the hidden state so sync() won't re-hide the held card anchor.
+        // The registry overlay stays positioned at the held slot so the
+        // upcoming swap/discard animation knows where to fly from.
+        Kit.CardRegistry.place('skyjo:held',$('uiHeldCard'));
+        animating=false;flushView();}
       return;
     }
-    if(a.type==='take_discard'){SFX.draw();if(a.player===viewer){animating=true;await Kit.CardRegistry.move('skyjo:held',{from:$('uiDiscard'),to:$('uiHeldCard'),value:a.value,color:C(a.value),startFaceDown:false,revealMidway:false,duration:460,land:false,hideTarget:true});animating=false;flushView();}return;}
-    if(a.type==='swap'){animating=true;SFX.swap();const target=cardAt(a.player,a.index);if(Kit.CardRegistry.has('skyjo:held')){await Kit.CardRegistry.move('skyjo:held',{to:target,value:a.newVal,color:C(a.newVal),duration:360,land:false,hideTarget:true});Kit.CardRegistry.remove('skyjo:held');}await Kit.Card.move('skyjo:swap:'+a.t,{from:target,to:$('uiDiscard'),value:a.oldVal,color:C(a.oldVal),startFaceDown:!a.wasRevealed,revealMidway:!a.wasRevealed,spin:a.wasRevealed,duration:520,land:false,hideTarget:true});if(a.diff!=null&&a.diff!==0){const sg=a.diff>0?'+':'';Kit.floatText(boardEl(a.player),sg+a.diff,a.diff>0?'#10b981':'#ef4444');(a.diff>0?SFX.good:SFX.bad)();}animating=false;flushView();return;}
-    if(a.type==='discard_drawn'){animating=true;SFX.discard();await Kit.CardRegistry.move('skyjo:held',{to:$('uiDiscard'),value:a.value,color:C(a.value),spin:true,duration:520,land:false,hideTarget:true});Kit.CardRegistry.remove('skyjo:held');animating=false;flushView();return;}
+    if(a.type==='take_discard'){SFX.draw();if(a.player===viewer){animating=true;await Kit.CardRegistry.move('skyjo:held',{from:$('uiDiscard'),to:$('uiHeldCard'),value:a.value,color:C(a.value),startFaceDown:false,revealMidway:false,duration:460,land:false,hideTarget:true});
+        Kit.CardRegistry.place('skyjo:held',$('uiHeldCard'));
+        animating=false;flushView();}return;}
+    if(a.type==='swap'){animating=true;SFX.swap();const target=cardAt(a.player,a.index);if(Kit.CardRegistry.has('skyjo:held')){
+        // Hide the DOM held card so only the registry overlay animates
+        $('uiHeldCard').style.visibility='hidden';
+        await Kit.CardRegistry.move('skyjo:held',{to:target,value:a.newVal,color:C(a.newVal),duration:360,land:false,hideTarget:true});Kit.CardRegistry.remove('skyjo:held');}await Kit.Card.move('skyjo:swap:'+a.t,{from:target,to:$('uiDiscard'),value:a.oldVal,color:C(a.oldVal),startFaceDown:!a.wasRevealed,revealMidway:!a.wasRevealed,spin:a.wasRevealed,duration:520,land:false,hideTarget:true});if(a.diff!=null&&a.diff!==0){const sg=a.diff>0?'+':'';Kit.floatText(boardEl(a.player),sg+a.diff,a.diff>0?'#10b981':'#ef4444');(a.diff>0?SFX.good:SFX.bad)();}
+      // Handle chained triplet (swap triggered a column clear)
+      if(a.triplet){await Kit.CardEffects.triplet({cards:a.triplet.indices.map(i=>cardAt(a.player,i)).filter(Boolean),discardEl:$('uiDiscard'),value:a.triplet.value,color:C(a.triplet.value),boardEl:boardEl(a.player)});await sleep(250);}
+      animating=false;flushView();return;}
+    if(a.type==='discard_drawn'){animating=true;SFX.discard();
+      // Hide DOM held card so only the registry overlay animates
+      $('uiHeldCard').style.visibility='hidden';
+      await Kit.CardRegistry.move('skyjo:held',{to:$('uiDiscard'),value:a.value,color:C(a.value),spin:true,duration:520,land:false,hideTarget:true});Kit.CardRegistry.remove('skyjo:held');animating=false;flushView();return;}
     if(a.type==='reveal'||a.type==='reveal_after_discard'){const idx=a.card!=null?a.card:a.index,id=skyjoCardId(s,a.player,idx);SFX.reveal();if(!(await revealSkyjoRegistryCard(id,a.value))){const el=cardAt(a.player,idx);await Kit.Card.reveal(el,a.value,{color:C(a.value)});}return;}
     if(a.type==='triplet'){animating=true;await Kit.CardEffects.triplet({cards:a.indices.map(i=>cardAt(a.player,i)).filter(Boolean),discardEl:$('uiDiscard'),value:a.value,color:C(a.value),boardEl:boardEl(a.player)});await sleep(250);animating=false;flushView();return;}
   }
@@ -228,7 +259,12 @@ class SkyjoEngine{
   swap(pi,bi){if(this.currentPlayer!==pi||this.turnAction===null||this.turnAction==='must_reveal')return;const p=this.players[pi];const o=p.board[bi];if(o.cleared)return;const wasR=o.revealed,ov=o.value;this.discard.push(o.value);p.board[bi]={value:this.drawnCard,revealed:true,cleared:false};const diff=wasR?(ov-this.drawnCard):null;this.lastAction={type:'swap',player:pi,index:bi,diff,oldVal:ov,wasRevealed:wasR,t:Date.now()};this._end();}
   discardDrawnCard(pi){if(this.currentPlayer!==pi||this.turnAction!=='deck')return;const v=this.drawnCard;this.discard.push(v);this.drawnCard=null;this.turnAction='must_reveal';this.lastAction={type:'discard_drawn',player:pi,value:v,t:Date.now()};}
   revealAfterDiscard(pi,bi){if(this.currentPlayer!==pi||this.turnAction!=='must_reveal')return;const c=this.players[pi].board[bi];if(c.revealed||c.cleared)return;c.revealed=true;this.lastAction={type:'reveal_after_discard',player:pi,index:bi,value:c.value,t:Date.now()};this._end();}
-  checkTriplets(pi){const p=this.players[pi];for(let col=0;col<4;col++){const ix=[col,col+4,col+8],cs=ix.map(i=>p.board[i]);if(cs.every(c=>c.revealed&&!c.cleared)&&cs[0].value===cs[1].value&&cs[1].value===cs[2].value){ix.forEach(i=>p.board[i].cleared=true);for(let i=0;i<3;i++)this.discard.push(cs[0].value);this.lastAction={type:'triplet',player:pi,value:cs[0].value,indices:ix,t:Date.now()};}}}
+  checkTriplets(pi){const p=this.players[pi];for(let col=0;col<4;col++){const ix=[col,col+4,col+8],cs=ix.map(i=>p.board[i]);if(cs.every(c=>c.revealed&&!c.cleared)&&cs[0].value===cs[1].value&&cs[1].value===cs[2].value){ix.forEach(i=>p.board[i].cleared=true);for(let i=0;i<3;i++)this.discard.push(cs[0].value);
+        // Chain triplet onto swap's lastAction instead of overwriting it,
+        // so both the swap animation and triplet VFX play sequentially.
+        if(this.lastAction&&this.lastAction.type==='swap'){this.lastAction.triplet={value:cs[0].value,indices:ix};}
+        else{this.lastAction={type:'triplet',player:pi,value:cs[0].value,indices:ix,t:Date.now()};}
+      }}}
   _end(){this.checkTriplets(this.currentPlayer);this.drawnCard=null;this.turnAction='turn_end_delay';}
   completeTurnEnd(){if(this.turnAction!=='turn_end_delay')return;this.turnAction=null;if(this.pendingTransition){const tied=this.pendingTransition.tied;if(tied.length===1){this.currentPlayer=tied[0];this.phase='PLAY';this.lastAction={type:'starter',player:tied[0],t:Date.now()};this.tiebreakerPlayers=[];}else{this.tiebreakerPlayers=tied;for(const i of tied)this.players[i].revealCount=1;}this.pendingTransition=null;return;}const p=this.players[this.currentPlayer];if(p.board.every(c=>c.cleared||c.revealed)&&this.phase==='PLAY'){this.phase='FINAL_TURNS';this.roundEnder=this.currentPlayer;this.finalTurnsLeft=this.players.length-1;}if(this.phase==='FINAL_TURNS'){if(this.currentPlayer!==this.roundEnder)this.finalTurnsLeft--;if(this.finalTurnsLeft<=0){this._calc();return;}}this.currentPlayer=(this.currentPlayer+1)%this.players.length;}
   _calc(){for(const p of this.players){for(const c of p.board)if(!c.cleared)c.revealed=true;this.checkTriplets(this.players.indexOf(p));p.roundScore=p.board.filter(c=>!c.cleared).reduce((a,c)=>a+c.value,0);}const e=this.players[this.roundEnder];const mo=Math.min(...this.players.filter((_,i)=>i!==this.roundEnder).map(o=>o.roundScore));if(e.roundScore>=mo&&e.roundScore>0)e.roundScore*=2;for(const p of this.players)p.totalScore+=p.roundScore;this.phase=this.players.some(p=>p.totalScore>=100)?'GAME_OVER':'ROUND_END';}
