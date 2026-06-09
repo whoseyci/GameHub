@@ -141,13 +141,63 @@ const Kit=(()=>{
     });
   }
   const Card=(()=>{
+    let chain=Promise.resolve();
     function asMoveArgs(cardIdOrOpts,maybeOpts){
       if(typeof cardIdOrOpts==='string')return {cardId:cardIdOrOpts,...(maybeOpts||{})};
       return {cardId:'card:'+Date.now()+':'+Math.random().toString(36).slice(2),...(cardIdOrOpts||{})};
     }
+    function run(step){ chain=chain.then(step,step); return chain; }
+    function nodeFromHTML(html){const t=document.createElement('template');t.innerHTML=String(html||'').trim();return t.content.firstElementChild;}
+    function materialize(o,faceDown=false){
+      let el=null;
+      if(faceDown&&o.backRender)el=o.backRender(o.card||o);
+      if(!el&&faceDown&&o.backHTML)el=nodeFromHTML(o.backHTML);
+      if(!el&&o.render)el=o.render(o.card||o);
+      if(!el&&o.el)el=o.el.cloneNode(true);
+      if(!el&&o.cloneFrom)el=o.cloneFrom.cloneNode(true);
+      if(!el&&o.html)el=nodeFromHTML(o.html);
+      if(!el){el=document.createElement('div');el.className=o.className||'card-slot revealed';el.textContent=o.value??'';if(o.color)el.style.color=o.color;}
+      if(o.className&&!el.classList.contains(o.className))el.className=o.className;
+      return el;
+    }
+    function fixedLike(el,rect,z=1000){
+      Object.assign(el.style,{position:'fixed',top:rect.top+'px',left:rect.left+'px',width:rect.width+'px',height:rect.height+'px',margin:0,zIndex:z,pointerEvents:'none',boxSizing:'border-box'});
+    }
     async function move(cardIdOrOpts,maybeOpts){
       const o=asMoveArgs(cardIdOrOpts,maybeOpts);
-      return CardMotion.move(o.cardId,o.from,o.to,{value:o.value,color:o.color,startFaceDown:!!o.startFaceDown,revealMidway:!!o.revealMidway,spin:!!o.spin,duration:o.duration??520,land:o.land!==false});
+      return run(async()=>{
+        if(!o.from||!o.to)return;
+        // Generic/simple path keeps old Skyjo behaviour unless a custom renderer is supplied.
+        const custom=!!(o.render||o.el||o.cloneFrom||o.html||o.backRender||o.backHTML||o.card||o.useClone);
+        if(!custom){return CardMotion.move(o.cardId,o.from,o.to,{value:o.value,color:o.color,startFaceDown:!!o.startFaceDown,revealMidway:!!o.revealMidway,spin:!!o.spin,duration:o.duration??520,land:o.land!==false});}
+        const a=o.from.getBoundingClientRect(),b=o.to.getBoundingClientRect(),duration=o.duration??520;
+        const el=materialize(o,!!o.startFaceDown);el.classList.add('kit-card-moving');fixedLike(el,a,o.zIndex??1000);
+        el.style.transition=`top ${duration}ms var(--spring-soft),left ${duration}ms var(--spring-soft),width ${duration}ms var(--spring-soft),height ${duration}ms var(--spring-soft),transform ${duration}ms var(--spring-soft),opacity ${duration}ms ease`;
+        document.body.appendChild(el);el.offsetHeight;
+        const midX=(a.left+b.left)/2,midY=Math.min(a.top,b.top)-(o.arc??46);
+        requestAnimationFrame(()=>{el.style.top=midY+'px';el.style.left=midX+'px';el.style.transform=(o.spin?'rotateZ(180deg) ':'')+'scale('+(o.midScale??1.12)+')';});
+        if(o.startFaceDown&&o.revealMidway)setTimeout(()=>{
+          const front=materialize({...o,startFaceDown:false},false);
+          el.className=front.className+' kit-card-moving';el.innerHTML=front.innerHTML;el.textContent=front.textContent||el.textContent;
+          for(const attr of [...front.attributes]) if(attr.name!=='style'&&attr.name!=='class')el.setAttribute(attr.name,attr.value);
+          el.style.background=front.style.background||el.style.background;el.style.color=front.style.color||el.style.color;
+          el.style.animation='popReveal .26s var(--spring)'; if(o.onReveal)o.onReveal(el);
+        },Math.floor(duration*(o.revealAt??0.42)));
+        setTimeout(()=>{el.style.top=b.top+'px';el.style.left=b.left+'px';el.style.width=b.width+'px';el.style.height=b.height+'px';el.style.transform=(o.spin?'rotateZ(360deg) ':'')+'scale(1)';},Math.floor(duration*0.5));
+        await sleep(duration+45); el.remove(); if(o.land!==false)await bounce(o.to,{duration:260}); if(o.onArrive)o.onArrive(o.to);
+      });
+    }
+    function reserveSlot(container,{before=null,render=null,card=null,className='kit-card-ghost'}={}){
+      if(!container)return null;
+      const ghost=render?render(card):document.createElement('div');
+      ghost.classList.add(className);ghost.style.visibility='hidden';
+      container.insertBefore(ghost,before||null);return ghost;
+    }
+    async function moveToSlot({cardId,from,container,before=null,render=null,card=null,...opts}={}){
+      const ghost=reserveSlot(container,{before,render,card});
+      await move(cardId||('slot:'+Date.now()),{from,to:ghost,render,card,...opts});
+      if(opts.removeGhost!==false&&ghost)ghost.remove();
+      return ghost;
     }
     async function flip(el,{value=null,color=null,faceUp=true,duration=420}={}){
       if(!el)return;
@@ -170,8 +220,10 @@ const Kit=(()=>{
     async function shake(el,{duration=500}={}){if(!el)return;el.style.animation='shakeX '+duration+'ms ease';await sleep(duration);el.style.animation='';}
     async function glow(el,{duration=350}={}){if(!el)return;const old=el.style.filter;el.style.transition='filter .3s';el.style.filter='brightness(1.4) saturate(1.35)';await sleep(duration);el.style.filter=old||'';}
     async function stack(els,{tiltDegrees=8,stagger=70}={}){for(let i=0;i<els.length;i++){tilt(els[i],(i-(els.length-1)/2)*tiltDegrees);await sleep(stagger);} }
-    async function discard(els,to,{cardId='discard',value=null,color=null,duration=560,stagger=110}={}){for(let i=0;i<els.length;i++){await move(cardId+':'+i,{from:els[i],to,value,color,spin:true,duration,land:false});await sleep(stagger);} }
-    return {move,flip,reveal,hide,bounce,tilt,untilt,shake,glow,stack,discard};
+    async function discard(els,to,{cardId='discard',value=null,color=null,duration=560,stagger=110,render=null,card=null}={}){for(let i=0;i<els.length;i++){await move(cardId+':'+i,{from:els[i],to,value,color,spin:true,duration,land:false,render,card});await sleep(stagger);} }
+    async function trigger(name,opts={}){if(CardEffects&&CardEffects[name])return CardEffects[name](opts);}
+    function idle(){return chain;}
+    return {move,moveToSlot,reserveSlot,flip,reveal,hide,bounce,tilt,untilt,shake,glow,stack,discard,trigger,idle};
   })();
   const CardEffects={
     async triplet({cards=[],discardEl=null,value=null,color=null,boardEl=null}={}){

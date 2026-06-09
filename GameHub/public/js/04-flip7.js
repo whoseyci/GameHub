@@ -170,21 +170,21 @@
   }
 
   function flyF7Card(fromEl,toEl,card,{duration=620,startFaceDown=false,revealMidway=false,spin=true}={}){
-    return new Promise(res=>{
-      const a=rectOf(fromEl),b=rectOf(toEl); if(!a||!b){res();return;}
-      const c=cardEl(card?.kind||'num',card?.v??'?');
-      c.classList.add('f7-flying-card');
-      Object.assign(c.style,{position:'fixed',top:a.top+'px',left:a.left+'px',width:(a.width||46)+'px',height:(a.height||66)+'px',margin:0,zIndex:1000,pointerEvents:'none',transition:`top ${duration}ms var(--spring-soft),left ${duration}ms var(--spring-soft),width ${duration}ms var(--spring-soft),height ${duration}ms var(--spring-soft),transform ${duration}ms var(--spring-soft)`});
-      const final={className:c.className,html:c.innerHTML,text:c.textContent,bg:c.style.background,color:c.style.color};
-      if(startFaceDown){c.className='f7-card f7-fly-back';c.innerHTML='<span>✦</span>';c.textContent='✦';c.style.background='var(--card-back)';c.style.color='#c7d2fe';}
-      document.body.appendChild(c);c.offsetHeight;
-      const midX=(a.left+b.left)/2,midY=Math.min(a.top,b.top)-50;
-      requestAnimationFrame(()=>{c.style.top=midY+'px';c.style.left=midX+'px';c.style.transform=(spin?'rotateZ(180deg) ':'')+'scale(1.14)';});
-      if(startFaceDown&&revealMidway)setTimeout(()=>{c.className=final.className;c.innerHTML=final.html;c.textContent=final.text||c.textContent;c.style.background=final.bg;c.style.color=final.color;c.style.animation='popReveal .26s var(--spring)';SFX.flip();},Math.floor(duration*.42));
-      setTimeout(()=>{c.style.top=b.top+'px';c.style.left=b.left+'px';c.style.width=b.width+'px';c.style.height=b.height+'px';c.style.transform=(spin?'rotateZ(360deg) ':'')+'scale(1)';},Math.floor(duration*.5));
-      setTimeout(()=>{c.remove();res();},duration+45);
+    return Kit.Card.move('flip7:card:'+Date.now()+':'+Math.random().toString(36).slice(2),{
+      from:fromEl,
+      to:toEl,
+      card,
+      render:(c)=>{const el=cardEl(c?.kind||'num',c?.v??'?');el.classList.add('f7-flying-card');return el;},
+      backHTML:'<div class="f7-card f7-fly-back"><span>✦</span></div>',
+      startFaceDown,
+      revealMidway,
+      spin,
+      duration,
+      land:false,
+      onReveal:()=>SFX.flip(),
     });
   }
+
 
   // deal a face-down card from the deck onto a player's row, then it stays hidden
   // until the caller reveals (we just animate the travel; the rebuilt board shows the real card)

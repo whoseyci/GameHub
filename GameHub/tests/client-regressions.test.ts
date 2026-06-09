@@ -29,10 +29,13 @@ describe("shared game shell", () => {
     expect(core).toContain("const Card=(()=>");
     expect(core).toContain("const CardEffects");
     expect(core).toContain("async function move");
+    expect(core).toContain("async function moveToSlot");
+    expect(core).toContain("function reserveSlot");
     expect(core).toContain("async function flip");
     expect(skyjo).toContain("Kit.Card.move");
     expect(skyjo).toContain("Kit.Card.reveal");
     expect(skyjo).toContain("Kit.CardEffects.triplet");
+    expect(flip7).toContain("Kit.Card.move");
   });
 
   it("migrates built-in games to GameShell.renderTable", () => {
