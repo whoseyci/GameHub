@@ -35,6 +35,7 @@
   function boardOf(i){return document.querySelector(`[data-f7-seat="${i}"]`);}
   function rowOf(i){const b=boardOf(i);return b?b.querySelector('.f7-row'):null;}
   function rectOf(el){return el?el.getBoundingClientRect():null;}
+  function cloneCard(card){return card?{kind:card.kind,v:card.v}:card;}
 
   // ---- static board render from state ----
   function draw(view){
@@ -170,6 +171,24 @@
         requestAnimationFrame(tick);})();
     });
   }
+
+  function flyF7Card(fromEl,toEl,card,{duration=620,startFaceDown=false,revealMidway=false,spin=true}={}){
+    return new Promise(res=>{
+      const a=rectOf(fromEl),b=rectOf(toEl); if(!a||!b){res();return;}
+      const c=cardEl(card?.kind||'num',card?.v??'?');
+      c.classList.add('f7-flying-card');
+      Object.assign(c.style,{position:'fixed',top:a.top+'px',left:a.left+'px',width:(a.width||46)+'px',height:(a.height||66)+'px',margin:0,zIndex:1000,pointerEvents:'none',transition:`top ${duration}ms var(--spring-soft),left ${duration}ms var(--spring-soft),width ${duration}ms var(--spring-soft),height ${duration}ms var(--spring-soft),transform ${duration}ms var(--spring-soft)`});
+      const final={className:c.className,html:c.innerHTML,text:c.textContent,bg:c.style.background,color:c.style.color};
+      if(startFaceDown){c.className='f7-card f7-fly-back';c.innerHTML='<span>✦</span>';c.textContent='✦';c.style.background='var(--card-back)';c.style.color='#c7d2fe';}
+      document.body.appendChild(c);c.offsetHeight;
+      const midX=(a.left+b.left)/2,midY=Math.min(a.top,b.top)-50;
+      requestAnimationFrame(()=>{c.style.top=midY+'px';c.style.left=midX+'px';c.style.transform=(spin?'rotateZ(180deg) ':'')+'scale(1.14)';});
+      if(startFaceDown&&revealMidway)setTimeout(()=>{c.className=final.className;c.innerHTML=final.html;c.textContent=final.text||c.textContent;c.style.background=final.bg;c.style.color=final.color;c.style.animation='popReveal .26s var(--spring)';SFX.flip();},Math.floor(duration*.42));
+      setTimeout(()=>{c.style.top=b.top+'px';c.style.left=b.left+'px';c.style.width=b.width+'px';c.style.height=b.height+'px';c.style.transform=(spin?'rotateZ(360deg) ':'')+'scale(1)';},Math.floor(duration*.5));
+      setTimeout(()=>{c.remove();res();},duration+45);
+    });
+  }
+
   // deal a face-down card from the deck onto a player's row, then it stays hidden
   // until the caller reveals (we just animate the travel; the rebuilt board shows the real card)
   function dealTravel(toRowEl,card,seq='x',before=null){
@@ -185,7 +204,7 @@
       } else toRowEl.appendChild(ghost);
       if(before) animateF7Layout(before);
       SFX.flip();
-      await Kit.CardMotion.move('flip7:deal:'+seq,deck,ghost,{value:card?.v??'?',color:card?.kind==='num'?'#111827':card?.kind==='mod'?'#7c3aed':'#b45309',startFaceDown:true,revealMidway:true,spin:true,duration:620,land:false});
+      await flyF7Card(deck,ghost,card,{startFaceDown:true,revealMidway:true,spin:true,duration:620});
       ghost.remove();
       res();
     });
@@ -241,7 +260,7 @@
   let lastSeq=-1;
   async function playEvents(view){
     const ev=(view.flip7.events||[]).filter(e=>e.seq>lastSeq);
-    if(!ev.length){draw(view);prevView=view;curView=view;maybeSummary(view);return;}
+    if(!ev.length){draw(view);prevView=cloneView(view);curView=cloneView(view);maybeSummary(view);return;}
     animating=true;
     const shadow=cloneView(prevView&&prevView.flip7?prevView:view);
     shadow.flip7.viewerSeat=view.flip7.viewerSeat;
@@ -250,11 +269,12 @@
       lastSeq=Math.max(lastSeq,e.seq);
       await runUnifiedEvent(shadow,e,view);
     });
+    if(mode==='local'&&eventFocus!=null&&view.flip7.phase==='PLAY'&&view.flip7.current!==eventFocus){Kit.turnBanner('Next: '+(view.flip7.players[view.flip7.current]?.name||'player'),false);await sleep(700);}
     eventFocus=null;
     if(mode==='local') window._f7InspectSeat=null;
     animating=false;
     draw(view);
-    prevView=view;curView=view;
+    prevView=cloneView(view);curView=cloneView(view);
     maybeSummary(view);
     flushView();
   }
@@ -298,7 +318,7 @@
         if(mode==='local')eventFocus=e.from;
         draw(shadow);
         const fromRow=rowOf(e.from),toRow=rowOf(e.target);
-        await Kit.CardMotion.move('flip7:action:'+e.seq,fromRow,toRow,{value:e.kind,color:'#b45309',startFaceDown:false,spin:true,duration:SPEED.actionFly,land:false});
+        await flyF7Card(fromRow,toRow,{kind:'act',v:e.kind},{startFaceDown:false,spin:true,duration:SPEED.actionFly});
         applyShadowEvent(shadow,e);
         if(mode==='local')eventFocus=e.target;
         draw(shadow);
@@ -321,7 +341,7 @@
       }
       case 'second_pass':{
         draw(shadow); SFX.flip(); const fromRow=rowOf(e.from),toRow=rowOf(e.to);
-        await Kit.CardMotion.move('flip7:second:'+e.seq,fromRow,toRow,{value:'♥',color:'#b45309',startFaceDown:false,spin:true,duration:SPEED.actionFly,land:false});
+        await flyF7Card(fromRow,toRow,{kind:'act',v:'second'},{startFaceDown:false,spin:true,duration:SPEED.actionFly});
         applyShadowEvent(shadow,e); draw(shadow); if(e.auto)Kit.turnBanner('\u2665 passed',true); await sleep(SPEED.beat*0.4); break;
       }
       case 'second_used':{ applyShadowEvent(shadow,e); draw(shadow); SFX.good(); Kit.turnBanner('Second Chance!',true); await sleep(SPEED.beat); break; }
@@ -395,5 +415,5 @@ class Flip7Engine{
   next(){const s=this.s;const over=s.phase==='GAME_OVER';const ns=this._fresh(s.players.map(p=>p.name),over?s.players.map(()=>0):s.players.map(p=>p.banked));ns.seq=s.seq+1;if(!over)ns.round=s.round+1;this.s=ns;}
   viewFor(seat){const s=this.s;const over=s.phase==='GAME_OVER';let summary;if(s.phase==='ROUND_END'||s.phase==='GAME_OVER'){const mx=Math.max(...s.players.map(p=>p.banked));summary={rows:s.players.map((p,i)=>({seat:i,name:p.name,score:p.banked,delta:p.roundScore})),winners:s.players.map((p,i)=>p.banked===mx?i:-1).filter(i=>i>=0)};}
     const live=p=>{if(p.status==='busted')return 0;let b=p.nums.reduce((a,c)=>a+c,0);if(p.mods.includes('x2'))b*=2;for(const m of p.mods)if(m[0]==='+')b+=parseInt(m.slice(1));if(new Set(p.nums).size>=7)b+=15;return b;};
-    return{game:'flip7',phase:s.phase,over,yourSeat:seat,summary,flip7:{round:s.round,current:s.current,phase:s.phase,pendingAction:s.pendingAction,viewerSeat:seat,deckCount:s.deck.length,discardCount:s.discard.length,seq:s.seq,events:s.events,players:s.players.map(p=>({name:p.name,nums:p.nums,mods:p.mods,second:p.second,status:p.status,bustCard:p.bustCard,banked:p.banked,unique:new Set(p.nums).size,live:live(p)}))}};}
+    return{game:'flip7',phase:s.phase,over,yourSeat:seat,summary,flip7:{round:s.round,current:s.current,phase:s.phase,pendingAction:s.pendingAction,viewerSeat:seat,deckCount:s.deck.length,discardCount:s.discard.length,seq:s.seq,events:s.events,players:s.players.map(p=>({name:p.name,nums:[...p.nums],mods:[...p.mods],second:p.second,status:p.status,bustCard:p.bustCard,banked:p.banked,unique:new Set(p.nums).size,live:live(p)}))}};}
 }
