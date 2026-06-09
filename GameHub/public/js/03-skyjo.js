@@ -10,18 +10,28 @@
   function skyjoVisual(c){const el=document.createElement('div');if(c.cleared)el.className='board-card cleared';else if(c.revealed){el.className='board-card revealed svg-card';el.innerHTML=skyjoSvg('front',c.value,C(c.value));el.style.color=C(c.value);}else{el.className='board-card face-down svg-card';el.innerHTML=skyjoSvg('back');}return el;}
   function skyjoCardId(s,pi,ci){return `skyjo:table:r${s.round}:p${pi}:c${ci}`;}
   async function revealSkyjoRegistryCard(id,value){
-    const el=Kit.CardRegistry.get(id);
-    if(!el)return false;
+    const c=Kit.CardManager.get(id);
+    if(!c||!c.overlayEl)return false;
     const back=skyjoVisual({revealed:false,cleared:false,value:null});
-    el.className=back.className+' kit-card-registered';el.innerHTML=back.innerHTML;el.style.color='';
-    el.classList.remove('anim-flip');void el.offsetWidth;el.classList.add('anim-flip');
+    c.overlayEl.className=back.className+' kit-card-registered';c.overlayEl.innerHTML=back.innerHTML;c.overlayEl.style.color='';
+    c.overlayEl.classList.remove('anim-flip');void c.overlayEl.offsetWidth;c.overlayEl.classList.add('anim-flip');
     await sleep(210);
+    c.faceUp=true;
     const front=skyjoVisual({revealed:true,cleared:false,value});
-    el.className=front.className+' kit-card-registered anim-flip';el.innerHTML=front.innerHTML;el.style.color=C(value);
+    c.overlayEl.className=front.className+' kit-card-registered anim-flip';c.overlayEl.innerHTML=front.innerHTML;c.overlayEl.style.color=C(value);
     await sleep(210);
     return true;
   }
-  function syncSkyjoCards(s){const active=[];s.players.forEach((p,pi)=>p.board.forEach((c,ci)=>{const id=skyjoCardId(s,pi,ci),anchor=document.querySelector(`[data-card-reg="${id}"]`);if(anchor){active.push(id);Kit.CardRegistry.renderSlot(id,anchor,{render:()=>skyjoVisual(c)});}}));Kit.CardRegistry.reconcile('skyjo:table:',active);requestAnimationFrame(()=>Kit.CardRegistry.sync());}
+  function syncSkyjoCards(s){const active=[];s.players.forEach((p,pi)=>p.board.forEach((c,ci)=>{const id=skyjoCardId(s,pi,ci),anchor=document.querySelector(`[data-card-reg="${id}"]`);if(anchor){active.push(id);
+    // Use CardManager: create if new, update renderer + pin
+    const makeRenderer=()=>()=>skyjoVisual(c);
+    if(!Kit.CardManager.has(id)){
+      Kit.CardManager.create({kind:'skyjo',value:c.value},{zone:'grid',player:pi,slot:ci},{id,renderer:makeRenderer(),faceUp:c.revealed});
+    }else{
+      const card=Kit.CardManager.get(id);if(card)card.renderer=makeRenderer();
+    }
+    Kit.CardManager.pin(id,anchor,{hideAnchor:false,updateContent:true});
+  }}));Kit.CardManager.reconcile('skyjo:table:',active);requestAnimationFrame(()=>Kit.CardManager.sync());}
 
   let renderCtx=null;
   function render(view,ctx={}){
@@ -97,7 +107,7 @@
       // animation is complete (or never started).  Keeping the wrapper visible
       // while skyjo:held exists ensures the registry anchor (uiHeldCard) keeps
       // a valid layout rect for the upcoming swap/discard fly animation.
-      if(!(typeof Kit!=='undefined'&&Kit.CardRegistry&&Kit.CardRegistry.has('skyjo:held'))){
+      if(!(typeof Kit!=='undefined'&&Kit.CardManager&&Kit.CardManager.has('skyjo:held'))){
         wrap.classList.add('hidden');
       }
     }
@@ -185,28 +195,47 @@
     const a=s.lastAction;if(!a)return;
     if(a.type==='draw_deck'){ // everyone: card flips up on the deck (done in drawPiles via publicDrawn); active player also pulls into hand
       SFX.draw();
-      if(a.player===viewer&&s.myDrawnCard!=null){animating=true;await Kit.CardRegistry.move('skyjo:held',{from:$('uiDeck'),to:$('uiHeldCard'),value:s.myDrawnCard,color:C(s.myDrawnCard),startFaceDown:true,revealMidway:true,duration:520,land:false,hideTarget:true});
+      if(a.player===viewer&&s.myDrawnCard!=null){animating=true;
+        // Create a transient card for the flight
+        if(!Kit.CardManager.has('skyjo:held')){
+          Kit.CardManager.create({kind:'skyjo',value:s.myDrawnCard},{zone:'hand',player:viewer},{id:'skyjo:held',renderer:()=>skyjoVisual({revealed:true,cleared:false,value:s.myDrawnCard}),faceUp:true});
+        }
+        Kit.CardManager.pin('skyjo:held',$('uiDeck'),{hideAnchor:false,updateContent:true});
+        await Kit.CardManager.moveTo('skyjo:held',$('uiHeldCard'),{duration:520,startFaceDown:true,revealMidway:true,hideTarget:true,land:false,toLocation:{zone:'hand',player:viewer}});
         // Clear the hidden state so sync() won't re-hide the held card anchor.
-        // The registry overlay stays positioned at the held slot so the
-        // upcoming swap/discard animation knows where to fly from.
-        Kit.CardRegistry.place('skyjo:held',$('uiHeldCard'));
+        Kit.CardManager.pin('skyjo:held',$('uiHeldCard'),{hideAnchor:false,updateContent:false});
         animating=false;flushView();}
       return;
     }
-    if(a.type==='take_discard'){SFX.draw();if(a.player===viewer){animating=true;await Kit.CardRegistry.move('skyjo:held',{from:$('uiDiscard'),to:$('uiHeldCard'),value:a.value,color:C(a.value),startFaceDown:false,revealMidway:false,duration:460,land:false,hideTarget:true});
-        Kit.CardRegistry.place('skyjo:held',$('uiHeldCard'));
-        animating=false;flushView();}return;}
-    if(a.type==='swap'){animating=true;SFX.swap();const target=cardAt(a.player,a.index);if(Kit.CardRegistry.has('skyjo:held')){
-        // Hide the DOM held card so only the registry overlay animates
+    if(a.type==='take_discard'){SFX.draw();if(a.player===viewer){animating=true;
+      if(!Kit.CardManager.has('skyjo:held')){
+        Kit.CardManager.create({kind:'skyjo',value:a.value},{zone:'hand',player:viewer},{id:'skyjo:held',renderer:()=>skyjoVisual({revealed:true,cleared:false,value:a.value}),faceUp:true});
+      }
+      Kit.CardManager.pin('skyjo:held',$('uiDiscard'),{hideAnchor:false,updateContent:true});
+      await Kit.CardManager.moveTo('skyjo:held',$('uiHeldCard'),{duration:460,hideTarget:true,land:false,toLocation:{zone:'hand',player:viewer}});
+      Kit.CardManager.pin('skyjo:held',$('uiHeldCard'),{hideAnchor:false,updateContent:false});
+      animating=false;flushView();}return;}
+    if(a.type==='swap'){animating=true;SFX.swap();const target=cardAt(a.player,a.index);if(Kit.CardManager.has('skyjo:held')){
+        // Hide the DOM held card so only the overlay animates
         $('uiHeldCard').style.visibility='hidden';
-        await Kit.CardRegistry.move('skyjo:held',{to:target,value:a.newVal,color:C(a.newVal),duration:360,land:false,hideTarget:true});Kit.CardRegistry.remove('skyjo:held');}await Kit.Card.move('skyjo:swap:'+a.t,{from:target,to:$('uiDiscard'),value:a.oldVal,color:C(a.oldVal),startFaceDown:!a.wasRevealed,revealMidway:!a.wasRevealed,spin:a.wasRevealed,duration:520,land:false,hideTarget:true});if(a.diff!=null&&a.diff!==0){const sg=a.diff>0?'+':'';Kit.floatText(boardEl(a.player),sg+a.diff,a.diff>0?'#10b981':'#ef4444');(a.diff>0?SFX.good:SFX.bad)();}
+        // Update renderer for new value
+        const heldCard=Kit.CardManager.get('skyjo:held');
+        if(heldCard)heldCard.renderer=()=>skyjoVisual({revealed:true,cleared:false,value:a.newVal});
+        await Kit.CardManager.moveTo('skyjo:held',target,{duration:360,hideTarget:true,land:false,toLocation:{zone:'grid',player:a.player,slot:a.index}});
+        Kit.CardManager.destroy('skyjo:held');
+      }await Kit.Card.move('skyjo:swap:'+a.t,{from:target,to:$('uiDiscard'),value:a.oldVal,color:C(a.oldVal),startFaceDown:!a.wasRevealed,revealMidway:!a.wasRevealed,spin:a.wasRevealed,duration:520,land:false,hideTarget:true});if(a.diff!=null&&a.diff!==0){const sg=a.diff>0?'+':'';Kit.floatText(boardEl(a.player),sg+a.diff,a.diff>0?'#10b981':'#ef4444');(a.diff>0?SFX.good:SFX.bad)();}
       // Handle chained triplet (swap triggered a column clear)
       if(a.triplet){await Kit.CardEffects.triplet({cards:a.triplet.indices.map(i=>cardAt(a.player,i)).filter(Boolean),discardEl:$('uiDiscard'),value:a.triplet.value,color:C(a.triplet.value),boardEl:boardEl(a.player)});await sleep(250);}
       animating=false;flushView();return;}
     if(a.type==='discard_drawn'){animating=true;SFX.discard();
-      // Hide DOM held card so only the registry overlay animates
+      // Hide DOM held card so only the overlay animates
       $('uiHeldCard').style.visibility='hidden';
-      await Kit.CardRegistry.move('skyjo:held',{to:$('uiDiscard'),value:a.value,color:C(a.value),spin:true,duration:520,land:false,hideTarget:true});Kit.CardRegistry.remove('skyjo:held');animating=false;flushView();return;}
+      if(Kit.CardManager.has('skyjo:held')){
+        const heldCard=Kit.CardManager.get('skyjo:held');
+        if(heldCard)heldCard.renderer=()=>skyjoVisual({revealed:true,cleared:false,value:a.value});
+      }
+      await Kit.CardManager.moveTo('skyjo:held',$('uiDiscard'),{duration:520,spin:true,hideTarget:true,land:false,toLocation:{zone:'discard'}});
+      Kit.CardManager.destroy('skyjo:held');animating=false;flushView();return;}
     if(a.type==='reveal'||a.type==='reveal_after_discard'){const idx=a.card!=null?a.card:a.index,id=skyjoCardId(s,a.player,idx);SFX.reveal();if(!(await revealSkyjoRegistryCard(id,a.value))){const el=cardAt(a.player,idx);await Kit.Card.reveal(el,a.value,{color:C(a.value)});}return;}
     if(a.type==='triplet'){animating=true;await Kit.CardEffects.triplet({cards:a.indices.map(i=>cardAt(a.player,i)).filter(Boolean),discardEl:$('uiDiscard'),value:a.value,color:C(a.value),boardEl:boardEl(a.player)});await sleep(250);animating=false;flushView();return;}
   }

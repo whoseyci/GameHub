@@ -37,13 +37,20 @@
     const active=[];
     document.querySelectorAll('[data-card-reg^="flip7:table:"]').forEach(anchor=>{
       const id=anchor.dataset.cardReg,kind=anchor.dataset.kind,val=kind==='num'?Number(anchor.dataset.value):anchor.dataset.value;
-      active.push(id);Kit.CardRegistry.renderSlot(id,anchor,{render:()=>cardEl(kind,val,{busted:anchor.dataset.busted==='1',cause:anchor.dataset.cause==='1'})});
+      active.push(id);
+      // Use CardManager directly: update renderer + pin
+      if(!Kit.CardManager.has(id)){
+        Kit.CardManager.create({kind,value:val},{zone:'grid',player:Number(anchor.closest('[data-f7-seat]')?.dataset?.f7Seat)||0,slot:active.length-1},{id,renderer:(face,faceUp)=>cardEl(face.kind==='num'?'num':(face.value==='second'||face.value==='freeze'||face.value==='flip3')?'act':'mod',face.value,{busted:anchor.dataset.busted==='1',cause:anchor.dataset.cause==='1'}),faceUp:true});
+      }else{
+        const c=Kit.CardManager.get(id);if(c)c.renderer=(face,faceUp)=>cardEl(face.kind==='num'?'num':(face.value==='second'||face.value==='freeze'||face.value==='flip3')?'act':'mod',face.value,{busted:anchor.dataset.busted==='1',cause:anchor.dataset.cause==='1'});
+      }
+      Kit.CardManager.pin(id,anchor,{hideAnchor:false,updateContent:true});
     });
-    Kit.CardRegistry.reconcile('flip7:table:',active);
-    requestAnimationFrame(()=>Kit.CardRegistry.sync());
+    Kit.CardManager.reconcile('flip7:table:',active);
+    requestAnimationFrame(()=>Kit.CardManager.sync());
   }
   function captureF7Layout(){ const m=new Map(); document.querySelectorAll('.f7-focus-board [data-card-reg]').forEach(el=>m.set(el.dataset.cardReg,el.getBoundingClientRect())); return m; }
-  function animateF7Layout(before){ document.querySelectorAll('.f7-focus-board [data-card-reg]').forEach(anchor=>{ const a=before.get(anchor.dataset.cardReg); if(!a)return; const b=anchor.getBoundingClientRect(); const dx=a.left-b.left,dy=a.top-b.top; if(Math.abs(dx)+Math.abs(dy)<3)return; const card=Kit.CardRegistry.get(anchor.dataset.cardReg); if(!card)return; card.style.transition='none'; card.style.transform=`translate(${dx}px,${dy}px)`; card.offsetHeight; card.style.transition='transform .34s var(--spring-soft)'; requestAnimationFrame(()=>{card.style.transform='';}); setTimeout(()=>{card.style.transition='';card.style.transform='';},390); }); }
+  function animateF7Layout(before){ document.querySelectorAll('.f7-focus-board [data-card-reg]').forEach(anchor=>{ const a=before.get(anchor.dataset.cardReg); if(!a)return; const b=anchor.getBoundingClientRect(); const dx=a.left-b.left,dy=a.top-b.top; if(Math.abs(dx)+Math.abs(dy)<3)return; const card=Kit.CardManager.get(anchor.dataset.cardReg)?.overlayEl||Kit.CardRegistry.get(anchor.dataset.cardReg); if(!card)return; card.style.transition='none'; card.style.transform=`translate(${dx}px,${dy}px)`; card.offsetHeight; card.style.transition='transform .34s var(--spring-soft)'; requestAnimationFrame(()=>{card.style.transform='';}); setTimeout(()=>{card.style.transition='';card.style.transform='';},390); }); }
 
   function actionVfx(kind){
     const o=document.createElement('div');
@@ -68,7 +75,7 @@
     const row=rowOf(seat); if(!row)return null;
     const anchors=[...row.querySelectorAll('[data-card-reg]')];
     const a=anchors.find(x=>x.dataset.kind==='act'&&x.dataset.value===kind);
-    return a ? (Kit.CardRegistry.get(a.dataset.cardReg)||a) : row;
+    return a ? (Kit.CardManager.get(a.dataset.cardReg)?.overlayEl||Kit.CardRegistry.get(a.dataset.cardReg)||a) : row;
   }
   function makeActionTargetSlot(targetSeat,card){
     const row=rowOf(targetSeat); if(!row)return null;
@@ -223,23 +230,12 @@
   }
 
   async function flyF7Card(fromEl,toEl,card,{duration=620,startFaceDown=false,revealMidway=false,spin=true}={}){
-    const id='flip7:flying:'+Date.now()+':'+Math.random().toString(36).slice(2);
-    await Kit.CardRegistry.move(id,{
-      from:fromEl,
-      to:toEl,
-      card,
-      render:(c)=>{const el=cardEl(c?.kind||'num',c?.v??'?');el.classList.add('f7-flying-card');return el;},
-      backHTML:f7BackHTML(),
-      startFaceDown,
-      revealMidway,
-      spin,
-      duration,
-      land:false,
-      hideTarget:true,
-      onReveal:()=>SFX.flip(),
-    });
-    // DON'T remove the registry card here — the caller (dealTravel) will
-    // clean it up AFTER the board is rebuilt so there's no visible gap.
+    // Create a transient CardManager card for the flight
+    const id=Kit.CardManager.create({kind:card?.kind||'num',value:card?.v??'?'},{zone:'transit'},{renderer:(face)=>{const el=cardEl(face.kind==='act'?(face.value==='second'||face.value==='freeze'||face.value==='flip3'?'act':face.kind):face.kind==='num'?'num':face.kind==='mod'?'mod':'act',face.value);el.classList.add('f7-flying-card');return el;},faceUp:!startFaceDown});
+    // Pin at source position first
+    Kit.CardManager.pin(id,fromEl,{hideAnchor:false,updateContent:true});
+    // Animate to target — the card stays in CardManager until caller cleans up
+    await Kit.CardManager.moveTo(id,toEl,{duration,startFaceDown,revealMidway:startFaceDown&&revealMidway,spin,hideTarget:true,land:false,backHTML:f7BackHTML(),onReveal:()=>SFX.flip(),toLocation:{zone:'transit'}});
     return id;
   }
 
@@ -248,8 +244,9 @@
   // until the caller reveals (we just animate the travel; the rebuilt board shows the real card)
   function dealTravel(toRowEl,card,seq='x',before=null){
     return new Promise(async res=>{
-      const deck=$('f7Deck');if(!deck||!toRowEl){res();return;}
+      const deck=$('f7Deck');if(!deck||!toRowEl){res({flyId:null,ghost:null});return;}
       deck.classList.remove('deal');void deck.offsetWidth;deck.classList.add('deal');
+      // Insert a ghost anchor for the target position (hidden)
       const ghost=cardEl(card?.kind||'num',card?.v??'?');
       ghost.style.visibility='hidden';
       if(card?.kind==='num'){
@@ -261,8 +258,7 @@
       if(before){ syncF7Cards(); animateF7Layout(before); }
       SFX.flip();
       const flyId=await flyF7Card(deck,ghost,card,{startFaceDown:true,revealMidway:true,spin:true,duration:620});
-      // Don't remove ghost or flying card yet — caller will clean up after
-      // the board rebuild (applyShadowEvent + draw) so there's no visible gap.
+      // Return handles for caller cleanup AFTER board rebuild
       res({flyId,ghost});
     });
   }
@@ -397,13 +393,10 @@
         const travelResult=await dealTravel(row,e.card,e.seq,before); if(!tokenAlive(token)) return;
         applyShadowEvent(shadow,e);
         draw(shadow);
-        // Force an immediate sync so the permanent card overlay is at its
-        // correct position BEFORE we remove the flying card — prevents a
-        // visible gap even for a single frame.
-        Kit.CardRegistry.sync();
-        // NOW safe to clean up — the board rebuild has created permanent
-        // registry cards, so removing the flying card causes no visible gap.
-        if(travelResult?.flyId) Kit.CardRegistry.remove(travelResult.flyId);
+        // syncF7Cards (called by draw) has now pinned permanent cards at
+        // their final positions. Safe to destroy the transient flying card.
+        Kit.CardManager.sync();
+        if(travelResult?.flyId) Kit.CardManager.destroy(travelResult.flyId);
         if(travelResult?.ghost&&travelResult.ghost.parentNode) travelResult.ghost.remove();
         await sleep(SPEED.beat*0.18);
         break;

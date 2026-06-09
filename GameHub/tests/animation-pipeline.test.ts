@@ -376,14 +376,84 @@ describe("Animation Pipeline Invariants", () => {
     }
   });
 
-  it("skyjo:held cleanup — remove is called after swap and discard_drawn in source", () => {
+  it("skyjo:held cleanup — destroy is called after swap and discard_drawn in source", () => {
     const skyjoSource = readFileSync(new URL("../public/js/03-skyjo.js", import.meta.url), "utf8");
 
-    // Verify swap path calls remove('skyjo:held')
-    expect(skyjoSource).toContain("Kit.CardRegistry.remove('skyjo:held')");
-    // Verify draw paths call place() to clear hidden
-    expect(skyjoSource).toContain("Kit.CardRegistry.place('skyjo:held'");
-    // Verify wrapper visibility is conditional on registry state
-    expect(skyjoSource).toContain("Kit.CardRegistry.has('skyjo:held')");
+    // Verify swap path calls destroy('skyjo:held') via CardManager
+    expect(skyjoSource).toContain("Kit.CardManager.destroy('skyjo:held')");
+    // Verify draw paths call pin() to position card
+    expect(skyjoSource).toContain("Kit.CardManager.pin('skyjo:held'");
+    // Verify wrapper visibility is conditional on manager state
+    expect(skyjoSource).toContain("Kit.CardManager.has('skyjo:held')");
+  });
+});
+
+// ---- CardManager permanent card system tests ----
+describe("CardManager: permanent card system invariants", () => {
+  it("CardManager is exposed on Kit", () => {
+    const core = readFileSync(new URL("../public/js/00-core.js", import.meta.url), "utf8");
+    expect(core).toContain("const CardManager=");
+    expect(core).toContain("return {create,get,has,ids,inZone,destroy,pin,unpin,sync,moveTo,flip");
+    expect(core).toContain("verifyInvariants");
+    // Kit return includes CardManager
+    expect(core).toContain("CardManager,CardRegistry,CardEffects");
+  });
+
+  it("CardRegistry is a backward-compatible shim over CardManager", () => {
+    const core = readFileSync(new URL("../public/js/00-core.js", import.meta.url), "utf8");
+    expect(core).toContain("Backward-compatible CardRegistry shim");
+    // Shim delegates to CardManager
+    expect(core).toContain("CardManager.has(id)");
+    expect(core).toContain("CardManager.pin(id,anchor");
+    expect(core).toContain("CardManager.destroy(id)");
+    expect(core).toContain("CardManager.sync()");
+    expect(core).toContain("CardManager.reconcile(");
+  });
+
+  it("CardManager has single-location invariant check", () => {
+    const core = readFileSync(new URL("../public/js/00-core.js", import.meta.url), "utf8");
+    // verifyInvariants checks for collisions
+    expect(core).toContain("COLLISION:");
+    // Location zones are excluded from collision checks
+    expect(core).toContain("zone==='transit'");
+    expect(core).toContain("zone==='deck'");
+    expect(core).toContain("zone==='discard'");
+  });
+
+  it("CardManager.moveTo updates location atomically", () => {
+    const core = readFileSync(new URL("../public/js/00-core.js", import.meta.url), "utf8");
+    // moveTo uses toLocation for atomic location update
+    expect(core).toContain("toLocation");
+    expect(core).toContain("c.location={...opts.toLocation}");
+  });
+
+  it("Flip 7 card.deal uses CardManager lifecycle: create → pin → moveTo → draw pins → destroy flying", () => {
+    const flip7Source = readFileSync(new URL("../public/js/04-flip7.js", import.meta.url), "utf8");
+    // flyF7Card creates a CardManager entry
+    expect(flip7Source).toContain("Kit.CardManager.create(");
+    // flyF7Card pins at source before flying
+    expect(flip7Source).toContain("Kit.CardManager.pin(id,fromEl");
+    // flyF7Card uses moveTo for animation
+    expect(flip7Source).toContain("Kit.CardManager.moveTo(id,toEl");
+    // card.deal handler destroys flying card after draw creates permanent
+    expect(flip7Source).toContain("Kit.CardManager.destroy(travelResult.flyId");
+    // syncF7Cards pins permanent cards
+    expect(flip7Source).toContain("Kit.CardManager.pin(id,anchor,{hideAnchor:false");
+    expect(flip7Source).toContain("Kit.CardManager.reconcile('flip7:table:'");
+  });
+
+  it("Skyjo held card uses CardManager lifecycle: create → moveTo → pin → destroy", () => {
+    const skyjoSource = readFileSync(new URL("../public/js/03-skyjo.js", import.meta.url), "utf8");
+    // Create held card
+    expect(skyjoSource).toContain("Kit.CardManager.create({kind:'skyjo'");
+    // Move from deck/discard to held slot
+    expect(skyjoSource).toContain("Kit.CardManager.moveTo('skyjo:held'");
+    // Pin at held card position
+    expect(skyjoSource).toContain("Kit.CardManager.pin('skyjo:held'");
+    // Destroy after swap/discard
+    expect(skyjoSource).toContain("Kit.CardManager.destroy('skyjo:held')");
+    // Board cards pinned via syncSkyjoCards
+    expect(skyjoSource).toContain("Kit.CardManager.pin(id,anchor");
+    expect(skyjoSource).toContain("Kit.CardManager.reconcile('skyjo:table:'");
   });
 });

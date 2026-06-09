@@ -237,129 +237,226 @@ const Kit=(()=>{
     function idle(){return chain;}
     return {move,moveToSlot,reserveSlot,flip,reveal,hide,bounce,tilt,untilt,shake,glow,stack,discard,trigger,idle};
   })();
-  const CardRegistry=(()=>{
-    const items=new Map();
-    function makeNode(o={}){
-      if(o.el)return o.el;
-      if(o.render)return o.render(o.card||o);
-      if(o.html)return nodeFromHTML(o.html);
-      const el=document.createElement('div');el.className=o.className||'card-slot revealed';el.textContent=o.value??'';if(o.color)el.style.color=o.color;return el;
-    }
-    function ensure(id,o={}){
-      let it=items.get(id);
-      if(!it){
-        const el=makeNode(o);el.dataset.cardRegistryId=id;el.classList.add('kit-card-registered');
-        Object.assign(el.style,{position:'fixed',zIndex:o.zIndex||80,pointerEvents:o.pointerEvents||'none',boxSizing:'border-box'});
-        document.body.appendChild(el);it={id,el,anchor:null,hidden:null,faceUp:true};items.set(id,it);
-      }
-      return it;
-    }
-    function restore(it){if(it?.hidden){it.hidden.el.style.visibility=it.hidden.visibility||'';it.hidden=null;}}
-    function rect(anchor){return anchor?anchor.getBoundingClientRect():null;}
-    // Get the "true" screen position of an anchor, undoing any CSS animation or
-    // transform that a parent (like .screen.active with bounceIn) is applying.
-    // The overlay lives under <body> which is NOT inside the animated screen,
-    // so it must be placed at the anchor's final resting position, not the
-    // mid-animation position that getBoundingClientRect reports.
+
+  // ────────────────────────────────────────────────────────────────
+  // CardManager — Permanent Card System
+  //
+  // A card is a FIRST-CLASS OBJECT with a stable ID, exactly one
+  // location at all times. This structurally eliminates:
+  //   ❌ "Card in two places" bugs   (single-location invariant)
+  //   ❌ "Card vanishes during anim" (card always has a position)
+  //   ❌ Render-before-animate      (manager drives rendering)
+  //   ❌ Manual sync/reconcile      (manager tracks its own anchors)
+  // ────────────────────────────────────────────────────────────────
+  const CardManager=(()=>{
+    const cards=new Map();
+    let _nextId=0;
+    function nodeFromHTML(html){const t=document.createElement('template');t.innerHTML=String(html||'').trim();return t.content.firstElementChild;}
+
     function stableRect(anchor){
       if(!anchor)return null;
       const r=anchor.getBoundingClientRect();
-      // Walk up to find an element with an active CSS animation or transition.
-      // If found, compute where the anchor WOULD be at animation-end (scale 1,
-      // translate 0).  We do this by checking the running animation's current
-      // transform and inverting it.
       let el=anchor.parentElement;
       while(el&&el!==document.body){
-        const cs=getComputedStyle(el);
-        const t=cs.transform;
-        // identity or "none" means no transform to undo
+        const cs=getComputedStyle(el),t=cs.transform;
         if(t&&t!=='none'){
-          // Parse the matrix — if it's not an identity matrix, the parent is
-          // scaled/translated and getBoundingClientRect already incorporates
-          // that.  The overlay is under <body> which is NOT inside this parent,
-          // so the overlay should be at the rect the anchor would have WITHOUT
-          // the parent transform.
-          //
-          // Rather than parsing the matrix, we use a simpler approach: measure
-          // the parent's own animation offset and subtract it.
-          const pr=el.getBoundingClientRect();
-          const parentNaturalWidth=el.offsetWidth, parentNaturalHeight=el.offsetHeight;
-          // If the parent's rendered size doesn't match its layout size, it's
-          // being scaled. The scale factor is pr.width/parentNaturalWidth.
-          if(parentNaturalWidth>0&&Math.abs(pr.width/parentNaturalWidth-1)>0.01){
-            const sx=pr.width/parentNaturalWidth,sy=pr.height/parentNaturalHeight;
-            // The anchor's "true" position = center of parent + offset from
-            // parent center in natural coordinates.
-            const pcx=pr.left+pr.width/2, pcy=pr.top+pr.height/2;
-            const dx=r.left-pcx, dy=r.top-pcy;
-            const dyNat=dy/sy, dxNat=dx/sx;
-            return {top:pcy+dyNat, left:pcx+dxNat, width:r.width/sx, height:r.height/sy, right:pcx+dxNat+r.width/sx, bottom:pcy+dyNat+r.height/sy};
+          const pr=el.getBoundingClientRect(),pw=el.offsetWidth,ph=el.offsetHeight;
+          if(pw>0&&Math.abs(pr.width/pw-1)>0.01){
+            const sx=pr.width/pw,sy=pr.height/ph;
+            const pcx=pr.left+pr.width/2,pcy=pr.top+pr.height/2;
+            const dx=r.left-pcx,dy=r.top-pcy;
+            return {top:pcy+dy/sy,left:pcx+dx/sx,width:r.width/sx,height:r.height/sy,right:pcx+dx/sx+r.width/sx,bottom:pcy+dy/sy+r.height/sy};
           }
         }
         el=el.parentElement;
       }
       return r;
     }
-    function setAt(it,anchor,{hideAnchor=false}={}){
-      if(!it||!anchor)return;
-      restore(it);
+
+    function positionOverlay(overlayEl,anchor){
+      if(!overlayEl||!anchor)return;
       const r=stableRect(anchor);if(!r)return;
       const cs=getComputedStyle(anchor);
-      Object.assign(it.el.style,{
-        top:r.top+'px',left:r.left+'px',width:r.width+'px',height:r.height+'px',opacity:'1',
-        borderRadius:cs.borderRadius,
-        borderWidth:cs.borderWidth,
-        borderStyle:cs.borderStyle,
-        boxShadow:cs.boxShadow,
-      });
-      // Registry cards live under <body>, so contextual rules like
-      // `.f7-opponent-board .f7-card` no longer apply. Copy/derive sizing from
-      // the anchor slot so mini cards and focused cards scale correctly.
-      if(it.el.classList.contains('board-card')) it.el.style.fontSize=Math.max(8,Math.min(30,r.width*0.42))+'px';
-      if(it.el.classList.contains('f7-card')) it.el.style.fontSize=Math.max(7,Math.min(30,r.width*0.46))+'px';
-      it.anchor=anchor;
-      if(hideAnchor){it.hidden={el:anchor,visibility:anchor.style.visibility};anchor.style.visibility='hidden';}
+      Object.assign(overlayEl.style,{position:'fixed',top:r.top+'px',left:r.left+'px',width:r.width+'px',height:r.height+'px',opacity:'1',borderRadius:cs.borderRadius,borderWidth:cs.borderWidth,borderStyle:cs.borderStyle,boxShadow:cs.boxShadow,pointerEvents:'none',boxSizing:'border-box'});
+      if(overlayEl.classList.contains('board-card'))overlayEl.style.fontSize=Math.max(8,Math.min(30,r.width*0.42))+'px';
+      if(overlayEl.classList.contains('f7-card'))overlayEl.style.fontSize=Math.max(7,Math.min(30,r.width*0.46))+'px';
     }
-    function create(id,o={}){const it=ensure(id,o);if(o.at)setAt(it,o.at,{hideAnchor:!!o.hideAnchor});return it.el;}
-    function get(id){return items.get(id)?.el||null;}
-    function has(id){return items.has(id);}
-    async function move(id,{from=null,to=null,hideSource=false,hideTarget=true,startFaceDown=false,revealMidway=false,render=null,backHTML=null,card=null,value=null,color=null,spin=true,duration=520,land=false,onReveal=null,onArrive=null}={}){
-      const it=ensure(id,{render,card,value,color,html:backHTML&&startFaceDown?backHTML:null});
-      const start=from||it.anchor;
-      if(start)setAt(it,start,{hideAnchor:hideSource});
-      const oldTarget=to?{el:to,visibility:to.style.visibility}:null;
-      if(to&&hideTarget)to.style.visibility='hidden';
-      await Card.move(id+':motion:'+Date.now(),{from:it.el,to:to||it.el,render,card,value,color,html:startFaceDown&&backHTML?backHTML:null,backHTML,startFaceDown,revealMidway,spin,duration,land,onReveal});
-      restore(it);
-      if(oldTarget&&hideTarget){oldTarget.el.style.visibility=oldTarget.visibility||'';}
-      if(to)setAt(it,to,{hideAnchor:hideTarget});
-      if(onArrive)onArrive(it.el);
-      return it.el;
-    }
-    async function flip(id,opts={}){const el=get(id);return Card.flip(el,opts);}
-    async function reveal(id,value,opts={}){const el=get(id);return Card.reveal(el,value,opts);}
-    async function hide(id,opts={}){const el=get(id);return Card.hide(el,opts);}
-    function remove(id){const it=items.get(id);if(!it)return;restore(it);it.el.remove();items.delete(id);}
-    function release(id){remove(id);}
-    function sync(){for(const it of items.values())if(it.anchor)setAt(it,it.anchor,{hideAnchor:!!it.hidden});}
-    function clear(prefix=''){for(const id of [...items.keys()])if(!prefix||id.startsWith(prefix))remove(id);}
-    function reconcile(prefix,activeIds){const keep=new Set(activeIds||[]);for(const id of [...items.keys()])if(id.startsWith(prefix)&&!keep.has(id))remove(id);}
-    function renderSlot(id,anchor,o={}){
-      const it=ensure(id,o);
-      if(o.update!==false){
-        const fresh=makeNode(o);
-        it.el.className=fresh.className+' kit-card-registered';
-        it.el.innerHTML=fresh.innerHTML;if(!fresh.innerHTML)it.el.textContent=fresh.textContent||it.el.textContent;
-        for(const attr of [...fresh.attributes])if(attr.name!=='style'&&attr.name!=='class')it.el.setAttribute(attr.name,attr.value);
-        it.el.removeAttribute('style');Object.assign(it.el.style,{position:'fixed',zIndex:o.zIndex||80,pointerEvents:o.pointerEvents||'none',boxSizing:'border-box'});
-        if(fresh.style.cssText)it.el.style.cssText+=';'+fresh.style.cssText;
-      }
-      setAt(it,anchor,{hideAnchor:false});return it.el;
-    }
-    return {create,get,has,move,place:(id,anchor,o={})=>setAt(ensure(id,o),anchor,o),renderSlot,flip,reveal,hide,remove,release,sync,reconcile,clear};
 
+    function restore(c){if(c.hidden){c.hidden.el.style.visibility=c.hidden.visibility||'';c.hidden=null;}}
+
+    function create(face,location={},opts={}){
+      const id=opts.id||('cm:'+(++_nextId));
+      const card={id,face:{...face},faceUp:opts.faceUp??false,location:{...location},anchor:null,overlayEl:null,hidden:null,renderer:opts.renderer||null,meta:opts.meta||{}};
+      cards.set(id,card);return id;
+    }
+    function get(id){return cards.get(id)||null;}
+    function has(id){return cards.has(id);}
+    function ids(){return [...cards.keys()];}
+    function inZone(zone,filter={}){
+      const result=[];
+      for(const c of cards.values()){
+        if(c.location.zone!==zone)continue;
+        if(filter.player!=null&&c.location.player!==filter.player)continue;
+        if(filter.slot!=null&&c.location.slot!==filter.slot)continue;
+        result.push(c);
+      }
+      return result;
+    }
+    function destroy(id){
+      const c=cards.get(id);if(!c)return;
+      restore(c);if(c.overlayEl)c.overlayEl.remove();cards.delete(id);
+    }
+    function renderCard(c){
+      if(!c||!c.renderer)return null;
+      return c.renderer(c.face,c.faceUp);
+    }
+    function pin(id,anchor,opts={}){
+      const c=cards.get(id);if(!c||!anchor)return;
+      restore(c);
+      if(!c.overlayEl){
+        c.overlayEl=document.createElement('div');
+        c.overlayEl.dataset.cmId=id;
+        c.overlayEl.classList.add('kit-card-registered');
+        document.body.appendChild(c.overlayEl);
+      }
+      if(opts.updateContent!==false){
+        const rendered=renderCard(c);
+        if(rendered){
+          c.overlayEl.className=rendered.className+' kit-card-registered';
+          c.overlayEl.innerHTML=rendered.innerHTML;
+          if(!rendered.innerHTML)c.overlayEl.textContent=rendered.textContent||'';
+          for(const attr of [...rendered.attributes])if(attr.name!=='style'&&attr.name!=='class')c.overlayEl.setAttribute(attr.name,attr.value);
+        }
+      }
+      c.overlayEl.style.zIndex=opts.zIndex||80;
+      c.overlayEl.style.position='fixed';
+      c.overlayEl.style.pointerEvents='none';
+      c.overlayEl.style.boxSizing='border-box';
+      c.anchor=anchor;
+      positionOverlay(c.overlayEl,anchor);
+      if(opts.hideAnchor!==false){
+        c.hidden={el:anchor,visibility:anchor.style.visibility};
+        anchor.style.visibility='hidden';
+      }
+    }
+    function unpin(idOrCard){
+      const c=typeof idOrCard==='string'?cards.get(idOrCard):idOrCard;
+      if(!c)return;
+      restore(c);
+      if(c.overlayEl)c.overlayEl.style.opacity='0';
+      c.anchor=null;
+    }
+    function sync(){
+      for(const c of cards.values()){
+        if(c.anchor&&c.overlayEl)positionOverlay(c.overlayEl,c.anchor);
+      }
+    }
+    async function moveTo(id,toAnchor,opts={}){
+      const c=cards.get(id);if(!c)return;
+      const fromEl=c.overlayEl||c.anchor;
+      if(!fromEl||!toAnchor)return;
+      const savedTargetVis=toAnchor.style.visibility;
+      const rendered=renderCard(c);
+      let moveEl;
+      if(rendered){moveEl=rendered;moveEl.classList.add('kit-card-moving');}
+      else{moveEl=c.overlayEl?c.overlayEl.cloneNode(true):document.createElement('div');}
+      const duration=opts.duration??520;
+      const fromRect=fromEl.getBoundingClientRect();
+      const toRect=stableRect(toAnchor)||toAnchor.getBoundingClientRect();
+      Object.assign(moveEl.style,{position:'fixed',top:fromRect.top+'px',left:fromRect.left+'px',width:fromRect.width+'px',height:fromRect.height+'px',margin:'0',zIndex:opts.zIndex??1000,pointerEvents:'none',boxSizing:'border-box',transition:`top ${duration}ms var(--spring-soft),left ${duration}ms var(--spring-soft),width ${duration}ms var(--spring-soft),height ${duration}ms var(--spring-soft),transform ${duration}ms var(--spring-soft),opacity ${duration}ms ease`});
+      if(opts.startFaceDown&&opts.backHTML){
+        const back=nodeFromHTML(opts.backHTML);
+        if(back){moveEl.innerHTML=back.innerHTML;moveEl.style.background=getComputedStyle(back).background||'var(--card-back)';}
+      }
+      if(opts.startFaceDown&&opts.revealMidway){
+        setTimeout(()=>{
+          const front=renderCard(c);
+          if(front){moveEl.className=front.className+' kit-card-moving';moveEl.innerHTML=front.innerHTML;moveEl.style.background='';moveEl.style.animation='popReveal .26s var(--spring)';}
+          if(opts.onReveal)opts.onReveal();
+        },Math.floor(duration*(opts.revealAt??0.42)));
+      }
+      document.body.appendChild(moveEl);moveEl.offsetHeight;
+      const midX=(fromRect.left+toRect.left)/2,midY=Math.min(fromRect.top,toRect.top)-(opts.arc??46);
+      requestAnimationFrame(()=>{moveEl.style.top=midY+'px';moveEl.style.left=midX+'px';moveEl.style.transform=(opts.spin?'rotateZ(180deg) ':'')+'scale('+(opts.midScale??1.12)+')';});
+      setTimeout(()=>{moveEl.style.top=toRect.top+'px';moveEl.style.left=toRect.left+'px';moveEl.style.width=toRect.width+'px';moveEl.style.height=toRect.height+'px';moveEl.style.transform=(opts.spin?'rotateZ(360deg) ':'')+'scale(1)';},Math.floor(duration*0.5));
+      await sleep(duration+45);
+      moveEl.remove();
+      toAnchor.style.visibility=savedTargetVis||'';
+      if(opts.toLocation)c.location={...opts.toLocation};
+      pin(id,toAnchor,{hideAnchor:opts.hideTarget!==false});
+      if(opts.land!==false)await Card.bounce(toAnchor,{duration:260});
+      if(opts.onArrive)opts.onArrive(toAnchor);
+    }
+    async function flipCard(id,faceUp){
+      const c=cards.get(id);if(!c)return;
+      c.faceUp=faceUp;
+      if(c.overlayEl){
+        c.overlayEl.classList.remove('anim-flip');void c.overlayEl.offsetWidth;c.overlayEl.classList.add('anim-flip');
+        await sleep(210);
+        const rendered=renderCard(c);
+        if(rendered){c.overlayEl.className=rendered.className+' kit-card-registered anim-flip';c.overlayEl.innerHTML=rendered.innerHTML;if(!rendered.innerHTML)c.overlayEl.textContent=rendered.textContent;}
+        await sleep(210);
+      }
+    }
+    function clear(prefix=''){for(const id of [...cards.keys()])if(!prefix||id.startsWith(prefix))destroy(id);}
+    function reconcile(prefix,activeIds){const keep=new Set(activeIds||[]);for(const id of [...cards.keys()])if(id.startsWith(prefix)&&!keep.has(id))destroy(id);}
+    function verifyInvariants(){
+      const errors=[],locMap=new Map();
+      for(const c of cards.values()){
+        if(c.location.zone==='transit'||c.location.zone==='removed'||c.location.zone==='deck'||c.location.zone==='discard')continue;
+        const key=`${c.location.zone}:p${c.location.player??'x'}:s${c.location.slot??'x'}`;
+        if(locMap.has(key))errors.push(`COLLISION: ${c.id} and ${locMap.get(key)} at ${key}`);
+        locMap.set(key,c.id);
+      }
+      return {ok:errors.length===0,errors};
+    }
+    return {create,get,has,ids,inZone,destroy,pin,unpin,sync,moveTo,flip:flipCard,clear,reconcile,renderCard,verifyInvariants};
   })();
 
+  // ── Backward-compatible CardRegistry shim ──
+  // Delegates to CardManager so existing game code keeps working.
+  const CardRegistry=(()=>{
+    function ensure(id,opts){
+      if(!CardManager.has(id)){
+        CardManager.create({kind:opts?.card?.kind||'generic',value:opts?.value??opts?.card?.v??''},{zone:'registry'},{id,renderer:opts?.render?()=>opts.render(opts.card||{kind:'generic',value:opts?.value??''}):null,faceUp:true});
+      }
+      return CardManager.get(id);
+    }
+    return {
+      create(id,opts={}){ensure(id,opts);if(opts.at)CardManager.pin(id,opts.at,{hideAnchor:!!opts.hideAnchor,updateContent:true});return CardManager.get(id)?.overlayEl||null;},
+      get(id){const c=CardManager.get(id);return c?.overlayEl||null;},
+      has(id){return CardManager.has(id);},
+      async move(id,opts={}){
+        if(!CardManager.has(id)){
+          CardManager.create({kind:opts?.card?.kind||'generic',value:opts?.value??opts?.card?.v??''},{zone:'registry'},{id,renderer:opts?.render||null,faceUp:true});
+          if(opts.from){CardManager.pin(id,opts.from,{hideAnchor:!!opts.hideSource,updateContent:true});}
+        }
+        await CardManager.moveTo(id,opts.to||document.body,{...opts,toLocation:{zone:'registry'},hideTarget:opts.hideTarget!==false});
+        return CardManager.get(id)?.overlayEl||null;
+      },
+      place(id,anchor,opts={}){
+        if(!CardManager.has(id))ensure(id,opts);
+        CardManager.pin(id,anchor,{hideAnchor:false,updateContent:true});
+      },
+      renderSlot(id,anchor,opts={}){
+        if(!CardManager.has(id)){
+          CardManager.create({kind:'slot',value:''},{zone:'registry'},{id,renderer:opts?.render||null,faceUp:true});
+        }else if(opts?.render){
+          const c=CardManager.get(id);if(c)c.renderer=opts.render;
+        }
+        CardManager.pin(id,anchor,{hideAnchor:false,updateContent:true});
+        return CardManager.get(id)?.overlayEl||null;
+      },
+      async flip(id,opts={}){return CardManager.flip(id,opts.faceUp!==false);},
+      async reveal(id,value,opts={}){return CardManager.flip(id,true);},
+      async hide(id,opts={}){return CardManager.flip(id,false);},
+      remove(id){CardManager.destroy(id);},
+      release(id){CardManager.destroy(id);},
+      sync(){CardManager.sync();},
+      reconcile(prefix,activeIds){CardManager.reconcile(prefix,activeIds);},
+      clear(prefix=''){CardManager.clear(prefix);},
+    };
+  })();
   window.addEventListener('resize',()=>CardRegistry.sync(),{passive:true});
   window.addEventListener('scroll',()=>CardRegistry.sync(),{passive:true});
   const CardEffects={
@@ -392,7 +489,7 @@ const Kit=(()=>{
     burst(0.08);burst(0.92);setTimeout(()=>{burst(0.2);burst(0.8);},350);const end=Date.now()+3800;
     (function f(){x.clearRect(0,0,cv.width,cv.height);for(const p of ps){p.vy+=0.28;p.vx*=0.99;p.x+=p.vx;p.y+=p.vy;p.a+=p.va;x.save();x.translate(p.x,p.y);x.rotate(p.a);x.fillStyle=p.c;x.fillRect(-p.r/2,-p.r/2,p.r,p.r*0.6);x.restore();}if(Date.now()<end)requestAnimationFrame(f);else cv.remove();})();
   }
-  return {cardColor,floatText,turnBanner,flyCard,flyToHeld,dealCascade,EventRunner,CardMotion,Card,CardRegistry,CardEffects,rollDice,confetti};
+  return {cardColor,floatText,turnBanner,flyCard,flyToHeld,dealCascade,EventRunner,CardMotion,Card,CardManager,CardRegistry,CardEffects,rollDice,confetti};
 })();
 
 /* ====================== SOUND (arcade) ====================== */

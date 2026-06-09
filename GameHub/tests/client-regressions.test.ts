@@ -70,10 +70,16 @@ describe("shared game shell", () => {
     expect(skyjo).toContain("Kit.Card.move");
     expect(skyjo).toContain("Kit.Card.reveal");
     expect(skyjo).toContain("Kit.CardEffects.triplet");
-    expect(skyjo).toContain("Kit.CardRegistry.renderSlot");
-    expect(skyjo).toContain("Kit.CardRegistry.reconcile");
-    expect(flip7).toContain("Kit.CardRegistry.move");
-    expect(flip7).toContain("Kit.CardRegistry.renderSlot");
+    // Skyjo uses CardManager directly for permanent cards
+    expect(skyjo).toContain("Kit.CardManager.pin");
+    expect(skyjo).toContain("Kit.CardManager.reconcile");
+    expect(skyjo).toContain("Kit.CardManager.has");
+    // Flip 7 uses CardManager for card lifecycle
+    expect(flip7).toContain("Kit.CardManager.create");
+    expect(flip7).toContain("Kit.CardManager.pin");
+    expect(flip7).toContain("Kit.CardManager.moveTo");
+    expect(flip7).toContain("Kit.CardManager.destroy");
+    expect(flip7).toContain("Kit.CardManager.sync");
   });
 
   it("migrates built-in games to GameShell.renderTable", () => {
