@@ -182,7 +182,7 @@ const Kit=(()=>{
         requestAnimationFrame(()=>{el.style.top=midY+'px';el.style.left=midX+'px';el.style.transform=(o.spin?'rotateZ(180deg) ':'')+'scale('+(o.midScale??1.12)+')';});
         if(o.startFaceDown&&o.revealMidway)setTimeout(()=>{
           const front=materialize({...o,startFaceDown:false},false);
-          el.className=front.className+' kit-card-moving';el.innerHTML=front.innerHTML;el.textContent=front.textContent||el.textContent;
+          el.className=front.className+' kit-card-moving';el.innerHTML=front.innerHTML;if(!front.innerHTML)el.textContent=front.textContent||el.textContent;
           for(const attr of [...front.attributes]) if(attr.name!=='style'&&attr.name!=='class')el.setAttribute(attr.name,attr.value);
           el.style.background=front.style.background||el.style.background;el.style.color=front.style.color||el.style.color;
           el.style.animation='popReveal .26s var(--spring)'; if(o.onReveal)o.onReveal(el);
@@ -286,7 +286,7 @@ const Kit=(()=>{
       if(o.update!==false){
         const fresh=makeNode(o);
         it.el.className=fresh.className+' kit-card-registered';
-        it.el.innerHTML=fresh.innerHTML;it.el.textContent=fresh.textContent||it.el.textContent;
+        it.el.innerHTML=fresh.innerHTML;if(!fresh.innerHTML)it.el.textContent=fresh.textContent||it.el.textContent;
         for(const attr of [...fresh.attributes])if(attr.name!=='style'&&attr.name!=='class')it.el.setAttribute(attr.name,attr.value);
         it.el.removeAttribute('style');Object.assign(it.el.style,{position:'fixed',zIndex:o.zIndex||900,pointerEvents:o.pointerEvents||'none',boxSizing:'border-box'});
         if(fresh.style.cssText)it.el.style.cssText+=';'+fresh.style.cssText;
