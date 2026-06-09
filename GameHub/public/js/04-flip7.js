@@ -45,14 +45,16 @@
   function animateF7Layout(before){ document.querySelectorAll('.f7-focus-board [data-card-reg]').forEach(anchor=>{ const a=before.get(anchor.dataset.cardReg); if(!a)return; const b=anchor.getBoundingClientRect(); const dx=a.left-b.left,dy=a.top-b.top; if(Math.abs(dx)+Math.abs(dy)<3)return; const card=Kit.CardRegistry.get(anchor.dataset.cardReg); if(!card)return; card.style.transition='none'; card.style.transform=`translate(${dx}px,${dy}px)`; card.offsetHeight; card.style.transition='transform .18s ease-out'; card.style.transform=''; setTimeout(()=>{card.style.transition='';},220); }); }
 
   function actionVfx(kind){
-    const o=document.createElement('div');o.style.cssText='position:fixed;inset:0;z-index:400;pointer-events:none;display:flex;align-items:center;justify-content:center';
-    const icon=document.createElement('div');
-    if(kind==='freeze'){o.style.background='radial-gradient(circle,rgba(186,230,253,.5),transparent 60%)';icon.textContent='\u2744';icon.style.color='#38bdf8';}
-    else{o.style.background='radial-gradient(circle,rgba(234,255,0,.45),transparent 60%)';icon.textContent='F3';icon.style.color='#fff';icon.style.fontStyle='italic';icon.style.textShadow='0 2px 8px #d4e600';}
-    icon.style.cssText+=';font-size:7rem;font-weight:900;animation:popReveal .5s var(--spring)';
-    o.appendChild(icon);document.body.appendChild(o);
-    setTimeout(()=>{o.style.transition='opacity .3s';o.style.opacity='0';setTimeout(()=>o.remove(),300);},650);
+    const o=document.createElement('div');
+    o.className='f7-vfx-overlay '+(kind==='freeze'?'freeze':'flip3');
+    const aura=document.createElement('div');aura.className='f7-vfx-aura';
+    const icon=document.createElement('div');icon.className='f7-vfx-icon';
+    if(kind==='freeze'){icon.textContent='\u2744';}
+    else{icon.textContent='F3';}
+    aura.appendChild(icon);o.appendChild(aura);document.body.appendChild(o);
+    setTimeout(()=>{o.style.transition='opacity .25s';o.style.opacity='0';setTimeout(()=>o.remove(),260);},760);
   }
+
   // boards are rebuilt each render; find a player's row container
   let eventFocus=null;
   let renderCtx=null;
@@ -232,7 +234,7 @@
         const after=nums.find(el=>Number(el.textContent)>Number(card.v))||firstSpecial;
         toRowEl.insertBefore(ghost,after||null);
       } else toRowEl.appendChild(ghost);
-      if(before) animateF7Layout(before);
+      if(before){ syncF7Cards(); animateF7Layout(before); }
       SFX.flip();
       await flyF7Card(deck,ghost,card,{startFaceDown:true,revealMidway:true,spin:true,duration:620});
       ghost.remove();
