@@ -252,8 +252,19 @@ const Kit=(()=>{
       if(!it||!anchor)return;
       restore(it);
       const r=rect(anchor);if(!r)return;
-      Object.assign(it.el.style,{top:r.top+'px',left:r.left+'px',width:r.width+'px',height:r.height+'px',opacity:'1'});
+      const cs=getComputedStyle(anchor);
+      Object.assign(it.el.style,{
+        top:r.top+'px',left:r.left+'px',width:r.width+'px',height:r.height+'px',opacity:'1',
+        borderRadius:cs.borderRadius,
+        borderWidth:cs.borderWidth,
+        borderStyle:cs.borderStyle,
+        boxShadow:cs.boxShadow,
+      });
+      // Registry cards live under <body>, so contextual rules like
+      // `.f7-opponent-board .f7-card` no longer apply. Copy/derive sizing from
+      // the anchor slot so mini cards and focused cards scale correctly.
       if(it.el.classList.contains('board-card')) it.el.style.fontSize=Math.max(8,Math.min(30,r.width*0.42))+'px';
+      if(it.el.classList.contains('f7-card')) it.el.style.fontSize=Math.max(7,Math.min(30,r.width*0.46))+'px';
       it.anchor=anchor;
       if(hideAnchor){it.hidden={el:anchor,visibility:anchor.style.visibility};anchor.style.visibility='hidden';}
     }
