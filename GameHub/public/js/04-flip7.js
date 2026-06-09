@@ -41,8 +41,8 @@
     });
     Kit.CardRegistry.reconcile('flip7:table:',active);
   }
-  function captureF7Layout(){ const m=new Map(); document.querySelectorAll('.f7-focus-board .f7-card[data-card-key]').forEach(el=>m.set(el.dataset.cardKey,el.getBoundingClientRect())); return m; }
-  function animateF7Layout(before){ document.querySelectorAll('.f7-focus-board .f7-card[data-card-key]').forEach(el=>{ const a=before.get(el.dataset.cardKey); if(!a)return; const b=el.getBoundingClientRect(); const dx=a.left-b.left; if(Math.abs(dx)<3)return; el.style.transition='none'; el.style.transform=`translateX(${dx}px)`; el.offsetHeight; el.style.transition='transform .16s ease-out'; el.style.transform=''; setTimeout(()=>{el.style.transition='';},190); }); }
+  function captureF7Layout(){ const m=new Map(); document.querySelectorAll('.f7-focus-board [data-card-reg]').forEach(el=>m.set(el.dataset.cardReg,el.getBoundingClientRect())); return m; }
+  function animateF7Layout(before){ document.querySelectorAll('.f7-focus-board [data-card-reg]').forEach(anchor=>{ const a=before.get(anchor.dataset.cardReg); if(!a)return; const b=anchor.getBoundingClientRect(); const dx=a.left-b.left,dy=a.top-b.top; if(Math.abs(dx)+Math.abs(dy)<3)return; const card=Kit.CardRegistry.get(anchor.dataset.cardReg); if(!card)return; card.style.transition='none'; card.style.transform=`translate(${dx}px,${dy}px)`; card.offsetHeight; card.style.transition='transform .18s ease-out'; card.style.transform=''; setTimeout(()=>{card.style.transition='';},220); }); }
 
   function actionVfx(kind){
     const o=document.createElement('div');o.style.cssText='position:fixed;inset:0;z-index:400;pointer-events:none;display:flex;align-items:center;justify-content:center';

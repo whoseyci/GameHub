@@ -241,7 +241,7 @@ const Kit=(()=>{
       let it=items.get(id);
       if(!it){
         const el=makeNode(o);el.dataset.cardRegistryId=id;el.classList.add('kit-card-registered');
-        Object.assign(el.style,{position:'fixed',zIndex:o.zIndex||900,pointerEvents:o.pointerEvents||'none',boxSizing:'border-box'});
+        Object.assign(el.style,{position:'fixed',zIndex:o.zIndex||80,pointerEvents:o.pointerEvents||'none',boxSizing:'border-box'});
         document.body.appendChild(el);it={id,el,anchor:null,hidden:null,faceUp:true};items.set(id,it);
       }
       return it;
@@ -299,7 +299,7 @@ const Kit=(()=>{
         it.el.className=fresh.className+' kit-card-registered';
         it.el.innerHTML=fresh.innerHTML;if(!fresh.innerHTML)it.el.textContent=fresh.textContent||it.el.textContent;
         for(const attr of [...fresh.attributes])if(attr.name!=='style'&&attr.name!=='class')it.el.setAttribute(attr.name,attr.value);
-        it.el.removeAttribute('style');Object.assign(it.el.style,{position:'fixed',zIndex:o.zIndex||900,pointerEvents:o.pointerEvents||'none',boxSizing:'border-box'});
+        it.el.removeAttribute('style');Object.assign(it.el.style,{position:'fixed',zIndex:o.zIndex||80,pointerEvents:o.pointerEvents||'none',boxSizing:'border-box'});
         if(fresh.style.cssText)it.el.style.cssText+=';'+fresh.style.cssText;
       }
       setAt(it,anchor,{hideAnchor:false});return it.el;
