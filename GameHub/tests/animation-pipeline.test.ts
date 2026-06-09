@@ -59,26 +59,21 @@ describe("Skyjo Animation Pipeline", () => {
   it("checkTriplets chains onto swap lastAction instead of overwriting", () => {
     const state = Skyjo.create(["Alice", "Bob"]);
 
-    // Force to PLAY phase by revealing 2 cards each
-    Skyjo.applyAction(state, 0, { action: "reveal", index: 0 });
-    Skyjo.applyAction(state, 0, { action: "reveal", index: 5 });
-    Skyjo.applyAction(state, 1, { action: "reveal", index: 0 });
-    Skyjo.applyAction(state, 1, { action: "reveal", index: 5 });
-    skyjoCompleteTurnEnd(state);
-
-    // Find who goes first and set up a triplet scenario
-    const player = state.currentPlayer;
-    // Set up board so column 0 has matching values
+    // Put the game deterministically into PLAY for a known player, mid-turn,
+    // holding a drawn 5. This avoids the reveal-phase RNG (tie-break starter)
+    // and deck RNG entirely, so the triplet-chaining assertion is stable.
+    const player = 0;
+    state.phase = "PLAY";
+    state.currentPlayer = player;
+    // Column 0 = board indices 0, 4, 8. Two 5s already revealed.
     state.players[player].board[0] = { value: 5, revealed: true, cleared: false };
     state.players[player].board[4] = { value: 5, revealed: true, cleared: false };
     state.players[player].board[8] = { value: 3, revealed: true, cleared: false };
 
-    // Draw from deck, then swap index 8 (which will make three 5s in column 0)
-    state.turnAction = null;
-    state.drawnCard = 5; // will match the triplet
-    Skyjo.applyAction(state, player, { action: "draw_deck" });
-    // Override drawnCard to 5 for the test
-    state.drawnCard = 5;
+    // Mid-turn holding a drawn 5 (the documented precondition for swap).
+    // Swapping index 8 makes three 5s in column 0 → triplet chained onto swap.
+    state.turnAction = "deck";
+    state.drawnCard = 5; // matches the triplet
     Skyjo.applyAction(state, player, { action: "swap", index: 8 });
 
     // Verify: lastAction should be swap with chained triplet

@@ -235,13 +235,30 @@ async function smokeFlip7(window, document) {
   assert(!document.querySelector('.qwixx-dice-zone'), 'Flip7: Qwixx dice zone leaked into Flip7');
   assert(document.querySelector('#topArea .piles')?.style.display === 'none', 'Flip7: shared piles should be hidden');
 
-  // Use the public act API directly because it drives the same code path as the buttons.
-  window.GameClients['flip7'].act('hit');
-  await sleep(2200);
+  // Instrument the animation API so we can verify the deck → slot deal flight
+  // actually runs (the deal must go through Kit.CardManager.moveTo, not appear
+  // instantly). Counter is read back via window.eval since Kit is script-scoped.
+  window.eval(`window.__f7moveTo=0;(function(){const cm=Kit.CardManager,orig=cm.moveTo;cm.moveTo=function(id,to,opts){if(typeof id==='string'&&id.indexOf('flip7:table:')===0)window.__f7moveTo++;return orig.call(this,id,to,opts);};})();`);
+
+  // Use the public act API directly because it drives the same code path as the
+  // buttons. Hit until at least one card is dealt (every dealt card — number,
+  // modifier or action — animates deck → slot via CardManager.moveTo). A single
+  // hit always produces a card.deal event for the current seat, so this is
+  // deterministic; we loop only to skip rare turns that immediately hand off.
+  let dealtEvents = 0;
+  for (let i = 0; i < 6 && dealtEvents === 0; i++) {
+    const v = localView(window, 0).flip7;
+    if (v.phase !== 'PLAY') break;
+    window.GameClients['flip7'].act('hit');
+    await sleep(1700);
+    const after = localView(window, 0).flip7;
+    dealtEvents = (after.events || []).filter((e) => e.type === 'card.deal' || e.type === 'card').length;
+  }
 
   const view = localView(window, 0);
   assert(view.flip7.seq > 0, 'Flip7: event timeline did not advance after hit');
   assert(document.querySelector('[data-f7-seat]'), 'Flip7: board markup missing after action playback');
+  assert(window.eval('window.__f7moveTo') > 0, 'Flip7: card deal did not animate via CardManager.moveTo (deck → slot flight missing)');
 
   window.quitLocal();
   await sleep(50);

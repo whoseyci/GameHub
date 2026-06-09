@@ -74,15 +74,19 @@ describe("Flip7 rule regressions", () => {
 describe("Qwixx rule regressions", () => {
   it("marks a valid white-dice number and blocks marking backwards", () => {
     const state: any = Qwixx.create(["A", "B"]);
-    const sum = state.dice.w[0] + state.dice.w[1];
-    const rowKey = ["red", "yellow", "green", "blue"].find((c) => state.players[0].rows[c].nums.includes(sum))!;
+    // Pin the white dice deterministically so the target lands mid-row (never the
+    // terminal lock cell, which would require 5 prior marks) — avoids dice RNG.
+    state.dice.w = [3, 4]; // sum = 7
+    const sum = 7;
+    const rowKey = "red"; // red row is 2..12 ascending, so 7 is a mid index
     const row = state.players[0].rows[rowKey];
     const idx = row.nums.indexOf(sum);
+    expect(idx).toBeGreaterThan(0); // mid-row: a "backwards" index exists
 
     Qwixx.applyAction(state, 0, { action: "mark", c: rowKey, i: idx });
     expect(row.marks).toEqual([idx]);
 
-    Qwixx.applyAction(state, 0, { action: "mark", c: rowKey, i: Math.max(0, idx - 1) });
+    Qwixx.applyAction(state, 0, { action: "mark", c: rowKey, i: idx - 1 });
     expect(row.marks).toEqual([idx]);
   });
 

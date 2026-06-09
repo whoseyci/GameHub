@@ -285,15 +285,26 @@
     return base;
   }
   function recalcAll(lv){ lv.flip7.players.forEach(x=>{x.unique=new Set(x.nums||[]).size;x.live=liveScore(x);}); }
-  // Add a freshly-dealt card to a player in the live view (used so the card can
-  // be "removed then re-added" to render the pre-deal frame, then the post-deal
-  // frame, while the permanent CardManager overlay flies in).
+  // Order cards the way the engine's _ordered() does (num, mod, act; numbers by
+  // value) so the live view's layout matches the authoritative final view — this
+  // keeps the FLIP "slide aside" shift correct and the new card's slot stable.
+  function orderCards(cards){
+    const rank=c=>c.kind==='num'?0:c.kind==='mod'?1:2;
+    return [...cards].sort((a,b)=>{const r=rank(a)-rank(b);if(r)return r;if(a.kind==='num'&&b.kind==='num')return a.v-b.v;return String(a.v).localeCompare(String(b.v));});
+  }
+  // Add a freshly-dealt card to a player in the live view. We update BOTH the
+  // derived arrays (nums/mods/…) AND the canonical `cards` array the renderer
+  // uses — the renderer keys each anchor by card.id, so the new card must be in
+  // `cards` for its permanent anchor (and the deck→slot flight) to exist.
   function addCard(p,card){
     if(!p||!card)return;
     if(card.kind==='num'){ if(!p.nums.includes(card.v)){p.nums.push(card.v);p.nums.sort((a,b)=>a-b);} }
     else if(card.kind==='mod') p.mods.push(card.v);
     else if(card.v==='second') p.second=true;
     else p.actionCards.push(card.v);
+    if(Array.isArray(p.cards) && card.id){
+      if(!p.cards.some(c=>c.id===card.id)) p.cards=orderCards([...p.cards,{id:card.id,kind:card.kind,v:card.v}]);
+    }
   }
   function removeCard(p,card){
     if(!p||!card)return;
@@ -301,6 +312,10 @@
     else if(card.kind==='mod') removeOne(p.mods,card.v);
     else if(card.v==='second') p.second=false;
     else if(p.actionCards) removeOne(p.actionCards,card.v);
+    if(Array.isArray(p.cards) && card.id){
+      const i=p.cards.findIndex(c=>c.id===card.id);
+      if(i>=0)p.cards.splice(i,1);
+    }
   }
   // Single reducer: advance the live view to reflect one event. Replaces the old
   // applyShadowEvent + add/removeCardToShadow trio with one mutation point.
