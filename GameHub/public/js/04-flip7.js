@@ -373,7 +373,8 @@
   function act(seat,msg){ if(mode==='local')localAct(seat,msg); else net.send({type:'action',seat,...msg}); }
   // reset the timeline cursor when (re)entering a game
   window._flip7ResetSeq=function(){lastSeq=-1;};
-  window.GameClients['flip7']={render,inspect};
+  function unmount(){const c=$('f7Controls');if(c)c.remove();const d=$('f7DealerWrap');if(d)d.remove();const mini=$('miniBoardsContainer');if(mini){mini.innerHTML='';mini.className='mini-boards-container';}}
+  window.GameClients['flip7']={render,inspect,unmount};
 
   // local engine wrapper
   window.LocalEngines['flip7']=function(names){

@@ -186,6 +186,44 @@ function randomCode(){const w=['CREW','SKY','BLUE','STAR','MOON','FOX','PEAR','W
 function ensureName(){myName=$('onlineName').value.trim();if(!myName){myName='Player_'+Math.floor(Math.random()*1000);$('onlineName').value=myName;}return myName;}
 function goOnline(){if(typeof syncOnlinePrimaryName==='function'){syncOnlinePrimaryName();renderOnlineDevicePlayers();}showScreen('onlineSetup');}
 
+
+/* ====================== SHARED TABLE SHELL / SEAT MODEL ====================== */
+const SeatModel={
+  controlled(){return Array.isArray(window._controlledSeats)?window._controlledSeats:[];},
+  localHumanSeats(){return (typeof localSeats!=='undefined')?localSeats.map((s,i)=>!s.bot?i:-1).filter(i=>i>=0):[];},
+  isLocalBot(seat){return typeof localSeats!=='undefined'&&!!localSeats[seat]?.bot;},
+  firstHuman(){const hs=this.localHumanSeats();return hs.length?hs[0]:0;},
+  resolve({actingSeat=-1,eventSeat=null,preferred=null,mode:modeArg=mode}={}){
+    const controlled=modeArg==='local'?this.localHumanSeats():this.controlled();
+    if(preferred!=null&&controlled.includes(preferred))return preferred;
+    if(eventSeat!=null&&controlled.includes(eventSeat))return eventSeat;
+    if(actingSeat>=0&&controlled.includes(actingSeat))return actingSeat;
+    return controlled[0]??(actingSeat>=0?actingSeat:0);
+  }
+};
+const GameShell=(()=>{
+  let current=null;
+  function clearGlobal(){
+    const mini=$('miniBoardsContainer');if(mini){mini.innerHTML='';mini.className='mini-boards-container';}
+    const main=$('mainBoardsContainer');if(main)main.innerHTML='';
+    const f7=$('f7Controls');if(f7)f7.remove();
+    const dw=$('f7DealerWrap');if(dw)dw.remove();
+    if(typeof removeQwixxUi==='function')removeQwixxUi();
+    $('investigateOverlay')?.classList.add('hidden');
+  }
+  function unmount(next=null){
+    if(current&&window.GameClients?.[current]?.unmount)window.GameClients[current].unmount();
+    clearGlobal();
+    current=next;
+  }
+  function render(view,client){
+    if(current!==view.game){unmount(view.game);}
+    if(client.mount&&!client._mounted){client.mount();client._mounted=true;}
+    client.render(view);
+  }
+  return {render,unmount,clearGlobal,focus:(opts)=>SeatModel.resolve(opts)};
+})();
+
 /* ====================== CATALOGUE (defaults; server confirms) ====================== */
 catalogue=[
   {id:'skyjo',name:'Skyjo',minPlayers:2,maxPlayers:8,description:'Lowest score wins.',emoji:'🃏'},

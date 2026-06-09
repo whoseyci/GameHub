@@ -47,8 +47,12 @@ Rules:
 
 ## Frontend client contract
 
-Build one renderer for both online multiplayer and local multiplayer. A browser
-client registers itself as:
+Build one renderer for both online multiplayer and local multiplayer. The shared
+`GameShell` owns cross-game lifecycle cleanup and the shared `SeatModel` owns the
+"which seats does this device control?" model. A game should not decide global
+cleanup or bot/human focus by itself unless it is rendering a game-specific event.
+
+A browser client registers itself as:
 
 ```js
 window.GameClients['hearts'] = {

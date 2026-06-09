@@ -162,7 +162,8 @@
     $('investigateOverlay').classList.remove('hidden');
   }
 
-  window.GameClients['skyjo']={render};
+  function unmount(){const mini=$('miniBoardsContainer');if(mini)mini.innerHTML='';}
+  window.GameClients['skyjo']={render,unmount};
 
   /* ---- Local engine wrapper for Skyjo (offline play; mirrors server module) ---- */
   // Minimal port of the engine just for local mode (no network).

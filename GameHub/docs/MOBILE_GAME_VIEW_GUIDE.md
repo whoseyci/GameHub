@@ -47,12 +47,19 @@ Penalty icon meaning:
 | unused | dark gray warning |
 | used | dark red warning |
 
-## Local multiplayer rule
+## Seat/focus rule
+
+Use the shared `SeatModel` idea everywhere:
+
+- same-device human seats are controlled by this device and may become the focused board;
+- bot seats behave like remote/other-device seats and should not steal focus;
+- remote seats are shown as miniatures/popup inspection only;
+- local and online should use the same renderer and differ only in the source of `controlledSeats`.
 
 Local pass-and-play should use the **same renderer** as online mode. The local engine's
-`actor()` returns the seat whose board should be focused full-size. Opponent boards are
-miniatures and can be tapped to inspect, but local mode should snap back to the actor
-after each action/turn transition.
+`actor()` returns the seat that needs rules processing, but the UI focus should resolve
+through controlled human seats, not blindly through `actor()`. Opponent boards are
+miniatures and can be tapped to inspect.
 
 ## Agent checklist for new games
 

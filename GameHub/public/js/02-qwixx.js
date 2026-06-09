@@ -291,7 +291,8 @@ window.GameClients = window.GameClients || {};
     else net.send({ type:'action', seat:view.yourSeat, action, ...msg });
   }
 
-  window.GameClients['qwixx'] = { render, act, inspect };
+  function unmount(){removeQwixxUi();}
+  window.GameClients['qwixx'] = { render, act, inspect, unmount };
 
   class QwixxEngine {
     constructor(names){

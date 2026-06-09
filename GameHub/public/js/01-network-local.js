@@ -115,12 +115,12 @@ function dispatchView(view){
   if(!client){toast('Unknown game: '+view.game);return;}
   window._renderView=view;
   if(animating){pendingView=view;return;}
-  client.render(view);
+  GameShell.render(view,client);
   maybeRunBot(view); // drive bot seats if we're responsible
 }
 function flushView(){if(pendingView){const v=pendingView;pendingView=null;dispatchView(v);}}
 function removeQwixxUi(){const top=$('topArea');if(!top)return;top.querySelectorAll('.qwixx-dice-zone,.qwixx-top-mini-strip').forEach(el=>el.remove());}
-function resetGameUi(){curView=null;prevView=null;animating=false;pendingView=null;summaryShown=false;lastRoundShown=false;$('overlay').classList.add('hidden');$('overlay').style.opacity='';$('investigateOverlay').classList.add('hidden');removeQwixxUi();const f7=$('f7Controls');if(f7)f7.remove();const dw=$('f7DealerWrap');if(dw)dw.remove();const mini=$('miniBoardsContainer');if(mini){mini.innerHTML='';mini.className='mini-boards-container';}const main=$('mainBoardsContainer');if(main)main.innerHTML='';$('topArea').style.display='';const piles=$('topArea').querySelector('.piles');if(piles)piles.style.display='flex';$('heldCardWrapper').style.display='';if(window._flip7ResetSeq)window._flip7ResetSeq();}
+function resetGameUi(){curView=null;prevView=null;animating=false;pendingView=null;summaryShown=false;lastRoundShown=false;$('overlay').classList.add('hidden');$('overlay').style.opacity='';GameShell.unmount();$('topArea').style.display='';const piles=$('topArea').querySelector('.piles');if(piles)piles.style.display='flex';$('heldCardWrapper').style.display='';if(window._flip7ResetSeq)window._flip7ResetSeq();}
 function hideOverlay(){const o=$('overlay');if(o.classList.contains('hidden'))return;o.style.opacity='0';setTimeout(()=>{o.classList.add('hidden');o.style.opacity='';},220);}
 function bumpStatus(){const sb=$('statusBar');sb.classList.remove('bump');void sb.offsetWidth;sb.classList.add('bump');}
 
@@ -180,6 +180,7 @@ function startLocalGame(){
   mode='local';localGameId=_localPick;localEngine=window.LocalEngines[_localPick](names);
   // bot seats the local device will drive
   window._currentBots=seats.map((s,i)=>s.bot?{seat:i,difficulty:s.difficulty||'medium'}:null).filter(Boolean);
+  window._controlledSeats=seats.map((s,i)=>!s.bot?i:-1).filter(i=>i>=0);
   resetGameUi();showScreen('gameScreen');$('gameRoomTag').classList.add('hidden');$('spectateTag').classList.add('hidden');
   renderLocal();
 }
@@ -191,7 +192,7 @@ function localDisplaySeat(preferred=null){
   if(actor!=null&&!isLocalBotSeat(actor))return actor;
   return firstLocalHumanSeat();
 }
-function renderLocal(){const v=localEngine.viewFor(localDisplaySeat());dispatchView(v);}
+function renderLocal(){const v=localEngine.viewFor(localDisplaySeat());window._controlledSeats=SeatModel.localHumanSeats();dispatchView(v);}
 function localAct(seat,msg){
   localEngine.apply(seat,msg);
   // Human same-device seats keep focus for their own event timelines. Bots are
