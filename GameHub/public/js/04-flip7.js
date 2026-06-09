@@ -391,13 +391,14 @@
         const row=rowOf(e.actor); if(e.flip3)await sleep(SPEED.flip3Gap*0.2); if(!tokenAlive(token)) return;
         const before=captureF7Layout();
         const travelResult=await dealTravel(row,e.card,e.seq,before); if(!tokenAlive(token)) return;
-        applyShadowEvent(shadow,e);
-        draw(shadow);
-        // syncF7Cards (called by draw) has now pinned permanent cards at
-        // their final positions. Safe to destroy the transient flying card.
-        Kit.CardManager.sync();
+        // Destroy the flying card BEFORE draw. Same synchronous block →
+        // browser never paints between destroy and permanent card creation.
+        // Zero gap because the permanent overlay appears at the same position.
         if(travelResult?.flyId) Kit.CardManager.destroy(travelResult.flyId);
         if(travelResult?.ghost&&travelResult.ghost.parentNode) travelResult.ghost.remove();
+        applyShadowEvent(shadow,e);
+        draw(shadow);
+        Kit.CardManager.sync();
         await sleep(SPEED.beat*0.18);
         break;
       }
