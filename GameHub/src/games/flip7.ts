@@ -48,7 +48,28 @@ function newPlayer(name: string, banked = 0): Player {
   return { name, nums: [], mods: [], secondChance: false, status: "active", bustCard: null, banked, roundScore: 0 };
 }
 
-function emit(s: State, e: any) { e.seq = ++s.seq; s.events.push(e); s.log = e; }
+function normalizeFlip7Event(e: any): any {
+  switch (e.type) {
+    case "draw_start": return { type: "deck.wiggle", actor: e.player, prob: e.prob, legacy: e.type };
+    case "card": return { type: "card.deal", actor: e.player, card: e.card, flip3: !!e.flip3, legacy: e.type };
+    case "action_card": return { type: "card.deal", actor: e.player, card: { kind: "act", v: e.kind }, actionKind: e.kind, actionCard: true, legacy: e.type };
+    case "play_action": return { type: "card.transfer", actor: e.from, target: e.target, card: { kind: "act", v: e.kind }, actionKind: e.kind, auto: !!e.auto, legacy: e.type };
+    case "second_pass": return { type: "card.transfer", actor: e.from, target: e.to, card: { kind: "act", v: "second" }, actionKind: "second", secondPass: true, auto: !!e.auto, legacy: e.type };
+    case "bust": return { type: "effect.bust", actor: e.player, value: e.value, flip3: !!e.flip3, legacy: e.type };
+    case "flip7": return { type: "effect.flip7", actor: e.player, legacy: e.type };
+    case "flip3_abandon": return { type: "effect.flip3_abandon", target: e.target, legacy: e.type };
+    case "second_used": return { type: "effect.second_used", actor: e.player, value: e.value, flip3: !!e.flip3, legacy: e.type };
+    case "second_discard": return { type: "effect.second_discard", actor: e.player, legacy: e.type };
+    case "stay": return { type: "effect.stay", actor: e.player, legacy: e.type };
+    case "freeze_done": return { type: "effect.freeze_done", target: e.target, legacy: e.type };
+    case "reshuffle": return { type: "deck.reshuffle", legacy: e.type };
+    case "await_target": return { type: "target.prompt", actor: e.from, actionKind: e.kind, legacy: e.type };
+    case "round_end": return { type: "effect.round_end", winners: e.winners, flip7: e.flip7, legacy: e.type };
+    case "game_over": return { type: "effect.game_over", winners: e.winners, flip7: e.flip7, legacy: e.type };
+    default: return e;
+  }
+}
+function emit(s: State, e: any) { const n = normalizeFlip7Event(e); n.seq = ++s.seq; s.events.push(n); s.log = n; }
 
 function fresh(names: string[], banked: number[], rngState = makeSeed()): State {
   const rng = { rngState };

@@ -106,8 +106,25 @@ For card games, treat every visible card transfer as a motion of a logical card 
 Do not update focus/effects in the middle of that motion. The standard event order is:
 
 ```text
-previous visible state -> focus source -> reveal if needed -> Kit.CardMotion.move(...) -> apply event to shadow state -> redraw shadow state -> effect/score/target prompt -> next event
+engine emits normalized event -> EventRunner queues it -> previous visible state -> focus source -> reveal if needed -> Kit.CardMotion.move(...) -> apply event to shadow state -> redraw shadow state -> effect/score/target prompt -> next event
 ```
+
+Preferred normalized event types:
+
+```text
+deck.wiggle
+card.deal
+card.transfer
+effect.bust
+effect.second_used
+effect.flip7
+effect.freeze_done
+effect.stay
+target.prompt
+effect.round_end / effect.game_over
+```
+
+Avoid game-specific raw event names in new games. If legacy events exist, normalize them at the engine boundary before they reach the client runner.
 
 Guidelines:
 

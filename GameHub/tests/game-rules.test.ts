@@ -24,6 +24,18 @@ describe("Skyjo rule regressions", () => {
 });
 
 describe("Flip7 rule regressions", () => {
+  it("emits normalized event schema for a normal hit", () => {
+    const state: any = Flip7.create(["A", "B"]);
+    state.current = 0;
+    state.deck = [{ kind: "num", v: 9 }];
+    state.discard = [];
+
+    Flip7.applyAction(state, 0, { action: "hit" });
+
+    expect(state.events.map((e: any) => e.type)).toContain("deck.wiggle");
+    expect(state.events.some((e: any) => e.type === "card.deal" && e.card.v === 9 && e.actor === 0)).toBe(true);
+  });
+
   it("busts on a duplicate number without second chance", () => {
     const state: any = Flip7.create(["A", "B"]);
     state.current = 0;
@@ -35,7 +47,7 @@ describe("Flip7 rule regressions", () => {
     Flip7.applyAction(state, 0, { action: "hit" });
 
     expect(state.players[0].status).toBe("busted");
-    expect(state.events.some((e: any) => e.type === "bust" && e.value === 5)).toBe(true);
+    expect(state.events.some((e: any) => e.type === "effect.bust" && e.value === 5 && e.actor === 0)).toBe(true);
   });
 
   it("consumes second chance instead of busting on first duplicate", () => {
@@ -50,7 +62,7 @@ describe("Flip7 rule regressions", () => {
 
     expect(state.players[0].status).toBe("active");
     expect(state.players[0].secondChance).toBe(false);
-    expect(state.events.some((e: any) => e.type === "second_used")).toBe(true);
+    expect(state.events.some((e: any) => e.type === "effect.second_used" && e.actor === 0)).toBe(true);
   });
 });
 
