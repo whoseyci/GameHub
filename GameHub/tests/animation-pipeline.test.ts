@@ -427,17 +427,22 @@ describe("CardManager: permanent card system invariants", () => {
     expect(core).toContain("c.location={...opts.toLocation}");
   });
 
-  it("Flip 7 card.deal: one permanent card, created once, moved, never destroyed during animation", () => {
+  it("Flip 7 card.deal: permanent card pinned by draw, then animated from deck inline", () => {
     const flip7Source = readFileSync(new URL("../public/js/04-flip7.js", import.meta.url), "utf8");
-    // card.deal handler creates the permanent card once
-    expect(flip7Source).toContain("Kit.CardManager.create(");
-    // flyF7Card just pins and moves the existing card (no create/destroy)
-    expect(flip7Source).toContain("flyF7Card(deck,ghost,permId");
-    // NO destroy in the card.deal path — the card is permanent
-    expect(flip7Source).not.toContain("Kit.CardManager.destroy(travelResult");
-    // syncF7Cards re-pins existing cards (no re-create)
+    // card.deal draws the board WITH the card first, then animates the overlay
+    expect(flip7Source).toContain("applyShadowEvent(shadow,e);");
+    expect(flip7Source).toContain("animateF7Layout(before);");
+    // Card is found by its permanent ID after draw pins it
+    expect(flip7Source).toContain("Kit.CardManager.get(permId);");
+    // Overlay snapped to deck then animated to destination — no create/destroy
+    expect(flip7Source).toContain("Snap overlay to deck");
+    // syncF7Cards pins all cards to real anchors
     expect(flip7Source).toContain("Kit.CardManager.pin(id,anchor,{hideAnchor:false");
     expect(flip7Source).toContain("Kit.CardManager.reconcile('flip7:table:'");
+    // NO destroy in the deal path
+    expect(flip7Source).not.toContain("Kit.CardManager.destroy(");
+    // NO ghost, NO dealTravel
+    expect(flip7Source).not.toContain("function dealTravel");
   });
 
   it("Skyjo held card uses CardManager lifecycle: create → moveTo → pin → destroy", () => {

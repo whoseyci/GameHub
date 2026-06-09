@@ -75,12 +75,10 @@ describe("shared game shell", () => {
     expect(skyjo).toContain("Kit.CardManager.reconcile");
     expect(skyjo).toContain("Kit.CardManager.has");
     // Flip 7 uses CardManager for permanent card lifecycle
-    expect(flip7).toContain("Kit.CardManager.create");
+    expect(flip7).toContain("Kit.CardManager.get(permId)");
     expect(flip7).toContain("Kit.CardManager.pin");
-    expect(flip7).toContain("Kit.CardManager.moveTo");
-    expect(flip7).toContain("Kit.CardManager.has");
     expect(flip7).toContain("Kit.CardManager.sync");
-    // Permanent cards: NO destroy in the deal path
+    // Permanent cards: NO create/destroy in flip7 — syncF7Cards creates via reconcile
     expect(flip7).not.toContain("Kit.CardManager.destroy(");
   });
 

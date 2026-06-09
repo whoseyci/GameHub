@@ -45,12 +45,6 @@
       }
       Kit.CardManager.pin(id,anchor,{hideAnchor:false,updateContent:true});
     });
-    // Preserve permanent cards that have no DOM anchor yet (in-flight).
-    // reconcile destroys anything not in `active` — but a card flying from
-    // deck to board hasn't been pinned to a real anchor yet.
-    for(const id of Kit.CardManager.ids()){
-      if(id.startsWith('flip7:table:')&&!active.includes(id))active.push(id);
-    }
     Kit.CardManager.reconcile('flip7:table:',active);
     requestAnimationFrame(()=>Kit.CardManager.sync());
   }
@@ -234,34 +228,15 @@
     });
   }
 
-  async function flyF7Card(fromEl,toEl,cardId,{duration=620,startFaceDown=false,revealMidway=false,spin=true}={}){
-    // The card already exists in CardManager (permanent). Just move it.
-    Kit.CardManager.pin(cardId,fromEl,{hideAnchor:false,updateContent:true});
-    await Kit.CardManager.moveTo(cardId,toEl,{duration,startFaceDown,revealMidway:startFaceDown&&revealMidway,spin,hideTarget:true,land:false,backHTML:f7BackHTML(),onReveal:()=>SFX.flip()});
+  async function flyF7Card(fromEl,toEl,card,{duration=620,spin=true}={}){
+    // Simple fly for action card transfers — not part of the permanent card system
+    await Kit.Card.move('f7:fly:'+Date.now(),{from:fromEl,to:toEl,render:()=>{const el=cardEl(card?.kind||'num',card?.v??'?');el.classList.add('f7-flying-card');return el;},spin,duration,land:false,hideTarget:true});
   }
 
 
   // deal a face-down card from the deck onto a player's row, then it stays hidden
   // until the caller reveals (we just animate the travel; the rebuilt board shows the real card)
-  function dealTravel(toRowEl,card,permId,seq='x',before=null){
-    return new Promise(async res=>{
-      const deck=$('f7Deck');if(!deck||!toRowEl){res({ghost:null});return;}
-      deck.classList.remove('deal');void deck.offsetWidth;deck.classList.add('deal');
-      // Insert a ghost anchor for the target position (hidden)
-      const ghost=cardEl(card?.kind||'num',card?.v??'?');
-      ghost.style.visibility='hidden';
-      if(card?.kind==='num'){
-        const nums=[...toRowEl.querySelectorAll('.f7-card.num')];
-        const firstSpecial=[...toRowEl.querySelectorAll('.f7-card:not(.num)')][0]||null;
-        const after=nums.find(el=>Number(el.textContent)>Number(card.v))||firstSpecial;
-        toRowEl.insertBefore(ghost,after||null);
-      } else toRowEl.appendChild(ghost);
-      if(before){ syncF7Cards(); animateF7Layout(before); }
-      SFX.flip();
-      await flyF7Card(deck,ghost,permId,{startFaceDown:true,revealMidway:true,spin:true,duration:620});
-      res({ghost});
-    });
-  }
+
 
 
   function normalizeFlip7Event(e){
@@ -389,31 +364,48 @@
         removeCardFromShadow(shadow.flip7.players[e.actor],e.card);
         draw(shadow);
         const row=rowOf(e.actor); if(e.flip3)await sleep(SPEED.flip3Gap*0.2); if(!tokenAlive(token)) return;
-        // ── Permanent Card: create ONCE, move, never destroy ──
-        // Compute the stable ID this card will have after draw (matches addF7Card)
+        const before=captureF7Layout();
+        // ── Permanent Card System ──
+        // 1. Add card to shadow + draw — syncF7Cards pins it at final position
+        applyShadowEvent(shadow,e);
+        draw(shadow);
+        // 2. Smooth layout shift for existing cards (new card skipped — no 'before' entry)
+        animateF7Layout(before);
+        // 3. Find the permanent card's overlay (already at final position)
         const seat=row?.dataset?.f7Seat||e.actor;
         const cardKey=e.card?.id||('card-'+e.seq+'-'+(e.card?.kind||'num')+'-'+(e.card?.v??'?'));
         const permId=`flip7:table:p${seat}:${cardKey}`;
-        // Create the permanent card if it doesn't exist yet
-        if(!Kit.CardManager.has(permId)){
-          Kit.CardManager.create(
-            {kind:e.card?.kind||'num',value:e.card?.v??'?'},
-            {zone:'grid',player:e.actor},
-            {id:permId,renderer:(face)=>{
-              const kind=face.kind==='act'?'act':face.kind==='num'?'num':'mod';
-              return cardEl(kind,face.value);
-            },faceUp:true}
-          );
+        const cmCard=Kit.CardManager.get(permId);
+        const deck=$('f7Deck');
+        if(cmCard?.overlayEl&&deck){
+          const el=cmCard.overlayEl;
+          const destTop=el.style.top, destLeft=el.style.left, destWidth=el.style.width, destHeight=el.style.height;
+          const deckRect=deck.getBoundingClientRect();
+          // Deck visual pulse
+          deck.classList.remove('deal');void deck.offsetWidth;deck.classList.add('deal');
+          // Snap overlay to deck position instantly — same JS tick, browser can't paint between
+          el.style.transition='none';
+          el.style.top=deckRect.top+'px'; el.style.left=deckRect.left+'px';
+          el.style.width=deckRect.width+'px'; el.style.height=deckRect.height+'px';
+          el.style.zIndex='1000';
+          // Face-down appearance
+          el.innerHTML='<span style="color:#c7d2fe;font-size:1.5rem">✦</span>';
+          el.style.background='linear-gradient(135deg,#6366f1,#4338ca)'; el.style.border='2px solid #818cf8';
+          el.style.color=''; el.style.borderRadius='12px';
+          el.classList.add('kit-card-moving');
+          el.offsetHeight; // reflow
+          // Animate to destination via arc
+          const dur=620;
+          const midX=(deckRect.left+parseFloat(destLeft))/2,midY=Math.min(deckRect.top,parseFloat(destTop))-46;
+          el.style.transition=`top ${dur}ms var(--spring-soft),left ${dur}ms var(--spring-soft),width ${dur}ms var(--spring-soft),height ${dur}ms var(--spring-soft),transform ${dur}ms var(--spring-soft)`;
+          requestAnimationFrame(()=>{el.style.top=midY+'px';el.style.left=midX+'px';el.style.transform='rotateZ(180deg) scale(1.12)';});
+          // Reveal face midway
+          setTimeout(()=>{const r=Kit.CardManager.renderCard(cmCard);if(r){el.className=r.className+' kit-card-registered kit-card-moving';el.innerHTML=r.innerHTML;if(r.style.cssText)el.style.cssText+=';'+r.style.cssText;el.style.animation='popReveal .26s var(--spring)';}SFX.flip();},Math.floor(dur*0.42));
+          setTimeout(()=>{el.style.top=destTop;el.style.left=destLeft;el.style.width=destWidth;el.style.height=destHeight;el.style.transform='rotateZ(360deg) scale(1)';},Math.floor(dur*0.5));
+          await sleep(dur+45);
+          el.classList.remove('kit-card-moving');el.style.transition='';el.style.transform='';el.style.animation='';el.style.zIndex='';
+          Kit.CardManager.sync();
         }
-        const before=captureF7Layout();
-        const travelResult=await dealTravel(row,e.card,permId,e.seq,before); if(!tokenAlive(token)) return;
-        // Remove ghost — card is now at ghost position in its permanent overlay
-        if(travelResult?.ghost?.parentNode) travelResult.ghost.remove();
-        // applyShadowEvent + draw creates the real DOM anchor.
-        // syncF7Cards (called by draw) finds the existing card and re-pins it.
-        applyShadowEvent(shadow,e);
-        draw(shadow);
-        Kit.CardManager.sync();
         await sleep(SPEED.beat*0.18);
         break;
       }

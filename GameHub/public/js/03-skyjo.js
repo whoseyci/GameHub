@@ -31,7 +31,7 @@
       const card=Kit.CardManager.get(id);if(card)card.renderer=makeRenderer();
     }
     Kit.CardManager.pin(id,anchor,{hideAnchor:false,updateContent:true});
-  }}));for(const id of Kit.CardManager.ids()){if(id.startsWith('skyjo:table:')&&!active.includes(id))active.push(id);}Kit.CardManager.reconcile('skyjo:table:',active);requestAnimationFrame(()=>Kit.CardManager.sync());}
+  }}));Kit.CardManager.reconcile('skyjo:table:',active);requestAnimationFrame(()=>Kit.CardManager.sync());}
 
   let renderCtx=null;
   function render(view,ctx={}){
