@@ -229,22 +229,18 @@
     });
   }
 
-  async function flyF7Card(fromEl,toEl,card,{duration=620,startFaceDown=false,revealMidway=false,spin=true}={}){
-    // Create a transient CardManager card for the flight
-    const id=Kit.CardManager.create({kind:card?.kind||'num',value:card?.v??'?'},{zone:'transit'},{renderer:(face)=>{const el=cardEl(face.kind==='act'?(face.value==='second'||face.value==='freeze'||face.value==='flip3'?'act':face.kind):face.kind==='num'?'num':face.kind==='mod'?'mod':'act',face.value);el.classList.add('f7-flying-card');return el;},faceUp:!startFaceDown});
-    // Pin at source position first
-    Kit.CardManager.pin(id,fromEl,{hideAnchor:false,updateContent:true});
-    // Animate to target — the card stays in CardManager until caller cleans up
-    await Kit.CardManager.moveTo(id,toEl,{duration,startFaceDown,revealMidway:startFaceDown&&revealMidway,spin,hideTarget:true,land:false,backHTML:f7BackHTML(),onReveal:()=>SFX.flip(),toLocation:{zone:'transit'}});
-    return id;
+  async function flyF7Card(fromEl,toEl,cardId,{duration=620,startFaceDown=false,revealMidway=false,spin=true}={}){
+    // The card already exists in CardManager (permanent). Just move it.
+    Kit.CardManager.pin(cardId,fromEl,{hideAnchor:false,updateContent:true});
+    await Kit.CardManager.moveTo(cardId,toEl,{duration,startFaceDown,revealMidway:startFaceDown&&revealMidway,spin,hideTarget:true,land:false,backHTML:f7BackHTML(),onReveal:()=>SFX.flip()});
   }
 
 
   // deal a face-down card from the deck onto a player's row, then it stays hidden
   // until the caller reveals (we just animate the travel; the rebuilt board shows the real card)
-  function dealTravel(toRowEl,card,seq='x',before=null){
+  function dealTravel(toRowEl,card,permId,seq='x',before=null){
     return new Promise(async res=>{
-      const deck=$('f7Deck');if(!deck||!toRowEl){res({flyId:null,ghost:null});return;}
+      const deck=$('f7Deck');if(!deck||!toRowEl){res({ghost:null});return;}
       deck.classList.remove('deal');void deck.offsetWidth;deck.classList.add('deal');
       // Insert a ghost anchor for the target position (hidden)
       const ghost=cardEl(card?.kind||'num',card?.v??'?');
@@ -257,9 +253,8 @@
       } else toRowEl.appendChild(ghost);
       if(before){ syncF7Cards(); animateF7Layout(before); }
       SFX.flip();
-      const flyId=await flyF7Card(deck,ghost,card,{startFaceDown:true,revealMidway:true,spin:true,duration:620});
-      // Return handles for caller cleanup AFTER board rebuild
-      res({flyId,ghost});
+      await flyF7Card(deck,ghost,permId,{startFaceDown:true,revealMidway:true,spin:true,duration:620});
+      res({ghost});
     });
   }
 
@@ -389,13 +384,28 @@
         removeCardFromShadow(shadow.flip7.players[e.actor],e.card);
         draw(shadow);
         const row=rowOf(e.actor); if(e.flip3)await sleep(SPEED.flip3Gap*0.2); if(!tokenAlive(token)) return;
+        // ── Permanent Card: create ONCE, move, never destroy ──
+        // Compute the stable ID this card will have after draw (matches addF7Card)
+        const seat=row?.dataset?.f7Seat||e.actor;
+        const cardKey=e.card?.id||('card-'+e.seq+'-'+(e.card?.kind||'num')+'-'+(e.card?.v??'?'));
+        const permId=`flip7:table:p${seat}:${cardKey}`;
+        // Create the permanent card if it doesn't exist yet
+        if(!Kit.CardManager.has(permId)){
+          Kit.CardManager.create(
+            {kind:e.card?.kind||'num',value:e.card?.v??'?'},
+            {zone:'grid',player:e.actor},
+            {id:permId,renderer:(face)=>{
+              const kind=face.kind==='act'?'act':face.kind==='num'?'num':'mod';
+              return cardEl(kind,face.value);
+            },faceUp:true}
+          );
+        }
         const before=captureF7Layout();
-        const travelResult=await dealTravel(row,e.card,e.seq,before); if(!tokenAlive(token)) return;
-        // Destroy the flying card BEFORE draw. Same synchronous block →
-        // browser never paints between destroy and permanent card creation.
-        // Zero gap because the permanent overlay appears at the same position.
-        if(travelResult?.flyId) Kit.CardManager.destroy(travelResult.flyId);
-        if(travelResult?.ghost&&travelResult.ghost.parentNode) travelResult.ghost.remove();
+        const travelResult=await dealTravel(row,e.card,permId,e.seq,before); if(!tokenAlive(token)) return;
+        // Remove ghost — card is now at ghost position in its permanent overlay
+        if(travelResult?.ghost?.parentNode) travelResult.ghost.remove();
+        // applyShadowEvent + draw creates the real DOM anchor.
+        // syncF7Cards (called by draw) finds the existing card and re-pins it.
         applyShadowEvent(shadow,e);
         draw(shadow);
         Kit.CardManager.sync();

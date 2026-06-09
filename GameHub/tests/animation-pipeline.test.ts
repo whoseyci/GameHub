@@ -427,17 +427,15 @@ describe("CardManager: permanent card system invariants", () => {
     expect(core).toContain("c.location={...opts.toLocation}");
   });
 
-  it("Flip 7 card.deal uses CardManager lifecycle: create → pin → moveTo → draw pins → destroy flying", () => {
+  it("Flip 7 card.deal: one permanent card, created once, moved, never destroyed during animation", () => {
     const flip7Source = readFileSync(new URL("../public/js/04-flip7.js", import.meta.url), "utf8");
-    // flyF7Card creates a CardManager entry
+    // card.deal handler creates the permanent card once
     expect(flip7Source).toContain("Kit.CardManager.create(");
-    // flyF7Card pins at source before flying
-    expect(flip7Source).toContain("Kit.CardManager.pin(id,fromEl");
-    // flyF7Card uses moveTo for animation
-    expect(flip7Source).toContain("Kit.CardManager.moveTo(id,toEl");
-    // card.deal handler destroys flying card after draw creates permanent
-    expect(flip7Source).toContain("Kit.CardManager.destroy(travelResult.flyId");
-    // syncF7Cards pins permanent cards
+    // flyF7Card just pins and moves the existing card (no create/destroy)
+    expect(flip7Source).toContain("flyF7Card(deck,ghost,permId");
+    // NO destroy in the card.deal path — the card is permanent
+    expect(flip7Source).not.toContain("Kit.CardManager.destroy(travelResult");
+    // syncF7Cards re-pins existing cards (no re-create)
     expect(flip7Source).toContain("Kit.CardManager.pin(id,anchor,{hideAnchor:false");
     expect(flip7Source).toContain("Kit.CardManager.reconcile('flip7:table:'");
   });
