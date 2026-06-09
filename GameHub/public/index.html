@@ -34,6 +34,9 @@
       <h2 style="margin-top:0">Play Online</h2>
       <label class="label">Your Name</label>
       <input type="text" id="onlineName" class="input" placeholder="Enter your name">
+      <div class="muted" style="text-align:left;font-size:.82rem;margin:4px 0">Same-device online seats</div>
+      <div id="onlineDevicePlayers" style="margin-bottom:8px"></div>
+      <button class="btn secondary" style="font-size:.9rem;padding:8px;margin:0 0 12px" onclick="addOnlineDevicePlayer()">+ Add same-device player</button>
       <div style="display:flex;gap:10px">
         <button class="btn green" style="margin-top:0" onclick="showScreen('quickPick')">⚡ Quick Play</button>
         <button class="btn purple" style="margin-top:0" onclick="showScreen('hostSetup')">Make a Room</button>

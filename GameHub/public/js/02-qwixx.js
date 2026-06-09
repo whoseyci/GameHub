@@ -287,7 +287,7 @@ window.GameClients = window.GameClients || {};
   function act(action, msg = {}){
     const view = window._renderView;
     if(mode === 'local') localAct(view.yourSeat, { action, ...msg });
-    else net.send({ type:'action', action, ...msg });
+    else net.send({ type:'action', seat:view.yourSeat, action, ...msg });
   }
 
   window.GameClients['qwixx'] = { render, act, inspect };

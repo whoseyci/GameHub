@@ -490,5 +490,6 @@ function scheduleBot(view,bot,seat){
 renderTiles('quickTiles',quickPlay); // quick play: no size filter (matchmaking fills the room)
 renderLocalSeats();
 refreshLocalTiles();
+if(typeof syncOnlinePrimaryName==='function'){syncOnlinePrimaryName();renderOnlineDevicePlayers();}
 if(SFX.muted){const b=$('soundBtn');if(b){b.textContent='🔇';b.classList.add('off');}}
 document.addEventListener('keydown',e=>{if(e.key==='Escape')$('investigateOverlay').classList.add('hidden');});

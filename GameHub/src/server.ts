@@ -31,7 +31,7 @@ export const LOBBY_SINGLETON = "public-lobby";
 const IDLE_MS = 10 * 60 * 1000;       // close room after 10 min idle
 const EMPTY_GRACE_MS = 45 * 1000;     // close shortly after everyone leaves
 
-type ConnState = { pid?: string };
+type ConnState = { pid?: string; pids?: string[] };
 interface Member { id: string; name: string; bot?: boolean; difficulty?: string; }
 interface Pending { id: string; name: string; }
 
@@ -89,6 +89,39 @@ export class Room extends Server<Env> {
 
   private memberIdx(pid: string) { return this.members.findIndex((m) => m.id === pid); }
   private pendingIdx(pid: string) { return this.pending.findIndex((p) => p.id === pid); }
+
+  private controlledPids(conn: Connection<ConnState>): string[] {
+    const pids = conn.state?.pids?.length ? conn.state.pids : (conn.state?.pid ? [conn.state.pid] : []);
+    return pids.filter((pid, i) => !!pid && pids.indexOf(pid) === i);
+  }
+  private controlledSeats(conn: Connection<ConnState>): number[] {
+    return this.controlledPids(conn).map((pid) => this.memberIdx(pid)).filter((i) => i >= 0);
+  }
+  private primarySeatFor(conn: Connection<ConnState>): number {
+    const seats = this.controlledSeats(conn);
+    if (!seats.length) return -1;
+    if (this.gameId === "qwixx" && this.gameState) {
+      if (this.gameState.phase === "WHITE_PHASE") {
+        const pending = seats.find((i) => this.gameState.pendingWhiteDecisions?.includes(i));
+        if (pending != null) return pending;
+      }
+      if (seats.includes(this.gameState.activeSeat)) return this.gameState.activeSeat;
+    }
+    if (this.gameId === "flip7" && this.gameState) {
+      const pa = this.gameState.pendingAction;
+      if (pa && seats.includes(pa.from)) return pa.from;
+      if (seats.includes(this.gameState.current)) return this.gameState.current;
+    }
+    if (this.gameId === "skyjo" && this.gameState) {
+      const cp = this.gameState.currentPlayer;
+      if (seats.includes(cp)) return cp;
+      if (this.gameState.phase === "REVEAL") {
+        const r = seats.find((i) => (this.gameState.players?.[i]?.revealCount ?? 2) < 2);
+        if (r != null) return r;
+      }
+    }
+    return seats[0];
+  }
 
   // Re-arm the single alarm to the soonest of: pending game tick, idle close.
   private armAlarm() {
@@ -187,13 +220,17 @@ export class Room extends Server<Env> {
     for (const conn of this.getConnections<ConnState>()) this.sendTo(conn);
   }
   private sendTo(conn: Connection<ConnState>) {
-    const pid = conn.state?.pid;
-    const seat = pid ? this.memberIdx(pid) : -1;
+    const pids = this.controlledPids(conn);
+    const seat = this.primarySeatFor(conn);
+    const isHost = pids.includes(this.hostId || "");
     if (this.gameId && this.gameState) {
       const g = getGame(this.gameId)!;
+      const seats = this.controlledSeats(conn);
       conn.send(JSON.stringify({
         type: "game",
-        isHost: pid === this.hostId,
+        isHost,
+        controlledSeats: seats,
+        views: seats.map((s) => ({ seat: s, view: g.viewFor(this.gameState, s) })),
         // seats that are bots + their difficulty, so the HOST can drive them
         bots: this.members.map((m, i) => (m.bot ? { seat: i, difficulty: m.difficulty } : null)).filter(Boolean),
         view: g.viewFor(this.gameState, seat),
@@ -201,7 +238,7 @@ export class Room extends Server<Env> {
     } else {
       conn.send(JSON.stringify({
         type: "room",
-        isHost: pid === this.hostId,
+        isHost,
         code: this.name,
         isPublic: this.isPublic,
         quickGame: this.quickGame,
@@ -223,48 +260,49 @@ export class Room extends Server<Env> {
 
     /* ---- join / reconnect ---- */
     if (msg.type === "join") {
-      const pid: string = msg.pid;
-      const name: string = msg.name;
-      conn.setState({ pid });
+      const seats = (msg.seats && msg.seats.length ? msg.seats : [{ pid: msg.pid, name: msg.name }]).slice(0, 8);
+      const pids = seats.map((s: any) => s.pid);
+      conn.setState({ pid: pids[0], pids });
       this.touch();
 
-      const mi = this.memberIdx(pid);
-      if (mi >= 0) {
-        this.members[mi].name = name; // reconnect
-      } else if (this.gameId) {
-        // game in progress -> spectate, queued for next game/round
-        if (this.pendingIdx(pid) < 0 && this.members.length + this.pending.length < this.maxPlayers) {
-          this.pending.push({ id: pid, name });
-          conn.send(JSON.stringify({ type: "spectating", message: "Game in progress — you'll join next round." }));
-        } else if (this.members.length + this.pending.length >= this.maxPlayers) {
-          // `room_full` lets Quick Play roll to the next shard automatically.
-          conn.send(JSON.stringify({ type: "room_full", message: "Room is full." }));
-          return;
+      for (const seatInfo of seats) {
+        const pid: string = seatInfo.pid;
+        const name: string = (seatInfo.name || "Player").slice(0, 20);
+        const mi = this.memberIdx(pid);
+        if (mi >= 0) {
+          this.members[mi].name = name;
+        } else if (this.gameId) {
+          if (this.pendingIdx(pid) < 0 && this.members.length + this.pending.length < this.maxPlayers) {
+            this.pending.push({ id: pid, name });
+            conn.send(JSON.stringify({ type: "spectating", message: "Game in progress — you'll join next round." }));
+          } else if (this.members.length + this.pending.length >= this.maxPlayers) {
+            conn.send(JSON.stringify({ type: "room_full", message: "Room is full." }));
+            return;
+          }
+        } else {
+          if (this.members.length === 0) {
+            this.hostId = pid;
+            this.isPublic = !!msg.isPublic;
+            this.quickGame = msg.quickGame ?? null;
+            this.maxPlayers = Math.max(2, Math.min(8, msg.maxPlayers || 8));
+          }
+          if (this.members.length >= this.maxPlayers) { conn.send(JSON.stringify({ type: "room_full", message: "Room is full." })); return; }
+          this.members.push({ id: pid, name });
         }
-      } else {
-        if (this.members.length === 0) {
-          this.hostId = pid;
-          this.isPublic = !!msg.isPublic;
-          this.quickGame = msg.quickGame ?? null;
-          // Host may cap below 8; clamp to [2, 8]. (Per-game max enforced at launch.)
-          this.maxPlayers = Math.max(2, Math.min(8, msg.maxPlayers || 8));
-        }
-        if (this.members.length >= this.maxPlayers) { conn.send(JSON.stringify({ type: "room_full", message: "Room is full." })); return; }
-        this.members.push({ id: pid, name });
+        this.log({ kind: "join", actor: pid, gameId: this.gameId, detail: { name, seat: this.memberIdx(pid), pending: this.pendingIdx(pid) >= 0 } });
       }
-      this.log({ kind: "join", actor: pid, gameId: this.gameId, detail: { name, seat: this.memberIdx(pid), pending: this.pendingIdx(pid) >= 0 } });
       await this.persistMeta();
       await this.lobbyUpdate();
       this.broadcastState();
 
-      // Quick-play auto-start: once enough solos are waiting, begin.
       if (this.quickGame && !this.gameId) this.maybeQuickStart();
       return;
     }
 
     const pid = conn.state?.pid;
-    if (!pid) return;
-    const isHost = pid === this.hostId;
+    const pids = this.controlledPids(conn);
+    if (!pid || !pids.length) return;
+    const isHost = pids.includes(this.hostId || "");
     const seat = this.memberIdx(pid);
 
     /* ---- host: add / remove a bot (only between games) ---- */
@@ -334,6 +372,11 @@ export class Room extends Server<Env> {
       // Determine which seat is acting. The HOST may drive BOT seats on their behalf
       // (bots "think" on the host's client to keep server compute ~0).
       let actSeat = seat;
+      if (msg.seat != null) {
+        const requested = msg.seat | 0;
+        if (this.controlledSeats(conn).includes(requested)) actSeat = requested;
+        else return;
+      }
       if (msg.botSeat != null && isHost) {
         const bi = msg.botSeat | 0;
         if (this.members[bi] && this.members[bi].bot) actSeat = bi;

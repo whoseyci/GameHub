@@ -30,6 +30,18 @@ export function cleanInt(value: unknown, min: number, max: number): number | nul
   return n;
 }
 
+
+export function cleanSeats(value: unknown, fallbackPid: string, fallbackName: string): Array<{ pid: string; name: string }> {
+  if (!Array.isArray(value)) return [{ pid: fallbackPid, name: fallbackName }];
+  const out: Array<{ pid: string; name: string }> = [];
+  for (const item of value.slice(0, 8) as any[]) {
+    const pid = cleanId(item?.pid);
+    if (!pid) continue;
+    out.push({ pid, name: cleanName(item?.name, fallbackName) });
+  }
+  return out.length ? out : [{ pid: fallbackPid, name: fallbackName }];
+}
+
 export function parseClientMessage(raw: string): any | null {
   if (typeof raw !== "string" || raw.length > MAX_WS_MESSAGE_BYTES) return null;
   let msg: any;
@@ -40,10 +52,13 @@ export function parseClientMessage(raw: string): any | null {
     case "join": {
       const pid = cleanId(msg.pid);
       if (!pid) return null;
+      const name = cleanName(msg.name);
+      const seats = cleanSeats(msg.seats, pid, name);
       return {
         type: "join",
         pid,
-        name: cleanName(msg.name),
+        name,
+        seats,
         isPublic: cleanBool(msg.isPublic),
         quickGame: msg.quickGame == null ? null : cleanId(msg.quickGame),
         maxPlayers: cleanInt(msg.maxPlayers, 2, 8) ?? 8,
@@ -65,6 +80,7 @@ export function parseClientMessage(raw: string): any | null {
       if (Number.isInteger(msg.index)) out.index = msg.index;
       if (Number.isInteger(msg.target)) out.target = msg.target;
       if (Number.isInteger(msg.botSeat)) out.botSeat = msg.botSeat;
+      if (Number.isInteger(msg.seat)) out.seat = msg.seat;
       if (typeof msg.c === "string" && msg.c.length <= 16) out.c = msg.c;
       if (Number.isInteger(msg.i)) out.i = msg.i;
       return out;

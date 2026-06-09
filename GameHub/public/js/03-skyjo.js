@@ -127,7 +127,7 @@
   // seat = which player's board was acted on (needed for local pass-and-play REVEAL,
   // where each player flips their OWN cards). Online ignores it (server uses the
   // authenticated connection's seat).
-  function act(seat,msg){ if(mode==='local')localAct(seat,msg); else net.send({type:'action',...msg}); }
+  function act(seat,msg){ if(mode==='local')localAct(seat,msg); else net.send({type:'action',seat,...msg}); }
 
   async function runAnim(s,viewer){
     const a=s.lastAction;if(!a)return;

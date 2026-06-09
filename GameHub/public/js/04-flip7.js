@@ -367,7 +367,7 @@
     }
     playEvents(view);
   }
-  function act(seat,msg){ if(mode==='local')localAct(seat,msg); else net.send({type:'action',...msg}); }
+  function act(seat,msg){ if(mode==='local')localAct(seat,msg); else net.send({type:'action',seat,...msg}); }
   // reset the timeline cursor when (re)entering a game
   window._flip7ResetSeq=function(){lastSeq=-1;};
   window.GameClients['flip7']={render,inspect};

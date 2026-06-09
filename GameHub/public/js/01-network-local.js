@@ -1,13 +1,19 @@
 /* ====================== NETWORK ====================== */
 function wsUrl(party,room){const p=location.protocol==='https:'?'wss':'ws';return `${p}://${PARTYKIT_HOST}/parties/${party}/${encodeURIComponent(room)}`;}
 let _joinAttempt=null; // remembers join params so we can roll quick-play shards on "full"
+let onlineDevicePlayers=[];
+function getSeatPid(i){let p=localStorage.getItem('hub_pid_'+i);if(!p){p='p_'+Math.random().toString(36).slice(2,10)+Date.now().toString(36)+'_'+i;localStorage.setItem('hub_pid_'+i,p);}return p;}
+function syncOnlinePrimaryName(){const n=($('onlineName')?.value||'').trim();if(!onlineDevicePlayers.length)onlineDevicePlayers=[{name:n||'Player'}];else onlineDevicePlayers[0].name=n||onlineDevicePlayers[0].name||'Player';}
+function onlineSeatsPayload(){syncOnlinePrimaryName();return onlineDevicePlayers.map((p,i)=>({pid:getSeatPid(i),name:(p.name||('Player '+(i+1))).slice(0,20)}));}
+function renderOnlineDevicePlayers(){syncOnlinePrimaryName();const box=$('onlineDevicePlayers');if(!box)return;box.innerHTML=onlineDevicePlayers.map((p,i)=>`<div style="display:flex;gap:6px;align-items:center;margin-bottom:5px"><input class="input" style="margin:0;padding:8px" value="${p.name.replace(/"/g,'&quot;')}" ${i===0?'placeholder="Main player"':'placeholder="Same-device player"'} oninput="onlineDevicePlayers[${i}].name=this.value; if(${i}===0)$('onlineName').value=this.value"><button class="icon-btn" ${i===0?'disabled style="opacity:.3"':''} onclick="onlineDevicePlayers.splice(${i},1);renderOnlineDevicePlayers()">✕</button></div>`).join('');}
+function addOnlineDevicePlayer(){syncOnlinePrimaryName();if(onlineDevicePlayers.length>=8)return;onlineDevicePlayers.push({name:'Player '+(onlineDevicePlayers.length+1)});renderOnlineDevicePlayers();}
 function connectRoom(code,{isPublic=false,quickGame=null,maxPlayers=8,shard=null}={}){
   mode='online';net.room=code;net.isHost=false;net.spectating=false;
   _joinAttempt={code,isPublic,quickGame,maxPlayers,shard};
   if(net.ws){try{net.ws.close();}catch(e){}}
   resetGameUi();
   const ws=new WebSocket(wsUrl('room',code));net.ws=ws;
-  ws.onopen=()=>ws.send(JSON.stringify({type:'join',pid:getPid(),name:myName,isPublic,quickGame,maxPlayers}));
+  ws.onopen=()=>ws.send(JSON.stringify({type:'join',pid:getPid(),name:myName,seats:onlineSeatsPayload(),isPublic,quickGame,maxPlayers}));
   ws.onmessage=ev=>{let m;try{m=JSON.parse(ev.data);}catch(e){return;}handleNet(m);};
   ws.onerror=()=>toast('Connection error');
 }
@@ -39,6 +45,8 @@ function handleNet(m){
   if(m.type==='game'){
     net.isHost=m.isHost;net.spectating=(m.view.yourSeat<0);
     window._currentBots=m.bots||[];   // bot seats the host must drive
+    window._controlledSeats=m.controlledSeats||[];
+    window._controlledViews=m.views||[];
     $('gameRoomTag').textContent=net.room||'';$('gameRoomTag').classList.toggle('hidden',!net.room);
     $('spectateTag').classList.toggle('hidden',!net.spectating);
     if(!$('gameScreen').classList.contains('active'))showScreen('gameScreen');

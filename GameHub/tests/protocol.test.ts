@@ -18,6 +18,7 @@ describe("protocol guards", () => {
       isPublic: false,
       quickGame: "flip7",
       maxPlayers: 8,
+      seats: [{ pid: "abc_123", name: "Alice With A Very Ve" }],
     });
   });
 
