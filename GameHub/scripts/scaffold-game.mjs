@@ -23,6 +23,7 @@ const pascal = id.split('_').map((s) => s[0].toUpperCase() + s.slice(1)).join(''
 const tsPath = `src/games/${id}.ts`;
 const clientPath = `public/js/games/${id}.js`;
 const testPath = `tests/${id}.test.ts`;
+const sampleNames = Array.from({ length: Math.max(min, 2) }, (_, i) => JSON.stringify(`P${i + 1}`)).join(', ');
 for (const path of [tsPath, clientPath, testPath]) {
   if (existsSync(path)) throw new Error(`${path} already exists`);
   mkdirSync(dirname(path), { recursive: true });
@@ -188,7 +189,7 @@ import { ${pascal} } from "../src/games/${id}";
 
 describe("${name}", () => {
   it("creates serializable state and views for all seats", () => {
-    const state = ${pascal}.create([${'"A", "B"'.padEnd(min * 4 - 2, ', "X"')}]);
+    const state = ${pascal}.create([${sampleNames}]);
     expect(state.schemaVersion).toBe(1);
     expect(JSON.parse(JSON.stringify(state))).toEqual(state);
 
@@ -211,14 +212,14 @@ describe("${name}", () => {
   });
 
   it("ignores a spectator's generic gameplay action", () => {
-    const state = ${pascal}.create([${'"A", "B"'.padEnd(min * 4 - 2, ', "X"')}]);
+    const state = ${pascal}.create([${sampleNames}]);
     const before = JSON.parse(JSON.stringify(state));
     ${pascal}.applyAction(state, -1, { type: "action", action: "example", index: 0 });
     expect(state).toEqual(before);
   });
 
   it("exposes a summary exactly when marked over", () => {
-    const state = ${pascal}.create([${'"A", "B"'.padEnd(min * 4 - 2, ', "X"')}]);
+    const state = ${pascal}.create([${sampleNames}]);
     const view = ${pascal}.viewFor(state, 0);
     if (view.over) expect(view.summary).toBeDefined();
   });

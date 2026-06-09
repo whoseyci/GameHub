@@ -7,6 +7,11 @@ const networkLocal = readFileSync(new URL("../public/js/01-network-local.js", im
 const skyjo = readFileSync(new URL("../public/js/03-skyjo.js", import.meta.url), "utf8");
 const qwixx = readFileSync(new URL("../public/js/02-qwixx.js", import.meta.url), "utf8");
 const flip7 = readFileSync(new URL("../public/js/04-flip7.js", import.meta.url), "utf8");
+const botInit = readFileSync(new URL("../public/js/05-bots-init.js", import.meta.url), "utf8");
+const botDriver = readFileSync(new URL("../public/js/bots/driver.js", import.meta.url), "utf8");
+const botFlip7 = readFileSync(new URL("../public/js/bots/flip7.js", import.meta.url), "utf8");
+const botQwixx = readFileSync(new URL("../public/js/bots/qwixx.js", import.meta.url), "utf8");
+const botSkyjo = readFileSync(new URL("../public/js/bots/skyjo.js", import.meta.url), "utf8");
 
 describe("client module split", () => {
   it("loads frontend scripts as smaller ordered files", () => {
@@ -14,6 +19,25 @@ describe("client module split", () => {
       expect(html).toContain(`/js/${file}.js`);
     }
     expect(html).toContain('/styles/main.css');
+  });
+
+  it("loads modular bot scripts before the bot scheduler", () => {
+    const order = [
+      '/js/bots/driver.js',
+      '/js/bots/flip7.js',
+      '/js/bots/qwixx.js',
+      '/js/bots/skyjo.js',
+      '/js/05-bots-init.js',
+    ].map((s) => html.indexOf(s));
+
+    for (const pos of order) expect(pos).toBeGreaterThanOrEqual(0);
+    expect(order).toEqual([...order].sort((a, b) => a - b));
+
+    expect(botDriver).toContain('const BotDriver');
+    expect(botFlip7).toContain("BotDriver.register('flip7'");
+    expect(botQwixx).toContain('BotDriver.register("qwixx"');
+    expect(botSkyjo).toContain("BotDriver.register('skyjo'");
+    expect(botInit).toContain('BotDriver.choose');
   });
 });
 

@@ -27,7 +27,12 @@ describe("Flip7 rule regressions", () => {
   it("emits normalized event schema for a normal hit", () => {
     const state: any = Flip7.create(["A", "B"]);
     state.current = 0;
-    state.deck = [{ kind: "num", v: 9 }];
+    state.players[0].nums = [];
+    state.players[0].mods = [];
+    state.players[0].tableau = [];
+    state.players[0].secondChance = false;
+    state.players[0].status = "active";
+    state.deck = [{ id: "test_num_9", kind: "num", v: 9 }];
     state.discard = [];
 
     Flip7.applyAction(state, 0, { action: "hit" });

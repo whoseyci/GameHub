@@ -30,6 +30,10 @@ describe("GameModule contract", () => {
           expect(view.yourSeat).toBe(seat);
           expect(typeof view.phase).toBe("string");
           expect(typeof view.over).toBe("boolean");
+          if (seat >= 0) {
+            expect(view.state).toBeDefined();
+            expect(Array.isArray(view.state?.players)).toBe(true);
+          }
           expectSerializable(view);
         }
       });

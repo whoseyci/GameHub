@@ -30,12 +30,12 @@ function buildViewState(s: State): GameViewState {
       seat: i,
       name: p.name,
       status: p.status,
-      score: p.roundScore,
+      score: liveScore(p),
       banked: p.banked,
     })),
-    actingCount: s.phase === "PLAY" && !s.pendingAction
-      ? s.players.filter((p) => p.status === "active").length
-      : 1,
+    // Flip 7 is turn-based: exactly one seat acts at a time, or one seat is
+    // choosing a pending action target.
+    actingCount: (s.phase === "PLAY" && (s.pendingAction || currentPlayer >= 0)) ? 1 : 0,
     autoAdvanceMs: undefined,
   };
 }

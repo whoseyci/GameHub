@@ -87,6 +87,10 @@ export class Room extends Server<Env> {
     if (this.gameState) await this.ctx.storage.put("gameState", this.gameState);
     else await this.ctx.storage.delete("gameState");
   }
+  private async persistRoom() {
+    await this.persistMeta();
+    await this.persistGame();
+  }
 
   private memberIdx(pid: string) { return this.members.findIndex((m) => m.id === pid); }
   private pendingIdx(pid: string) { return this.pending.findIndex((p) => p.id === pid); }
@@ -175,9 +179,12 @@ export class Room extends Server<Env> {
     if (this.tickAt && now >= this.tickAt - 50 && this.gameId && this.gameState) {
       this.tickAt = null;
       const runner = TICK_RUNNERS[this.gameId];
-      if (runner) { runner(this.gameState); this.log({ kind: "tick", gameId: this.gameId }); await this.persistGame(); }
+      if (runner) {
+        runner(this.gameState);
+        this.log({ kind: "tick", gameId: this.gameId });
+      }
       this.scheduleTick();        // a tick may queue another (e.g. chained turn-ends)
-      await this.persistMeta();
+      await this.persistRoom();
       this.broadcastState();
     }
     // 2) idle / empty close
@@ -345,7 +352,7 @@ export class Room extends Server<Env> {
       const err = this.startGame(msg.gameId);
       if (err) { conn.send(JSON.stringify({ type: "error", message: err })); return; }
       this.log({ kind: "launch_game", actor: pid, gameId: this.gameId, detail: { players: this.members.length } });
-      await this.persistMeta(); await this.persistGame(); await this.lobbyUpdate();
+      await this.persistRoom(); await this.lobbyUpdate();
       this.broadcastState();
       return;
     }
@@ -367,7 +374,7 @@ export class Room extends Server<Env> {
       g.applyAction(this.gameState, seat, { action: "next_round" });
       this.log({ kind: "next_round", actor: pid, seat, gameId: this.gameId });
       this.scheduleTick();
-      await this.persistMeta(); await this.persistGame(); await this.lobbyUpdate();
+      await this.persistRoom(); await this.lobbyUpdate();
       this.broadcastState();
       return;
     }
@@ -379,7 +386,7 @@ export class Room extends Server<Env> {
       // absorb spectators into the group now that we're between games
       for (const p of this.pending) if (this.memberIdx(p.id) < 0 && this.members.length < this.maxPlayers) this.members.push(p);
       this.pending = [];
-      await this.persistMeta(); await this.persistGame(); await this.lobbyUpdate();
+      await this.persistRoom(); await this.lobbyUpdate();
       this.broadcastState();
       return;
     }
@@ -405,7 +412,7 @@ export class Room extends Server<Env> {
       g.applyAction(this.gameState, actSeat, msg);
       this.log({ kind: "action", actor: pid, seat: actSeat, gameId: this.gameId, action: msg.action, detail: msg.botSeat != null ? { botSeat: msg.botSeat } : undefined });
       this.scheduleTick();
-      await this.persistGame();
+      await this.persistRoom();
       this.broadcastState();
       return;
     }
@@ -430,7 +437,7 @@ export class Room extends Server<Env> {
     const target = Math.min(g.meta.maxPlayers, Math.max(g.meta.minPlayers, 3));
     if (this.members.length >= target) {
       this.startGame(this.quickGame!);
-      await this.persistMeta(); await this.persistGame(); await this.lobbyUpdate(); this.broadcastState();
+      await this.persistRoom(); await this.lobbyUpdate(); this.broadcastState();
     }
   }
 
