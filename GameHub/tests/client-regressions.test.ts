@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 
 const html = readFileSync(new URL("../public/index.html", import.meta.url), "utf8");
+const core = readFileSync(new URL("../public/js/00-core.js", import.meta.url), "utf8");
 const networkLocal = readFileSync(new URL("../public/js/01-network-local.js", import.meta.url), "utf8");
 const skyjo = readFileSync(new URL("../public/js/03-skyjo.js", import.meta.url), "utf8");
 const qwixx = readFileSync(new URL("../public/js/02-qwixx.js", import.meta.url), "utf8");
@@ -48,5 +49,18 @@ describe("client cross-game cleanup regressions", () => {
 
     const flip7Draw = flip7.match(/function draw\(view\)\{\n\s+removeQwixxUi\(\);\n\s+const s=view\.flip7/);
     expect(flip7Draw).not.toBeNull();
+  });
+});
+
+
+describe("client HTML injection regressions", () => {
+  it("defines and uses an HTML escaping helper for server-sourced labels", () => {
+    expect(core).toContain("function esc");
+    expect(networkLocal).toContain("esc(p.name)");
+    expect(networkLocal).toContain("esc(r.hostName)");
+    expect(networkLocal).toContain("esc(r.name)");
+    expect(skyjo).toContain("esc(p.name)");
+    expect(qwixx).toContain("esc(player.name)");
+    expect(flip7).toContain("esc(p.name)");
   });
 });

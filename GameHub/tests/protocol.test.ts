@@ -29,9 +29,14 @@ describe("protocol guards", () => {
 
   it("keeps only allowed action fields", () => {
     const msg = parseClientMessage(JSON.stringify({
-      type: "action", action: "mark", c: "red", i: 3, botSeat: 1, exploit: { nested: true }
+      type: "action", action: "mark", c: "red", i: 3, botSeat: 1, use: "white", exploit: { nested: true }
     }));
-    expect(msg).toEqual({ type: "action", action: "mark", c: "red", i: 3, botSeat: 1 });
+    expect(msg).toEqual({ type: "action", action: "mark", c: "red", i: 3, botSeat: 1, use: "white" });
+  });
+
+  it("rejects invalid Qwixx use values", () => {
+    const msg = parseClientMessage(JSON.stringify({ type: "action", action: "mark", c: "red", i: 3, use: "<bad>" }));
+    expect(msg).toEqual({ type: "action", action: "mark", c: "red", i: 3 });
   });
 
   it("normalizes empty names", () => {

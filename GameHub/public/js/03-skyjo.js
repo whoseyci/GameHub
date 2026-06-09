@@ -79,7 +79,7 @@
     }
     else{
       if(ta==='turn_end_delay')sb.innerHTML='<span class="muted">Ending turn…</span>';
-      else if(mode==='local')sb.innerHTML=`<span style="color:#10b981">${s.players[s.currentPlayer].name}'s turn!</span>`;
+      else if(mode==='local')sb.innerHTML=`<span style="color:#10b981">${esc(s.players[s.currentPlayer].name)}'s turn!</span>`;
       else if(myTurn)sb.innerHTML='<span style="color:#10b981">Your turn!</span>';
       else sb.textContent='Waiting for '+s.players[s.currentPlayer].name+'…';
     }
@@ -112,7 +112,7 @@
     if(!isMain)wrap.onclick=()=>investigate(s,pi,viewer);
     const h=document.createElement('div');h.className='board-header';
     const live=p.board.filter(c=>c.revealed&&!c.cleared).reduce((a,c)=>a+c.value,0);
-    h.innerHTML=`<span>${p.name}${pi===viewer?' (You)':''}</span><span class="score-badge">Now: ${live} · Total: ${p.totalScore}</span>`;
+    h.innerHTML=`<span>${esc(p.name)}${pi===viewer?' (You)':''}</span><span class="score-badge">Now: ${esc(live)} · Total: ${esc(p.totalScore)}</span>`;
     wrap.appendChild(h);
     const grid=document.createElement('div');grid.className='board-grid';
     p.board.forEach((c,ci)=>{const card=document.createElement('div');
@@ -156,7 +156,7 @@
   function investigate(s,pi,viewer){
     const seats=s.players.map((_,i)=>i).filter(i=>i!==viewer);
     const idx=seats.indexOf(pi),prev=seats[(idx-1+seats.length)%seats.length],next=seats[(idx+1)%seats.length];
-    const box=$('investigateBox');box.innerHTML=`<div class="inspect-head"><button class="icon-btn" onclick="window._skyjoInspect(${prev})">‹</button><b>${s.players[pi].name}</b><button class="icon-btn" onclick="window._skyjoInspect(${next})">›</button><button class="icon-btn" onclick="$('investigateOverlay').classList.add('hidden')">✕</button></div>`;
+    const box=$('investigateBox');box.innerHTML=`<div class="inspect-head"><button class="icon-btn" onclick="window._skyjoInspect(${prev})">‹</button><b>${esc(s.players[pi].name)}</b><button class="icon-btn" onclick="window._skyjoInspect(${next})">›</button><button class="icon-btn" onclick="$('investigateOverlay').classList.add('hidden')">✕</button></div>`;
     box.appendChild(boardDOM(s,s.players[pi],pi,true,false,viewer));
     window._skyjoLastInspect={s,viewer};window._skyjoInspect=(seat)=>investigate(window._skyjoLastInspect.s,seat,window._skyjoLastInspect.viewer);
     $('investigateOverlay').classList.remove('hidden');

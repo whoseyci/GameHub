@@ -147,7 +147,7 @@ window.GameClients = window.GameClients || {};
     }).join('');
     const pens = Array.from({length:4}, (_, i) => `<span class="qwixx-mini-pen ${player.penalties > i ? 'on' : ''}">⚠</span>`).join('');
     return `<div class="qwixx-mini-board${player.active ? ' active' : ''}${player.seat === viewerSeat ? ' you' : ''}">
-      <div class="qwixx-mini-head"><b>${player.active ? '🎲 ' : ''}${player.name}</b><span>${player.score}</span></div>
+      <div class="qwixx-mini-head"><b>${player.active ? '🎲 ' : ''}${esc(player.name)}</b><span>${player.score}</span></div>
       <div class="qwixx-mini-grid">${rows}</div>
       <div class="qwixx-mini-pens">${pens}</div>
     </div>`;
@@ -260,7 +260,7 @@ window.GameClients = window.GameClients || {};
     const rec = focused.seat === s.activeSeat ? `<div class="qwixx-reco">💡 ${diceRevealed ? recommendedMove(s, focused) : 'Throw dice to reveal options.'}</div>` : '';
     boards.innerHTML = `
       <div class="qwixx-focus-card player-board${focused.active ? ' active' : ''}">
-        <div class="board-header"><span>${focused.active ? '🎲 ' : ''}${focused.name}${focused.seat === view.yourSeat ? ' (you)' : ''}</span><span class="score-badge">Active: ${activeName} · total ${focused.score}</span></div>
+        <div class="board-header"><span>${focused.active ? '🎲 ' : ''}${esc(focused.name)}${focused.seat === view.yourSeat ? ' (you)' : ''}</span><span class="score-badge">Active: ${esc(activeName)} · total ${esc(focused.score)}</span></div>
         ${rec}
         ${renderScorecard(focused, displayState, view.yourSeat, false)}
       </div>`;
@@ -281,7 +281,7 @@ window.GameClients = window.GameClients || {};
     const seats=s.allPlayers.filter(p=>p.seat!==view.yourSeat).map(p=>p.seat);
     const idx=seats.indexOf(seat),prev=seats[(idx-1+seats.length)%seats.length],next=seats[(idx+1)%seats.length];
     const box=$('investigateBox');
-    box.innerHTML=`<div class="inspect-head"><button class="icon-btn" onclick="window.GameClients['qwixx'].inspect(${prev})">‹</button><b>${player.name}${player.active?' 🎲':''}</b><button class="icon-btn" onclick="window.GameClients['qwixx'].inspect(${next})">›</button><button class="icon-btn" onclick="$('investigateOverlay').classList.add('hidden')">✕</button></div><div class="player-board qwixx-focus-card">${renderScorecard(player,s,view.yourSeat,false)}</div>`;
+    box.innerHTML=`<div class="inspect-head"><button class="icon-btn" onclick="window.GameClients['qwixx'].inspect(${prev})">‹</button><b>${esc(player.name)}${player.active?' 🎲':''}</b><button class="icon-btn" onclick="window.GameClients['qwixx'].inspect(${next})">›</button><button class="icon-btn" onclick="$('investigateOverlay').classList.add('hidden')">✕</button></div><div class="player-board qwixx-focus-card">${renderScorecard(player,s,view.yourSeat,false)}</div>`;
     $('investigateOverlay').classList.remove('hidden');
   }
 

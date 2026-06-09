@@ -81,6 +81,7 @@ export function parseClientMessage(raw: string): any | null {
       if (Number.isInteger(msg.target)) out.target = msg.target;
       if (Number.isInteger(msg.botSeat)) out.botSeat = msg.botSeat;
       if (Number.isInteger(msg.seat)) out.seat = msg.seat;
+      if (msg.use === "white" || msg.use === "color") out.use = msg.use;
       if (typeof msg.c === "string" && msg.c.length <= 16) out.c = msg.c;
       if (Number.isInteger(msg.i)) out.i = msg.i;
       return out;

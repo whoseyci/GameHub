@@ -61,7 +61,7 @@ function removeBot(){net.send({type:'remove_bot'});}
 function renderRoom(m){
   $('roomCode').textContent=m.code;
   $('roomVis').textContent=(m.quickGame?'⚡ Quick Play · ':'')+(m.isPublic?'🌍 Public room':'🔒 Private room');
-  $('roomMembers').innerHTML=m.members.map(p=>`<span class="chip"${p.bot?' style="background:#312e81;color:#c7d2fe"':''}>${p.name}${p.id===getPid()?' (You)':''}${p.bot?' · '+(p.difficulty||'med'):''}</span>`).join('')||'<span class="muted">Just you so far…</span>';
+  $('roomMembers').innerHTML=m.members.map(p=>`<span class="chip"${p.bot?' style="background:#312e81;color:#c7d2fe"':''}>${esc(p.name)}${p.id===getPid()?' (You)':''}${p.bot?' · '+esc(p.difficulty||'med'):''}</span>`).join('')||'<span class="muted">Just you so far…</span>';
   $('hostArea').classList.toggle('hidden',!m.isHost);
   $('guestArea').classList.toggle('hidden',m.isHost);
   // bot controls (host only)
@@ -101,11 +101,13 @@ function gameName(id){const g=catalogue.find(g=>g.id===id);return g?g.emoji+' '+
 function renderPublic(rooms){
   const el=$('publicList');
   if(!rooms||!rooms.length){el.innerHTML='<div class="muted">No open public rooms right now.</div>';return;}
-  el.innerHTML=rooms.map(r=>{
+  el.innerHTML=rooms.map((r,idx)=>{
     const live=r.inGame,label=live?'Spectate':'Join';
-    const status=live?'<span style="color:#f59e0b">🎮 '+gameName(r.gameId)+'</span>':(r.gameId?'<span style="color:#10b981">⚡ '+gameName(r.gameId)+' lobby</span>':'<span style="color:#10b981">⏳ Waiting</span>');
-    return `<div class="room-row"><div><div class="rc">${r.code.replace(/^quick-/,'⚡ ')}</div><div class="rm">${r.hostName} · ${r.players}/${r.maxPlayers} · ${status}</div></div><button onclick="joinPublic('${r.code.replace(/'/g,"")}')">${label}</button></div>`;
+    const status=live?'<span style="color:#f59e0b">🎮 '+esc(gameName(r.gameId))+'</span>':(r.gameId?'<span style="color:#10b981">⚡ '+esc(gameName(r.gameId))+' lobby</span>':'<span style="color:#10b981">⏳ Waiting</span>');
+    const shown=String(r.code||'').replace(/^quick-/,'⚡ ');
+    return `<div class="room-row"><div><div class="rc">${esc(shown)}</div><div class="rm">${esc(r.hostName)} · ${esc(r.players)}/${esc(r.maxPlayers)} · ${status}</div></div><button data-room-idx="${idx}">${label}</button></div>`;
   }).join('');
+  el.querySelectorAll('[data-room-idx]').forEach(btn=>btn.onclick=()=>joinPublic(rooms[Number(btn.dataset.roomIdx)].code));
 }
 
 /* ====================== GAME VIEW DISPATCH ====================== */
@@ -131,8 +133,8 @@ function showSummary(view){
   const isOver=view.over;
   const hasDelta=sm.rows.some(r=>r.delta!=null);
   const head=`<tr><th>Player</th>${hasDelta?'<th>Round</th>':''}<th>Total</th></tr>`;
-  const rows=sm.rows.map(r=>{const w=isOver&&sm.winners.includes(r.seat);const d=r.delta!=null?`<td>${r.delta>=0?'+':''}${r.delta}</td>`:'';return `<tr class="${w?'winner-row':''}"><td>${r.name}${w?' <span class="crown">🏆</span>':''}</td>${d}<td>${r.score}</td></tr>`;}).join('');
-  const wn=sm.winners.map(i=>{const r=sm.rows.find(x=>x.seat===i);return r?r.name:'';}).join(' & ');
+  const rows=sm.rows.map(r=>{const w=isOver&&sm.winners.includes(r.seat);const d=r.delta!=null?`<td>${r.delta>=0?'+':''}${r.delta}</td>`:'';return `<tr class="${w?'winner-row':''}"><td>${esc(r.name)}${w?' <span class="crown">🏆</span>':''}</td>${d}<td>${esc(r.score)}</td></tr>`;}).join('');
+  const wn=sm.winners.map(i=>{const r=sm.rows.find(x=>x.seat===i);return r?esc(r.name):'';}).join(' & ');
   let foot=isOver?`<div style="font-size:1.4rem;font-weight:900;margin:16px 0;color:#10b981"><span class="crown">🏆</span> ${wn} ${sm.winners.length>1?'win':'wins'}!</div>`:'';
   let btns;
   if(mode==='local'){btns=isOver?`<button class="btn green" onclick="localNext()">Play Again</button><button class="btn secondary" onclick="quitLocal()">Menu</button>`:`<button class="btn" onclick="localNext()">Next Round</button>`;}

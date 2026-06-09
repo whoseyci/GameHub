@@ -102,6 +102,23 @@ describe("Qwixx rule regressions", () => {
     expect(state.players[0].rows.yellow.marks).toContain(5);
   });
 
+
+  it("honors requested white vs color use for ambiguous active-player marks", () => {
+    const whiteState: any = Qwixx.create(["A", "B"]);
+    whiteState.dice = { w: [2, 5], r: 5, y: 1, g: 1, b: 1 }; // red 7 is both white sum and red color sum
+    Qwixx.applyAction(whiteState, 0, { action: "mark", c: "red", i: 5, use: "white" });
+    expect(whiteState.players[0].rows.red.marks).toEqual([5]);
+    expect(whiteState.pendingWhiteDecisions).not.toContain(0);
+    expect(whiteState.activeColorUsed).toBe(false);
+
+    const colorState: any = Qwixx.create(["A", "B"]);
+    colorState.dice = { w: [2, 5], r: 5, y: 1, g: 1, b: 1 };
+    Qwixx.applyAction(colorState, 0, { action: "mark", c: "red", i: 5, use: "color" });
+    expect(colorState.players[0].rows.red.marks).toEqual([5]);
+    expect(colorState.pendingWhiteDecisions).toContain(0);
+    expect(colorState.activeColorUsed).toBe(true);
+  });
+
   it("blocks marks in a locked row after the shared white action resolves", () => {
     const state: any = Qwixx.create(["A", "B"]);
     state.dice = { w: [6, 6], r: 6, y: 2, g: 3, b: 4 };

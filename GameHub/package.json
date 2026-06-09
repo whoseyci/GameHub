@@ -2,6 +2,9 @@
   "name": "skyjo-pro",
   "version": "1.0.0",
   "private": true,
+  "engines": {
+    "node": ">=22.0.0"
+  },
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
@@ -16,9 +19,9 @@
     "partyserver": "^0.0.71"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20250606.0",
+    "@cloudflare/workers-types": "^4.20260609.1",
     "typescript": "^5.4.0",
     "vitest": "^4.1.8",
-    "wrangler": "^4.20.0"
+    "wrangler": "^4.98.0"
   }
 }

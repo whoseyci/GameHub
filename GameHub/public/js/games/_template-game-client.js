@@ -24,7 +24,7 @@
     $('miniBoardsContainer').innerHTML = '';
     $('mainBoardsContainer').innerHTML = `
       <div class="player-board">
-        <div class="player-title">${view.template?.players?.[view.yourSeat]?.name || 'Spectator'}</div>
+        <div class="player-title">${esc(view.template?.players?.[view.yourSeat]?.name || 'Spectator')}</div>
         <div class="muted">Replace this with your game UI.</div>
         <button class="btn" onclick="window.GameClients['${ID}'].act('example')">Example action</button>
       </div>`;

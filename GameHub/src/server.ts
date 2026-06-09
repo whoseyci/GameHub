@@ -16,7 +16,7 @@ import {
   Server, Connection, ConnectionContext, routePartykitRequest, getServerByName,
 } from "partyserver";
 import { getGame, GAME_CATALOGUE, TICK_RUNNERS } from "./games/registry";
-import { parseClientMessage } from "./protocol";
+import { cleanId, cleanInt, cleanName, parseClientMessage } from "./protocol";
 import { appendReplay, summarizeGameState, type ReplayEntry } from "./replay";
 
 export interface Env {
@@ -30,6 +30,7 @@ export interface Env {
 export const LOBBY_SINGLETON = "public-lobby";
 const IDLE_MS = 10 * 60 * 1000;       // close room after 10 min idle
 const EMPTY_GRACE_MS = 45 * 1000;     // close shortly after everyone leaves
+const SAFE_ROOM_CODE = /^[A-Za-z0-9_-]{1,64}$/;
 
 type ConnState = { pid?: string; pids?: string[] };
 interface Member { id: string; name: string; bot?: boolean; difficulty?: string; }
@@ -89,6 +90,22 @@ export class Room extends Server<Env> {
 
   private memberIdx(pid: string) { return this.members.findIndex((m) => m.id === pid); }
   private pendingIdx(pid: string) { return this.pending.findIndex((p) => p.id === pid); }
+  private livePids(excludeConnId?: string) {
+    return new Set(
+      [...this.getConnections<ConnState>()]
+        .filter((c) => c.id !== excludeConnId)
+        .flatMap((c) => c.state?.pids?.length ? c.state.pids : (c.state?.pid ? [c.state.pid] : []))
+        .filter((pid): pid is string => !!pid)
+    );
+  }
+  private reassignHostIfGone(excludeConnId?: string) {
+    if (!this.hostId) return;
+    const live = this.livePids(excludeConnId);
+    if (live.has(this.hostId)) return;
+    const nextConnected = this.members.find((m) => !m.bot && live.has(m.id));
+    if (nextConnected) { this.hostId = nextConnected.id; return; }
+    if (!this.gameId) this.hostId = this.members.find((m) => !m.bot)?.id ?? this.members[0]?.id ?? null;
+  }
 
   private controlledPids(conn: Connection<ConnState>): string[] {
     const pids = conn.state?.pids?.length ? conn.state.pids : (conn.state?.pid ? [conn.state.pid] : []);
@@ -250,6 +267,10 @@ export class Room extends Server<Env> {
   }
 
   onConnect(conn: Connection<ConnState>, _ctx: ConnectionContext) {
+    if (!SAFE_ROOM_CODE.test(this.name)) {
+      try { conn.close(1008, "Bad room code."); } catch {}
+      return;
+    }
     this.armAlarm();
     conn.send(JSON.stringify({ type: "hello" }));
   }
@@ -260,6 +281,7 @@ export class Room extends Server<Env> {
 
     /* ---- join / reconnect ---- */
     if (msg.type === "join") {
+      if (!SAFE_ROOM_CODE.test(this.name)) { try { conn.close(1008, "Bad room code."); } catch {} return; }
       const seats = (msg.seats && msg.seats.length ? msg.seats : [{ pid: msg.pid, name: msg.name }]).slice(0, 8);
       const pids = seats.map((s: any) => s.pid);
       conn.setState({ pid: pids[0], pids });
@@ -295,7 +317,8 @@ export class Room extends Server<Env> {
       await this.lobbyUpdate();
       this.broadcastState();
 
-      if (this.quickGame && !this.gameId) this.maybeQuickStart();
+      // Quick-play auto-start: once enough solos are waiting, begin.
+      if (this.quickGame && !this.gameId) await this.maybeQuickStart();
       return;
     }
 
@@ -406,32 +429,34 @@ export class Room extends Server<Env> {
     return null;
   }
 
-  private maybeQuickStart() {
+  private async maybeQuickStart() {
     const g = this.quickGame ? getGame(this.quickGame) : null;
     if (!g) return;
     // Auto-start when we reach a comfortable size; host can start earlier.
     const target = Math.min(g.meta.maxPlayers, Math.max(g.meta.minPlayers, 3));
     if (this.members.length >= target) {
       this.startGame(this.quickGame!);
-      this.persistMeta(); this.persistGame(); this.lobbyUpdate(); this.broadcastState();
+      await this.persistMeta(); await this.persistGame(); await this.lobbyUpdate(); this.broadcastState();
     }
   }
 
   async onClose(conn: Connection<ConnState>) {
-    const pid = conn.state?.pid;
-    if (!pid) return;
-    const pi = this.pendingIdx(pid);
-    if (pi >= 0) this.pending.splice(pi, 1);
+    const closingPids = this.controlledPids(conn);
+    if (!closingPids.length) return;
+    for (const pid of closingPids) {
+      const pi = this.pendingIdx(pid);
+      if (pi >= 0) this.pending.splice(pi, 1);
+    }
 
-    // Between games, leaving frees your seat. Mid-game, your seat is kept so you
+    // Between games, leaving frees your seat(s). Mid-game, seats are kept so you
     // can reconnect; the engine simply waits (host can advance turns).
     if (!this.gameId) {
-      const mi = this.memberIdx(pid);
-      if (mi >= 0) {
-        this.members.splice(mi, 1);
-        if (pid === this.hostId) this.hostId = this.members[0]?.id ?? null;
+      for (const pid of closingPids) {
+        const mi = this.memberIdx(pid);
+        if (mi >= 0) this.members.splice(mi, 1);
       }
     }
+    if (this.hostId && closingPids.includes(this.hostId)) this.reassignHostIfGone(conn.id);
     await this.persistMeta();
     await this.lobbyUpdate(this.members.length === 0 && this.pending.length === 0);
     this.broadcastState();
@@ -470,12 +495,23 @@ export class Lobby extends Server<Env> {
   }
   async onRequest(req: Request) {
     if (req.method === "POST") {
+      const url = new URL(req.url);
+      // Room DOs call us with lobby.fetch("https://lobby/u", ...). Reject direct
+      // public POSTs to the PartyServer route so strangers cannot forge lobby rows.
+      if (url.hostname !== "lobby" || url.pathname !== "/u") return new Response("Forbidden", { status: 403 });
       const b = (await req.json()) as any;
-      if (b.action === "remove") delete this.rooms[b.code];
-      else this.rooms[b.code] = {
-        code: b.code, hostName: b.hostName ?? "?", players: b.players ?? 1,
-        maxPlayers: b.maxPlayers ?? 8, gameId: b.gameId ?? null, inGame: !!b.inGame, updatedAt: Date.now(),
-      };
+      const code = cleanId(b.code);
+      if (!code) return new Response("Bad room code", { status: 400 });
+      if (b.action === "remove") delete this.rooms[code];
+      else {
+        const maxPlayers = cleanInt(b.maxPlayers, 2, 8) ?? 8;
+        const players = cleanInt(b.players, 0, maxPlayers) ?? 1;
+        const gameId = b.gameId == null ? null : cleanId(b.gameId);
+        this.rooms[code] = {
+          code, hostName: cleanName(b.hostName, "?"), players,
+          maxPlayers, gameId: gameId && getGame(gameId) ? gameId : null, inGame: !!b.inGame, updatedAt: Date.now(),
+        };
+      }
       await this.ctx.storage.put("rooms", this.rooms);
       this.broadcast(JSON.stringify({ type: "rooms", rooms: this.list() }));
       return Response.json({ ok: true });

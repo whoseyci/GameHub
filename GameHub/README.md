@@ -169,6 +169,8 @@ card/deck state.
 
 ## Local development (optional)
 
+Requires Node.js 22+ for current Wrangler tooling.
+
 ```bash
 npm install
 npm run dev        # wrangler dev — runs Worker + DOs + static client locally

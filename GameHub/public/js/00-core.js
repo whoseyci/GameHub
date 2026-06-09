@@ -8,9 +8,10 @@
    shape as Skyjo below. The hub never needs to change.
    ==================================================================== */
 const PARTYKIT_HOST = location.host; // served by the same Worker
-const BUILD_VERSION = "v18-skyjo-directional-6p"; // bump on each change; shown on the menu
+const BUILD_VERSION = "v19-security-qwixx-fixes"; // bump on each change; shown on the menu
 
 const $=id=>document.getElementById(id);
+function esc(v){return String(v ?? '').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));}
 function showScreen(id){
   // Leaving the game screen? Tear down any body-level game widgets (Flip 7 controls/dealer)
   // so Hit/Stay etc. can never linger over a menu.
@@ -273,7 +274,7 @@ function openRules(gameId){
 }
 function showRulesMenu(){
   $('rulesBox').innerHTML=`<h2 style="margin:0 0 12px">📖 How to Play</h2>
-    <div class="game-tiles">${catalogue.map(g=>`<div class="game-tile" onclick="openRules('${g.id}')"><div class="emoji">${g.emoji}</div><div class="gname">${g.name}</div></div>`).join('')}</div>
+    <div class="game-tiles">${catalogue.map(g=>`<div class="game-tile" onclick="openRules('${esc(g.id)}')"><div class="emoji">${esc(g.emoji)}</div><div class="gname">${esc(g.name)}</div></div>`).join('')}</div>
     <button class="btn secondary" style="margin-top:14px" onclick="$('rulesOverlay').classList.add('hidden')">Close</button>`;
   $('rulesOverlay').classList.remove('hidden');
 }
@@ -285,10 +286,10 @@ function renderTiles(containerId,onPick,n=null){
   el.innerHTML=catalogue.map(g=>{
     const fits = n==null || (n>=g.minPlayers && n<=g.maxPlayers);
     const why = n!=null && !fits ? (n<g.minPlayers?`Needs ${g.minPlayers}+`:`Max ${g.maxPlayers}`) : `${g.minPlayers}–${g.maxPlayers} players`;
-    return `<div class="game-tile${fits?'':' disabled'}" data-g="${g.id}" data-fits="${fits}">
-      <button class="tile-help" data-help="${g.id}" title="Rules">?</button>
-      <div class="emoji">${g.emoji}</div><div class="gname">${g.name}</div>
-      <div class="gdesc">${g.description}</div><div class="gsize">${why}</div></div>`;
+    return `<div class="game-tile${fits?'':' disabled'}" data-g="${esc(g.id)}" data-fits="${fits}">
+      <button class="tile-help" data-help="${esc(g.id)}" title="Rules">?</button>
+      <div class="emoji">${esc(g.emoji)}</div><div class="gname">${esc(g.name)}</div>
+      <div class="gdesc">${esc(g.description)}</div><div class="gsize">${esc(why)}</div></div>`;
   }).join('');
   el.querySelectorAll('.tile-help').forEach(b=>b.onclick=e=>{e.stopPropagation();openRules(b.dataset.help);});
   el.querySelectorAll('.game-tile').forEach(t=>t.onclick=()=>{ if(t.dataset.fits==='true') onPick(t.dataset.g); else toast('Not playable with this group size.'); });

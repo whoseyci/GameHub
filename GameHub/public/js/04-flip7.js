@@ -62,7 +62,7 @@
       wrap.dataset.f7Seat=i;
       if(busted)wrap.style.opacity='.85';
       const head=document.createElement('div');head.className='board-header';
-      head.innerHTML='<span>'+p.name+(i===viewer?' (You)':'')+' <span class="f7-status '+p.status+'">'+p.status+'</span></span><span class="score-badge">'+(busted?'BUST':'Now: '+p.live)+' \u00b7 Total: '+p.banked+'</span>';
+      head.innerHTML='<span>'+esc(p.name)+(i===viewer?' (You)':'')+' <span class="f7-status '+esc(p.status)+'">'+esc(p.status)+'</span></span><span class="score-badge">'+(busted?'BUST':'Now: '+esc(p.live))+' \u00b7 Total: '+esc(p.banked)+'</span>';
       wrap.appendChild(head);
       const row=document.createElement('div');row.className='f7-row';
       if(!p.nums.length&&!p.mods.length&&!p.second)row.innerHTML='<span class="f7-empty">no cards yet</span>';
@@ -86,7 +86,7 @@
     b.onclick=()=>inspect(i);
     const busted=p.status==='busted';
     const head=document.createElement('div');head.className='board-header';
-    head.innerHTML='<span>'+p.name+' <span class="f7-status '+p.status+'">'+p.status+'</span></span><span class="score-badge">'+(busted?'BUST':'Now: '+p.live)+' · '+p.banked+'</span>';
+    head.innerHTML='<span>'+esc(p.name)+' <span class="f7-status '+esc(p.status)+'">'+esc(p.status)+'</span></span><span class="score-badge">'+(busted?'BUST':'Now: '+esc(p.live))+' · '+esc(p.banked)+'</span>';
     b.appendChild(head);
     const row=document.createElement('div');row.className='f7-row';
     if(!p.nums.length&&!p.mods.length&&!p.second)row.innerHTML='<span class="f7-empty">no cards</span>';
@@ -110,7 +110,7 @@
     const idx=seats.indexOf(seat),prev=seats[(idx-1+seats.length)%seats.length],next=seats[(idx+1)%seats.length];
     const row=[...p.nums.map(n=>cardEl('num',n,{busted:p.status==='busted'})),...p.mods.map(m=>cardEl('mod',m,{busted:p.status==='busted'})),...(p.second?[cardEl('act','second')]:[]),...(p.actionCards||[]).map(a=>cardEl('act',a))];
     const cards=document.createElement('div');cards.className='f7-row';row.forEach(c=>cards.appendChild(c));
-    const box=$('investigateBox');box.innerHTML=`<div class="inspect-head"><button class="icon-btn" onclick="window.GameClients['flip7'].inspect(${prev})">‹</button><b>${p.name} · ${p.status}</b><button class="icon-btn" onclick="window.GameClients['flip7'].inspect(${next})">›</button><button class="icon-btn" onclick="$('investigateOverlay').classList.add('hidden')">✕</button></div><div class="player-board f7-focus-board"><div class="board-header"><span>${p.name}</span><span class="score-badge">Now ${p.live} · Total ${p.banked} · ${p.unique}/7</span></div></div>`;
+    const box=$('investigateBox');box.innerHTML=`<div class="inspect-head"><button class="icon-btn" onclick="window.GameClients['flip7'].inspect(${prev})">‹</button><b>${esc(p.name)} · ${esc(p.status)}</b><button class="icon-btn" onclick="window.GameClients['flip7'].inspect(${next})">›</button><button class="icon-btn" onclick="$('investigateOverlay').classList.add('hidden')">✕</button></div><div class="player-board f7-focus-board"><div class="board-header"><span>${esc(p.name)}</span><span class="score-badge">Now ${esc(p.live)} · Total ${esc(p.banked)} · ${esc(p.unique)}/7</span></div></div>`;
     box.querySelector('.player-board').appendChild(cards);
     $('investigateOverlay').classList.remove('hidden');
   }
@@ -137,8 +137,8 @@
       ctrl.appendChild(hit);ctrl.appendChild(stay);
     }
     else if(mode==='local'){const cur=s.players[s.current];
-      if(s.pendingAction){const k=s.pendingAction.kind;sb.innerHTML='<span style="color:#f59e0b">'+cur.name+': '+(k==='freeze'?'Freeze \u2744':k==='flip3'?'Flip 3':'Give \u2665')+' \u2014 tap a player</span>';}
-      else{sb.innerHTML='<span style="color:#10b981">'+(cur?cur.name:'')+'\'s turn</span>';
+      if(s.pendingAction){const k=s.pendingAction.kind;sb.innerHTML='<span style="color:#f59e0b">'+esc(cur.name)+': '+(k==='freeze'?'Freeze \u2744':k==='flip3'?'Flip 3':'Give \u2665')+' \u2014 tap a player</span>';}
+      else{sb.innerHTML='<span style="color:#10b981">'+(cur?esc(cur.name):'')+'\'s turn</span>';
         if(s.phase==='PLAY'&&cur&&cur.status==='active'){const hit=document.createElement('button');hit.className='btn green';hit.textContent='Hit';hit.onclick=()=>act(s.current,{action:'hit'});const stay=document.createElement('button');stay.className='btn secondary';stay.textContent='Stay';stay.onclick=()=>act(s.current,{action:'stay'});ctrl.appendChild(hit);ctrl.appendChild(stay);}}
     }
     else sb.textContent='Waiting for '+(s.players[s.current]?.name||'\u2026');
