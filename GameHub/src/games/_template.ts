@@ -2,7 +2,7 @@
 // Do not register this file directly; copy it to <game-id>.ts, rename the symbols,
 // then add the real module to registry.ts and a matching client renderer.
 
-import type { GameModule, GameView } from "./types";
+import type { GameModule, GameView, GameViewState, GameLifecyclePhase, GameFeatures } from "./types";
 import { makeSeed, type RngStateHolder } from "../rng";
 
 interface TemplatePlayer {
@@ -18,6 +18,32 @@ interface TemplateState extends RngStateHolder {
   log: unknown[];
 }
 
+/** Map internal phase to the canonical GameLifecyclePhase. */
+function lifecyclePhase(internalPhase: string): GameLifecyclePhase {
+  switch (internalPhase) {
+    case "PLAY":       return "PLAYING";
+    case "GAME_OVER":  return "GAME_OVER";
+    default:           return "PLAYING";
+  }
+}
+
+/** Build a standardized GameViewState so the hub stays game-agnostic. */
+function buildViewState(state: TemplateState): GameViewState {
+  return {
+    currentSeat: state.phase === "PLAY" ? state.current : -1,
+    pendingAction: state.phase === "PLAY" ? "choose_action" : null,
+    players: state.players.map((p, i) => ({
+      seat: i,
+      name: p.name,
+      status: state.phase === "PLAY"
+        ? (i === state.current ? "active" : "waiting")
+        : "out",
+      score: p.score,
+    })),
+    actingCount: state.phase === "PLAY" ? 1 : 0,
+  };
+}
+
 export const TemplateGame: GameModule = {
   meta: {
     id: "template",
@@ -26,6 +52,15 @@ export const TemplateGame: GameModule = {
     maxPlayers: 8,
     description: "Copy this file to start a new game module.",
     emoji: "🧩",
+    features: {
+      hasBots: false,
+      simultaneousTurns: false,
+      usesTick: false,
+      hasMultiRound: false,
+      canSpectate: false,
+      minDurationSec: 60,
+      maxDurationSec: 300,
+    },
   },
 
   create(names: string[]): TemplateState {
@@ -52,9 +87,10 @@ export const TemplateGame: GameModule = {
   viewFor(state: TemplateState, seat: number): GameView {
     return {
       game: "template",
-      phase: state.phase,
+      phase: lifecyclePhase(state.phase),
       over: state.phase === "GAME_OVER",
       yourSeat: seat,
+      state: buildViewState(state),
       template: {
         current: state.current,
         players: state.players.map((p, i) => ({ seat: i, name: p.name, score: p.score })),

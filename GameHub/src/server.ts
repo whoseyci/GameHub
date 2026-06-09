@@ -117,24 +117,18 @@ export class Room extends Server<Env> {
   private primarySeatFor(conn: Connection<ConnState>): number {
     const seats = this.controlledSeats(conn);
     if (!seats.length) return -1;
-    if (this.gameId === "qwixx" && this.gameState) {
-      if (this.gameState.phase === "WHITE_PHASE") {
-        const pending = seats.find((i) => this.gameState.pendingWhiteDecisions?.includes(i));
-        if (pending != null) return pending;
-      }
-      if (seats.includes(this.gameState.activeSeat)) return this.gameState.activeSeat;
-    }
-    if (this.gameId === "flip7" && this.gameState) {
-      const pa = this.gameState.pendingAction;
-      if (pa && seats.includes(pa.from)) return pa.from;
-      if (seats.includes(this.gameState.current)) return this.gameState.current;
-    }
-    if (this.gameId === "skyjo" && this.gameState) {
-      const cp = this.gameState.currentPlayer;
-      if (seats.includes(cp)) return cp;
-      if (this.gameState.phase === "REVEAL") {
-        const r = seats.find((i) => (this.gameState.players?.[i]?.revealCount ?? 2) < 2);
-        if (r != null) return r;
+    if (this.gameId && this.gameState) {
+      const g = getGame(this.gameId)!;
+      const view = g.viewFor(this.gameState, -1);
+      const vs = view.state;
+      if (vs) {
+        // Simultaneous-turn games: pick the first controlled seat that can act
+        if (vs.currentSeat < 0 && vs.actingCount && vs.actingCount > 1) {
+          const actSeat = seats.find((i) => vs.players?.[i]?.status === "active");
+          if (actSeat != null) return actSeat;
+        }
+        // Standard turn-based: use the currentSeat
+        if (vs.currentSeat >= 0 && seats.includes(vs.currentSeat)) return vs.currentSeat;
       }
     }
     return seats[0];

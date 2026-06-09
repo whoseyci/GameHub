@@ -1,4 +1,4 @@
-import type { GameModule, GameView } from "./types";
+import type { GameModule, GameView, GameViewState } from "./types";
 import { makeSeed, randomInt, type RngStateHolder } from "../rng";
 
 export interface QwixxRow {
@@ -101,6 +101,44 @@ function maybeEndOrNextTurn(s: QwixxState) {
   s.round++;
 }
 
+/** Map internal Qwixx phase to the canonical GameLifecyclePhase. */
+function lifecyclePhase(internalPhase: string): string {
+  switch (internalPhase) {
+    case "WHITE_PHASE":  return "PLAYING";
+    case "COLOR_PHASE":  return "PLAYING";
+    case "GAME_OVER":    return "GAME_OVER";
+    default:             return internalPhase;
+  }
+}
+
+/** Build a standardized GameViewState so the hub stays game-agnostic. */
+function buildQwixxViewState(s: QwixxState): GameViewState {
+  const isWhitePhase = s.phase === "WHITE_PHASE";
+  const actingPlayers = isWhitePhase
+    ? s.pendingWhiteDecisions.length
+    : (s.activeSeat >= 0 && s.players[s.activeSeat]?.penalties < 4 ? 1 : 0);
+  return {
+    currentSeat: isWhitePhase ? -1 : s.activeSeat,
+    pendingAction: isWhitePhase
+      ? (s.activeColorUsed ? "finishTurn" : "white_choice")
+      : (s.phase === "COLOR_PHASE" ? "color_choice" : null),
+    players: s.players.map((p, i) => {
+      const lockedColors = s.locked.filter((c: string) => COLORS.includes(c as Color) && p.rows[c]?.marks.includes(p.rows[c].nums.length - 1));
+      const isOut = lockedColors.length >= 1 || p.penalties >= 4;
+      return {
+        seat: i,
+        name: p.name,
+        status: isOut ? "out" :
+                (isWhitePhase ? (s.pendingWhiteDecisions.includes(i) ? "active" : "waiting") :
+                i === s.activeSeat ? "active" : "waiting"),
+        score: p.penalties,
+      };
+    }),
+    actingCount: actingPlayers,
+    autoAdvanceMs: undefined,
+  };
+}
+
 export const Qwixx: GameModule = {
   meta: {
     id: "qwixx",
@@ -108,7 +146,16 @@ export const Qwixx: GameModule = {
     minPlayers: 2,
     maxPlayers: 8,
     description: "Cross numbers left-to-right using dice sums.",
-    emoji: "🎲"
+    emoji: "🎲",
+    features: {
+      hasBots: true,
+      simultaneousTurns: true,
+      usesTick: false,
+      hasMultiRound: false,
+      canSpectate: false,
+      minDurationSec: 90,
+      maxDurationSec: 300,
+    },
   },
 
   create(names: string[]) {
@@ -216,11 +263,12 @@ export const Qwixx: GameModule = {
 
     return {
       game: "qwixx",
-      phase: s.phase,
+      phase: lifecyclePhase(s.phase),
       over: s.phase === "GAME_OVER",
       yourSeat: seat,
       summary,
-      state: {
+      state: buildQwixxViewState(s),
+      qwixx: {
         dice: s.dice,
         activeSeat: s.activeSeat,
         expansion: s.expansion,

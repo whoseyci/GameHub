@@ -4,8 +4,41 @@
 //
 // Each action produces `state.events` — an ordered list the client replays. The
 // final `state` is authoritative; `events` describe how we got there.
-import type { GameModule, GameView } from "./types";
+import type { GameModule, GameView, GameViewState } from "./types";
 import { makeSeed, shuffleInPlace, type RngStateHolder } from "../rng";
+
+/** Map internal Flip7 phase to the canonical GameLifecyclePhase. */
+function lifecyclePhase(internalPhase: string): string {
+  switch (internalPhase) {
+    case "PLAY":        return "PLAYING";
+    case "ROUND_END":   return "ROUND_END";
+    case "GAME_OVER":   return "GAME_OVER";
+    default:            return internalPhase;
+  }
+}
+
+/** Build a standardized GameViewState so the hub stays game-agnostic. */
+function buildViewState(s: State): GameViewState {
+  const currentPlayer = s.phase === "PLAY" ? s.current : -1;
+  return {
+    currentSeat: s.pendingAction ? s.pendingAction.from : currentPlayer,
+    pendingAction: s.pendingAction
+      ? s.pendingAction.kind
+      : s.phase === "PLAY" ? "draw_or_stay"
+      : null,
+    players: s.players.map((p, i) => ({
+      seat: i,
+      name: p.name,
+      status: p.status,
+      score: p.roundScore,
+      banked: p.banked,
+    })),
+    actingCount: s.phase === "PLAY" && !s.pendingAction
+      ? s.players.filter((p) => p.status === "active").length
+      : 1,
+    autoAdvanceMs: undefined,
+  };
+}
 
 type CardKind = "num" | "mod" | "act";
 interface Card { id: string; kind: CardKind; v: number | string; }
@@ -258,7 +291,17 @@ function scoreRound(s: State) {
 
 export const Flip7: GameModule = {
   meta: { id: "flip7", name: "Flip 7", minPlayers: 2, maxPlayers: 8,
-    description: "Push your luck — flip cards, don't repeat a number, race to 200.", emoji: "🎴" },
+    description: "Push your luck — flip cards, don't repeat a number, race to 200.", emoji: "🎴",
+    features: {
+      hasBots: true,
+      simultaneousTurns: false,
+      usesTick: false,
+      hasMultiRound: true,
+      canSpectate: true,
+      minDurationSec: 180,
+      maxDurationSec: 900,
+    },
+  },
 
   create(names) { return fresh(names, names.map(() => 0)); },
 
@@ -327,7 +370,12 @@ export const Flip7: GameModule = {
       };
     }
     return {
-      game: "flip7", phase: state.phase, over, yourSeat: seat, summary,
+      game: "flip7",
+      phase: lifecyclePhase(state.phase),
+      over,
+      yourSeat: seat,
+      summary,
+      state: buildViewState(state),
       flip7: {
         round: state.round, current: state.current, phase: state.phase,
         pendingAction: state.pendingAction, viewerSeat: seat,

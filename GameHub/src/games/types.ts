@@ -17,6 +17,27 @@
 //
 // The hub handles networking, seats, hosting, spectators, lobby, hibernation.
 
+// Standardized lifecycle phase for hub-level game management.
+export type GameLifecyclePhase =
+  | "SETUP"        // Room lobby, choosing game
+  | "DRAFT"        // Initial setup (reveals, dealing, etc.)
+  | "PLAYING"      // Normal gameplay — players take turns or act simultaneously
+  | "RESOLVING"    // Short delay for animations/computation before next turn
+  | "ROUND_END"    // Between rounds — showing scores, option for next round
+  | "GAME_OVER"    // Final results displayed
+  | "SPECTATING";  // Late joiner watching current round
+
+// Feature manifest that tells the hub what capabilities a game supports.
+export interface GameFeatures {
+  hasBots: boolean;           // can add AI players
+  simultaneousTurns: boolean; // all players act at once (e.g., Qwixx white phase)
+  usesTick: boolean;          // needs server-driven advance
+  hasMultiRound: boolean;     // supports next_round
+  canSpectate: boolean;       // late joiners allowed mid-game
+  minDurationSec: number;     // estimated minimum game duration
+  maxDurationSec: number;     // estimated maximum game duration
+}
+
 export interface GameMeta {
   id: string;            // stable id, e.g. "skyjo"
   name: string;          // display name
@@ -24,17 +45,49 @@ export interface GameMeta {
   maxPlayers: number;
   description: string;
   emoji: string;         // shown in the hub picker
+  features?: GameFeatures; // optional capability manifest
+}
+
+/**
+ * Standardized game state view that the hub uses for:
+ * - Bot driver: determines whose turn it is and what actions are pending
+ * - Tick scheduler: auto-advances games that need a delayed resolution
+ * - Focus manager: decides which player's board to show prominently
+ *
+ * Games populate this in viewFor() alongside their game-specific data.
+ * The hub reads ONLY this interface — game-specific fields live under
+ * the namespaced key (view.skyjo, view.flip7, view.qwixx, etc.).
+ */
+export interface GameViewState {
+  /** Seat index of the player whose turn it is, or -1 for simultaneous turns */
+  currentSeat: number;
+  /** Current action the active player must take, or null if any action is valid. */
+  pendingAction: string | null;
+  /** Per-player snapshot for the hub to drive bots and display status */
+  players: Array<{
+    seat: number;
+    name: string;
+    /** "active" | "stayed" | "busted" | "out" | "waiting" | "spectating" */
+    status: string;
+    /** Current round score (or cumulative for single-round games) */
+    score: number;
+    /** Banked/cumulative score across rounds */
+    banked?: number;
+  }>;
+  /** Number of players who can currently act (for simultaneous-turn games) */
+  actingCount?: number;
+  /** Estimated ms before the game auto-advances (for RESOLVING phases) */
+  autoAdvanceMs?: number;
 }
 
 // A personalized snapshot for one viewer. `phase` drives shared hub UI:
-//   "LOBBY" is handled by the hub itself (before a game starts).
-//   Games use their own phases but MUST set `over:true` when finished and
-//   expose `summary` (scoreboard) so the hub can show results to everyone.
 export interface GameView {
   game: string;                 // module id
   phase: string;                // game-defined phase string
   over: boolean;                // true when the game has ended
   yourSeat: number;             // -1 for spectators
+  // Standardized game state for hub-level operations (bot driving, focus, ticks).
+  state?: GameViewState;
   // Optional shared extras the hub understands:
   summary?: { rows: SummaryRow[]; winners: number[] }; // shown at game end
   // Everything else is game-specific and rendered by the game's client module.
@@ -44,8 +97,6 @@ export interface GameView {
 // `score` = cumulative total. `delta` (optional) = points gained this round.
 export interface SummaryRow { seat: number; name: string; score: number; delta?: number; }
 
-// `nextScores` lets the hub seat late-joiners fairly when a new game/round
-// starts (e.g. average of current totals). Optional.
 export interface GameModule {
   meta: GameMeta;
   create(playerNames: string[]): any;

@@ -1,11 +1,78 @@
 // games/skyjo.ts — Skyjo implemented against the GameModule contract.
 // Wraps the existing GameEngine (rehydrated from plain state each call so the
 // stored game state stays a plain JSON object, per the contract).
-import type { GameModule, GameView } from "./types";
+import type {
+  GameModule,
+  GameView,
+  GameViewState,
+  GameLifecyclePhase,
+  GameFeatures,
+} from "./types";
 import { GameEngine } from "../engine";
 
-function load(state: any): GameEngine { return GameEngine.fromJSON(state); }
-function dump(g: GameEngine): any { return JSON.parse(JSON.stringify(g)); }
+function load(state: any): GameEngine {
+  return GameEngine.fromJSON(state);
+}
+function dump(g: GameEngine): any {
+  return JSON.parse(JSON.stringify(g));
+}
+
+/** Map internal Skyjo phase to the canonical GameLifecyclePhase. */
+function lifecyclePhase(phase: string): GameLifecyclePhase {
+  switch (phase) {
+    case "REVEAL":
+      return "DRAFT";
+    case "PLAY":
+    case "FINAL_TURNS":
+      return "PLAYING";
+    case "ROUND_END":
+      return "ROUND_END";
+    case "GAME_OVER":
+      return "GAME_OVER";
+    default:
+      return "PLAYING";
+  }
+}
+
+/** Build a standardized GameViewState so the hub stays game-agnostic. */
+function buildViewState(g: GameEngine, seat: number): GameViewState {
+  const isReveal = g.phase === "REVEAL";
+  return {
+    currentSeat:
+      isReveal && g.tiebreakerPlayers.length
+        ? g.tiebreakerPlayers[0]
+        : g.currentPlayer,
+    pendingAction: g.turnAction,
+    players: g.players.map((p, i) => ({
+      seat: i,
+      name: p.name,
+      status: isReveal
+        ? p.revealCount >= 2
+          ? "waiting"
+          : "active"
+        : i === g.currentPlayer
+          ? "active"
+          : "waiting",
+      score: p.roundScore,
+      banked: p.totalScore,
+    })),
+    actingCount: isReveal
+      ? g.players.filter((p) => p.revealCount < 2).length
+      : 1,
+    autoAdvanceMs:
+      g.turnAction === "turn_end_delay" ? 1200 : undefined,
+  };
+}
+
+export const SkyjoFeatures: GameFeatures = {
+  hasBots: true,
+  simultaneousTurns: false,
+  usesTick: true,
+  hasMultiRound: true,
+  canSpectate: true,
+  minDurationSec: 120,
+  maxDurationSec: 600,
+};
 
 export const Skyjo: GameModule = {
   meta: {
@@ -15,6 +82,7 @@ export const Skyjo: GameModule = {
     maxPlayers: 8,
     description: "Flip, swap and dump cards to get the lowest score.",
     emoji: "🃏",
+    features: SkyjoFeatures,
   },
 
   create(names) {
@@ -26,13 +94,27 @@ export const Skyjo: GameModule = {
   applyAction(state, seat, msg) {
     const g = load(state);
     switch (msg.action) {
-      case "reveal": g.revealInitial(seat, msg.index); break;
-      case "tiebreaker": g.revealTiebreaker(seat, msg.index); break;
-      case "draw_deck": g.drawDeck(seat); break;
-      case "take_discard": g.takeDiscard(seat); break;
-      case "swap": g.swap(seat, msg.index); break;
-      case "discard_drawn": g.discardDrawnCard(seat); break;
-      case "reveal_after_discard": g.revealAfterDiscard(seat, msg.index); break;
+      case "reveal":
+        g.revealInitial(seat, msg.index);
+        break;
+      case "tiebreaker":
+        g.revealTiebreaker(seat, msg.index);
+        break;
+      case "draw_deck":
+        g.drawDeck(seat);
+        break;
+      case "take_discard":
+        g.takeDiscard(seat);
+        break;
+      case "swap":
+        g.swap(seat, msg.index);
+        break;
+      case "discard_drawn":
+        g.discardDrawnCard(seat);
+        break;
+      case "reveal_after_discard":
+        g.revealAfterDiscard(seat, msg.index);
+        break;
       case "next_round": // host-only; hub gates this
         if (g.phase === "GAME_OVER") g.newGame();
         else if (g.phase === "ROUND_END") g.nextRound();
@@ -52,7 +134,9 @@ export const Skyjo: GameModule = {
   // Called by the hub after the tick delay elapses.
   // (Exposed as a normal action so the hub stays game-agnostic.)
   // We piggyback on applyAction via a synthetic "complete_turn_end".
-  isOver(state) { return state.phase === "GAME_OVER"; },
+  isOver(state) {
+    return state.phase === "GAME_OVER";
+  },
 
   joinScore(state) {
     const g = load(state);
@@ -70,13 +154,30 @@ export const Skyjo: GameModule = {
     const over = g.phase === "GAME_OVER";
     let summary;
     if (g.phase === "ROUND_END" || g.phase === "GAME_OVER") {
-      const min = Math.min(...g.players.map((p) => p.totalScore));
+      const min = Math.min(
+        ...g.players.map((p) => p.totalScore)
+      );
       summary = {
-        rows: g.players.map((p, i) => ({ seat: i, name: p.name, score: p.totalScore, delta: p.roundScore })),
-        winners: g.players.map((p, i) => (p.totalScore === min ? i : -1)).filter((i) => i >= 0),
+        rows: g.players.map((p, i) => ({
+          seat: i,
+          name: p.name,
+          score: p.totalScore,
+          delta: p.roundScore,
+        })),
+        winners: g.players
+          .map((p, i) => (p.totalScore === min ? i : -1))
+          .filter((i) => i >= 0),
       };
     }
-    return { game: "skyjo", phase: g.phase, over, yourSeat: seat, summary, skyjo: s };
+    return {
+      game: "skyjo",
+      phase: lifecyclePhase(g.phase),
+      over,
+      yourSeat: seat,
+      summary,
+      state: buildViewState(g, seat),
+      skyjo: s,
+    };
   },
 };
 

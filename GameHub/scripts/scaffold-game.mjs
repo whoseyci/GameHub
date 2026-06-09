@@ -28,24 +28,219 @@ for (const path of [tsPath, clientPath, testPath]) {
   mkdirSync(dirname(path), { recursive: true });
 }
 
-writeFileSync(tsPath, `import type { GameModule, GameView } from "./types";\nimport { makeSeed, type RngStateHolder } from "../rng";\n\ninterface ${pascal}Player { name: string; score: number; }\ninterface ${pascal}State extends RngStateHolder {\n  schemaVersion: number;\n  players: ${pascal}Player[];\n  phase: "PLAY" | "GAME_OVER";\n  current: number;\n  log: unknown[];\n}\n\nexport const ${pascal}: GameModule = {\n  meta: {\n    id: "${id}",\n    name: "${name}",\n    minPlayers: ${min},\n    maxPlayers: ${max},\n    description: "TODO: describe ${name}.",\n    emoji: "${emoji}",\n  },\n\n  create(names: string[]): ${pascal}State {\n    return {\n      schemaVersion: 1,\n      rngState: makeSeed(),\n      players: names.map((name) => ({ name, score: 0 })),\n      phase: "PLAY",\n      current: 0,\n      log: [],\n    };\n  },\n\n  applyAction(state: ${pascal}State, seat: number, msg: any): void {\n    if (state.phase !== "PLAY") return;\n    if (seat !== state.current) return;\n    if (msg.action !== "example") return;\n    state.log.push({ seat, action: msg.action });\n    state.current = (state.current + 1) % state.players.length;\n  },\n\n  viewFor(state: ${pascal}State, seat: number): GameView {\n    return {\n      game: "${id}",\n      phase: state.phase,\n      over: state.phase === "GAME_OVER",\n      yourSeat: seat,\n      ${id}: {\n        current: state.current,\n        players: state.players.map((p, seat) => ({ seat, name: p.name, score: p.score })),\n      },\n    };\n  },\n\n  isOver(state: ${pascal}State): boolean { return state.phase === "GAME_OVER"; },\n};\n`);
+// Server module with standardized GameViewState and GameFeatures
+writeFileSync(tsPath, `import type { GameModule, GameView, GameViewState, GameLifecyclePhase } from "./types";
+import { makeSeed, type RngStateHolder } from "../rng";
 
-writeFileSync(clientPath, `(function(){\n  const ID = '${id}';\n\n  function act(action, extra = {}) {\n    const seat = window._renderView?.yourSeat ?? 0;\n    const msg = { action, ...extra };\n    if (mode === 'local') localAct(seat, msg);\n    else net.send({ type: 'action', seat, ...msg });\n  }\n\n  function render(view, ctx = {}) {\n    const s = view[ID];\n    const focused = ctx.focus ? ctx.focus({ actingSeat: s.current, preferred: view.yourSeat }) : view.yourSeat;\n    const focus = '<div class="player-board"><div class="player-title">${emoji} ${name}</div><div class="muted">TODO: render game state.</div><button class="btn" onclick="window.GameClients[\\'' + ID + '\\'].act(\\'example\\')">Example action</button></div>';\n    GameShell.renderTable({ game: ID, focus, topMode: 'hidden', status: view.yourSeat < 0 ? 'Spectating' : (s.current === focused ? 'Your turn' : 'Waiting…') });\n    if (view.summary && !summaryShown) showSummary(view);\n  }\n\n  function unmount() {}\n  window.GameClients[ID] = { render, act, unmount };\n})();\n`);
+interface ${pascal}Player {
+  name: string;
+  score: number;
+}
 
-writeFileSync(testPath, `import { describe, expect, it } from "vitest";\nimport { ${pascal} } from "../src/games/${id}";\n\ndescribe("${name}", () => {\n  it("creates serializable state and views", () => {\n    const state = ${pascal}.create(["A", "B"${min > 2 ? ', "C"'.repeat(min - 2) : ''}]);\n    expect(JSON.parse(JSON.stringify(state))).toEqual(state);\n    expect(${pascal}.viewFor(state, 0).game).toBe("${id}");\n    expect(${pascal}.viewFor(state, -1).yourSeat).toBe(-1);\n  });\n});\n`);
+interface ${pascal}State extends RngStateHolder {
+  schemaVersion: number;
+  players: ${pascal}Player[];
+  phase: "PLAY" | "GAME_OVER";
+  current: number;
+  log: unknown[];
+}
 
+/** Map internal phase to the canonical GameLifecyclePhase. */
+function lifecyclePhase(internalPhase: string): GameLifecyclePhase {
+  switch (internalPhase) {
+    case "PLAY":       return "PLAYING";
+    case "GAME_OVER":  return "GAME_OVER";
+    default:           return "PLAYING";
+  }
+}
+
+/** Build a standardized GameViewState so the hub stays game-agnostic. */
+function buildViewState(state: ${pascal}State): GameViewState {
+  return {
+    currentSeat: state.phase === "PLAY" ? state.current : -1,
+    pendingAction: state.phase === "PLAY" ? "choose_action" : null,
+    players: state.players.map((p, i) => ({
+      seat: i,
+      name: p.name,
+      status: state.phase === "PLAY"
+        ? (i === state.current ? "active" : "waiting")
+        : "out",
+      score: p.score,
+    })),
+    actingCount: state.phase === "PLAY" ? 1 : 0,
+  };
+}
+
+export const ${pascal}: GameModule = {
+  meta: {
+    id: "${id}",
+    name: "${name}",
+    minPlayers: ${min},
+    maxPlayers: ${max},
+    description: "TODO: describe ${name}.",
+    emoji: "${emoji}",
+    features: {
+      hasBots: false,
+      simultaneousTurns: false,
+      usesTick: false,
+      hasMultiRound: false,
+      canSpectate: false,
+      minDurationSec: 60,
+      maxDurationSec: 300,
+    },
+  },
+
+  create(names: string[]): ${pascal}State {
+    return {
+      schemaVersion: 1,
+      rngState: makeSeed(),
+      players: names.map((name) => ({ name, score: 0 })),
+      phase: "PLAY",
+      current: 0,
+      log: [],
+    };
+  },
+
+  applyAction(state: ${pascal}State, seat: number, msg: any): void {
+    if (state.phase !== "PLAY") return;
+    if (seat !== state.current) return;
+    if (msg.action !== "example") return;
+
+    // Mutate only this game's state. Validate all indices/choices before mutating.
+    state.log.push({ seat, action: msg.action });
+    state.current = (state.current + 1) % state.players.length;
+  },
+
+  viewFor(state: ${pascal}State, seat: number): GameView {
+    return {
+      game: "${id}",
+      phase: lifecyclePhase(state.phase),
+      over: state.phase === "GAME_OVER",
+      yourSeat: seat,
+      state: buildViewState(state),
+      ${id}: {
+        current: state.current,
+        players: state.players.map((p, i) => ({ seat: i, name: p.name, score: p.score })),
+      },
+    };
+  },
+
+  isOver(state: ${pascal}State): boolean { return state.phase === "GAME_OVER"; },
+};
+`);
+
+// Client module using the standardized GameClient contract
+writeFileSync(clientPath, `/**
+ * Client renderer for ${name} (${id}).
+ *
+ * Contract:
+ *   window.GameClients['${id}'].render(view, ctx) draws the view.
+ *   window.GameClients['${id}'].act(action, extra?) sends a player action.
+ *   window.GameClients['${id}'].unmount() cleans up game-only globals.
+ */
+(function(){
+  const ID = '${id}';
+
+  function send(action, extra = {}) {
+    const msg = { action, ...extra };
+    const seat = window._renderView?.yourSeat ?? 0;
+    if (typeof localAct === 'function' && mode === 'local') localAct(seat, msg);
+    else if (typeof net !== 'undefined') net.send({ type: 'action', seat, ...msg });
+  }
+
+  function render(view, ctx = {}) {
+    const s = view[ID];
+    const gameState = view.state;
+    const focused = ctx.focus
+      ? ctx.focus({ actingSeat: gameState?.currentSeat ?? s?.current ?? -1, preferred: view.yourSeat })
+      : view.yourSeat;
+
+    const focus = \`
+      <div class="player-board">
+        <div class="player-title">${emoji} ${name}</div>
+        <div class="muted">TODO: render game state.</div>
+        <button class="btn" onclick="window.GameClients['\${ID}'].act('example')">Example action</button>
+      </div>\`;
+
+    const statusText = view.yourSeat < 0
+      ? 'Spectating'
+      : (gameState?.currentSeat === focused ? 'Your turn' : 'Waiting…');
+
+    GameShell.renderTable({
+      game: ID,
+      focus,
+      topMode: 'hidden',
+      status: statusText,
+    });
+
+    if (view.summary && !summaryShown) showSummary(view);
+  }
+
+  function unmount() {}
+
+  window.GameClients[ID] = { render, act: send, unmount };
+})();
+`);
+
+// Test file with contract checks
+writeFileSync(testPath, `import { describe, expect, it } from "vitest";
+import { ${pascal} } from "../src/games/${id}";
+
+describe("${name}", () => {
+  it("creates serializable state and views for all seats", () => {
+    const state = ${pascal}.create([${'"A", "B"'.padEnd(min * 4 - 2, ', "X"')}]);
+    expect(state.schemaVersion).toBe(1);
+    expect(JSON.parse(JSON.stringify(state))).toEqual(state);
+
+    // Check views for every player seat plus spectator
+    for (let seat = -1; seat < state.players.length; seat++) {
+      const view = ${pascal}.viewFor(state, seat);
+      expect(view.game).toBe("${id}");
+      expect(view.yourSeat).toBe(seat);
+      expect(typeof view.phase).toBe("string");
+      expect(typeof view.over).toBe("boolean");
+      expect(JSON.parse(JSON.stringify(view))).toEqual(view);
+
+      // Standardized state should be present
+      if (seat >= 0) {
+        expect(view.state).toBeDefined();
+        expect(view.state?.currentSeat).toBeGreaterThanOrEqual(-1);
+        expect(Array.isArray(view.state?.players)).toBe(true);
+      }
+    }
+  });
+
+  it("ignores a spectator's generic gameplay action", () => {
+    const state = ${pascal}.create([${'"A", "B"'.padEnd(min * 4 - 2, ', "X"')}]);
+    const before = JSON.parse(JSON.stringify(state));
+    ${pascal}.applyAction(state, -1, { type: "action", action: "example", index: 0 });
+    expect(state).toEqual(before);
+  });
+
+  it("exposes a summary exactly when marked over", () => {
+    const state = ${pascal}.create([${'"A", "B"'.padEnd(min * 4 - 2, ', "X"')}]);
+    const view = ${pascal}.viewFor(state, 0);
+    if (view.over) expect(view.summary).toBeDefined();
+  });
+});
+`);
+
+// Register in the game registry
 let registry = readFileSync('src/games/registry.ts', 'utf8');
 registry = registry.replace('import { Qwixx } from "./qwixx";\n', `import { Qwixx } from "./qwixx";\nimport { ${pascal} } from "./${id}";\n`);
 registry = registry.replace('  [Qwixx.meta.id]: Qwixx,\n};', `  [Qwixx.meta.id]: Qwixx,\n  [${pascal}.meta.id]: ${pascal},\n};`);
 writeFileSync('src/games/registry.ts', registry);
 
+// Load the client script from index.html
 let html = readFileSync('public/index.html', 'utf8');
-const script = `<script src="/js/games/${id}.js"></script>\n`;
-if (!html.includes(script)) html = html.replace('<script src="/js/05-bots-init.js"></script>', `${script}<script src="/js/05-bots-init.js"></script>`);
-writeFileSync('public/index.html', html);
+const scriptTag = `<script src="/js/games/${id}.js"></script>\n`;
+if (!html.includes(scriptTag)) {
+  html = html.replace('<script src="/js/05-bots-init.js"></script>', `${scriptTag}<script src="/js/05-bots-init.js"></script>`);
+  writeFileSync('public/index.html', html);
+}
 
-console.log(`Scaffolded ${name} (${id}). Next:`);
+console.log(`✅ Scaffolded ${name} (${id}). Next:`);
 console.log(`  1. Implement rules in ${tsPath}`);
 console.log(`  2. Implement UI in ${clientPath}`);
 console.log(`  3. Expand tests in ${testPath}`);
-console.log('  4. Run npm run validate');
+console.log(`  4. Run npm run validate`);
