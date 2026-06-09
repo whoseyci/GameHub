@@ -340,19 +340,24 @@
 
 
   // ---- unified sequential event runner ----
-  let lastSeq=-1;
-  async function playEvents(view){
+  let lastSeq=-1, lifecycleToken=0;
+  function currentToken(){ return lifecycleToken; }
+  function invalidateToken(){ lifecycleToken++; }
+  function tokenAlive(token){ return token===lifecycleToken && window._renderView && window._renderView.game==='flip7' && $('gameScreen')?.classList.contains('active'); }
+  async function playEvents(view, token=currentToken()){
     const ev=(view.flip7.events||[]).map(normalizeFlip7Event).filter(e=>e.seq>lastSeq);
-    if(!ev.length){draw(view);prevView=cloneView(view);curView=cloneView(view);maybeSummary(view);return;}
+    if(!ev.length){ if(!tokenAlive(token)) return; draw(view); prevView=cloneView(view); curView=cloneView(view); maybeSummary(view); return; }
     animating=true;
     const shadow=cloneView(prevView&&prevView.flip7?prevView:view);
     shadow.flip7.viewerSeat=view.flip7.viewerSeat;
     ensureExtras(shadow);
     await Kit.EventRunner.run(ev, async(e)=>{
+      if(!tokenAlive(token)) return;
       lastSeq=Math.max(lastSeq,e.seq);
-      await runUnifiedEvent(shadow,e,view);
+      await runUnifiedEvent(shadow,e,view,token);
     });
-    if(mode==='local'&&eventFocus!=null&&view.flip7.phase==='PLAY'&&view.flip7.current!==eventFocus){Kit.turnBanner('Next: '+(view.flip7.players[view.flip7.current]?.name||'player'),false);await sleep(700);}
+    if(!tokenAlive(token)) { animating=false; return; }
+    if(mode==='local'&&eventFocus!=null&&view.flip7.phase==='PLAY'&&view.flip7.current!==eventFocus){Kit.turnBanner('Next: '+(view.flip7.players[view.flip7.current]?.name||'player'),false);await sleep(700); if(!tokenAlive(token)) { animating=false; return; }}
     eventFocus=null;
     if(mode==='local') window._f7InspectSeat=null;
     animating=false;
@@ -363,7 +368,7 @@
     // In local pass-and-play, keep the acting board visible through the whole
     // animation, then switch to the next human/device actor afterwards.
     if(mode==='local'&&view.flip7.phase==='PLAY'&&!view.flip7.pendingAction&&view.flip7.current!==view.flip7.viewerSeat){
-      setTimeout(()=>{ if(mode==='local'&&localGameId==='flip7') renderLocal(); }, 650);
+      setTimeout(()=>{ if(tokenAlive(token) && mode==='local'&&localGameId==='flip7') renderLocal(); }, 650);
     }
   }
   function maybeSummary(view){
@@ -371,7 +376,8 @@
     if(s.phase==='ROUND_END'||s.phase==='GAME_OVER'){if(!summaryShown){summaryShown=true;showSummary(view);}const c=$('f7Controls');if(c)c.innerHTML='';}
     else{summaryShown=false;hideOverlay();}
   }
-  async function runUnifiedEvent(shadow,e,finalView){
+  async function runUnifiedEvent(shadow,e,finalView,token=currentToken()){
+    if(!tokenAlive(token)) return;
     e=normalizeFlip7Event(e);
     const focusSeat=e.actor??e.target??shadow.flip7.viewerSeat;
     if(mode==='local')eventFocus=focusSeat;
@@ -383,18 +389,17 @@
         if(mode==='local')eventFocus=e.actor;
         removeCardFromShadow(shadow.flip7.players[e.actor],e.card);
         draw(shadow);
-        const row=rowOf(e.actor); if(e.flip3)await sleep(SPEED.flip3Gap*0.2);
+        const row=rowOf(e.actor); if(e.flip3)await sleep(SPEED.flip3Gap*0.2); if(!tokenAlive(token)) return;
         const before=captureF7Layout();
-        await dealTravel(row,e.card,e.seq,before);
+        await dealTravel(row,e.card,e.seq,before); if(!tokenAlive(token)) return;
         applyShadowEvent(shadow,e);
         draw(shadow);
-        await sleep(SPEED.beat*0.18);
-        break;
+        await sleep(SPEED.beat*0.18); break;
       }
       case 'card.transfer':{
         if(mode==='local')eventFocus=e.actor;
         draw(shadow);
-        await transferActionCard(e);
+        await transferActionCard(e); if(!tokenAlive(token)) return;
         applyShadowEvent(shadow,e);
         if(mode==='local')eventFocus=e.target;
         draw(shadow);
@@ -404,8 +409,7 @@
         } else if(e.secondPass){
           SFX.flip(); if(e.auto)Kit.turnBanner('\u2665 passed',true);
         }
-        await sleep(SPEED.beat*0.45);
-        break;
+        await sleep(SPEED.beat*0.45); break;
       }
       case 'effect.bust':{
         applyShadowEvent(shadow,e);
@@ -434,20 +438,21 @@
 
   function render(view,ctx={}){
     renderCtx=ctx;
+    const token=currentToken();
     // turn banner on turn change (only when not mid-animation start)
     if(prevView&&prevView.flip7&&view.flip7.phase==='PLAY'&&view.flip7.current!==prevView.flip7.current&&(!view.flip7.events||!view.flip7.events.length)){
       const mine=view.flip7.current===view.flip7.viewerSeat;Kit.turnBanner(mine?'Your turn!':(view.flip7.players[view.flip7.current]?.name+"'s turn"),mine);bumpStatus();if(mine)SFX.yourTurn();
     }
-    playEvents(view);
+    playEvents(view, token);
   }
-  function act(seat,msg){ if(mode==='local')localAct(seat,msg); else net.send({type:'action',seat,...msg}); }
+  function act(seat,msg){ GameActions.send(msg.action, Object.fromEntries(Object.entries(msg).filter(([k])=>k!=='action')), seat); }
   function clientAct(action, extra={}){
     const seat = window._renderView?.yourSeat ?? 0;
-    act(seat, { action, ...extra });
+    GameActions.send(action, extra, seat);
   }
   // reset the timeline cursor when (re)entering a game
-  window._flip7ResetSeq=function(){lastSeq=-1;};
-  function unmount(){const c=$('f7Controls');if(c)c.remove();const d=$('f7DealerWrap');if(d)d.remove();const mini=$('miniBoardsContainer');if(mini){mini.innerHTML='';mini.className='mini-boards-container';}}
+  window._flip7ResetSeq=function(){lastSeq=-1;invalidateToken();};
+  function unmount(){invalidateToken(); const c=$('f7Controls');if(c)c.remove();const d=$('f7DealerWrap');if(d)d.remove();const mini=$('miniBoardsContainer');if(mini){mini.innerHTML='';mini.className='mini-boards-container';}}
   window.GameClients['flip7']={render,inspect,unmount,act:clientAct};
 
   // local engine wrapper

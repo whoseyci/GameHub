@@ -85,7 +85,7 @@ function renderRoom(m){
 }
 function leaveOnline(){if(net.ws){try{net.ws.close();}catch(e){}net.ws=null;}net.room=null;net.isHost=false;net.spectating=false;window._currentBots=[];resetGameUi();showScreen('onlineSetup');}
 function leaveGameToRoom(){ // back arrow in game
-  if(mode==='local'){ if(confirm('Leave the game?')){ resetGameUi(); showScreen('menuScreen'); } return; }
+  if(mode==='local'){ if(confirm('Leave the game?')){ resetLocalSession(); resetGameUi(); showScreen('menuScreen'); } return; }
   if(net.isHost){ if(confirm('Return everyone to the room lobby?')) net.send({type:'to_room'}); }
   else { if(confirm('Leave the game?')) leaveOnline(); }
 }
@@ -148,6 +148,8 @@ function showSummary(view){
 /* ====================== LOCAL PLAY (offline, single-device) ====================== */
 let localEngine=null,localGameId=null,localActor=0;
 let _localPick='skyjo';
+function resetLocalSession(){ localEngine=null; localGameId=null; localActor=0; }
+
 /* Local seats: array of {name, bot, difficulty}. Rendered as rows. */
 let localSeats=[{name:'Player 1',bot:false},{name:'Player 2',bot:false}];
 let _localBotDiff='medium';
@@ -189,13 +191,20 @@ function startLocalGame(){
 function isLocalBotSeat(seat){return !!localSeats[seat]?.bot;}
 function firstLocalHumanSeat(){const i=localSeats.findIndex(s=>!s.bot);return i>=0?i:0;}
 function localDisplaySeat(preferred=null){
+  if(!localEngine) return firstLocalHumanSeat();
   const actor=localEngine.actor();
   if(preferred!=null&&!isLocalBotSeat(preferred))return preferred;
   if(actor!=null&&!isLocalBotSeat(actor))return actor;
   return firstLocalHumanSeat();
 }
-function renderLocal(){const v=localEngine.viewFor(localDisplaySeat());window._controlledSeats=SeatModel.localHumanSeats();dispatchView(v);}
+function renderLocal(){
+  if(!localEngine || !localGameId) return;
+  const v=localEngine.viewFor(localDisplaySeat());
+  window._controlledSeats=SeatModel.localHumanSeats();
+  dispatchView(v);
+}
 function localAct(seat,msg){
+  if(!localEngine || !localGameId) return;
   localEngine.apply(seat,msg);
   // Human same-device seats keep focus for their own event timelines. Bots are
   // treated like another device: they may act, but the local UI remains on a
@@ -206,5 +215,5 @@ function localAct(seat,msg){
   if(gameState&&Array.isArray(gameState.events)&&gameState.events.length){dispatchView(actedView);return;}
   renderLocal();
 }
-function localNext(){localEngine.next();resetGameUi();renderLocal();}
-function quitLocal(){window._currentBots=[];resetGameUi();showScreen('menuScreen');}
+function localNext(){ if(!localEngine) return; localEngine.next(); resetGameUi(); renderLocal(); }
+function quitLocal(){window._currentBots=[];resetLocalSession();resetGameUi();showScreen('menuScreen');}

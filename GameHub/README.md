@@ -180,12 +180,13 @@ npm run typecheck     # tsc --noEmit
 npm run check:client  # syntax-check browser JS modules
 npm test -- --run     # Vitest contract/regression tests
 npm run smoke:client  # jsdom smoke test for cross-game UI/bot cleanup quirks
+npm run smoke:browser # Playwright browser smoke over the real app shell/local flows
 npm run deploy:dry-run
 npm run validate      # local validation gate (no smoke)
 npm run validate:ci   # CI-equivalent gate, including the smoke pass
 ```
 
-`npm run deploy:dry-run` validates the Worker bundle, Durable Object bindings, and static assets without deploying (no login needed).
+`npm run deploy:dry-run` validates the Worker bundle, Durable Object bindings, and static assets without deploying (no login needed). `npm run smoke:browser` requires Playwright's browser install (`npx playwright install chromium`).
 
 ---
 

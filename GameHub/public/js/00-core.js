@@ -8,7 +8,7 @@
    shape as Skyjo below. The hub never needs to change.
    ==================================================================== */
 const PARTYKIT_HOST = location.host; // served by the same Worker
-const BUILD_VERSION = "v20-ci-smoke-pass"; // bump on each change; shown on the menu
+const BUILD_VERSION = "v21-browser-smoke-unify-polish"; // bump on each change; shown on the menu
 
 const $=id=>document.getElementById(id);
 function esc(v){return String(v ?? '').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));}
@@ -22,6 +22,14 @@ function showScreen(id){
 function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
 function toast(m,ms=2600){const t=$('toast');t.textContent=m;t.classList.remove('hidden');clearTimeout(t._h);t._h=setTimeout(()=>t.classList.add('hidden'),ms);}
 function getPid(){let p=localStorage.getItem('hub_pid');if(!p){p='p_'+Math.random().toString(36).slice(2,10)+Date.now().toString(36);localStorage.setItem('hub_pid',p);}return p;}
+const GameActions={
+  send(action,extra={},seat=null){
+    const resolvedSeat=seat ?? window._renderView?.yourSeat ?? 0;
+    const msg={action,...extra};
+    if(mode==='local'){ if(typeof localAct==='function') localAct(resolvedSeat,msg); }
+    else if(typeof net!=='undefined'){ net.send({type:'action',seat:resolvedSeat,...msg}); }
+  }
+};
 
 /* ====================== CARD KIT (shared) ====================== */
 const Kit=(()=>{

@@ -12,6 +12,8 @@ const botDriver = readFileSync(new URL("../public/js/bots/driver.js", import.met
 const botFlip7 = readFileSync(new URL("../public/js/bots/flip7.js", import.meta.url), "utf8");
 const botQwixx = readFileSync(new URL("../public/js/bots/qwixx.js", import.meta.url), "utf8");
 const botSkyjo = readFileSync(new URL("../public/js/bots/skyjo.js", import.meta.url), "utf8");
+const templateClient = readFileSync(new URL("../public/js/games/_template-game-client.js", import.meta.url), "utf8");
+const scaffold = readFileSync(new URL("../scripts/scaffold-game.mjs", import.meta.url), "utf8");
 
 describe("client module split", () => {
   it("loads frontend scripts as smaller ordered files", () => {
@@ -85,6 +87,15 @@ describe("shared game shell", () => {
     expect(skyjo).toContain("window.GameClients['skyjo']={render,unmount,act:clientAct}");
     expect(flip7).toContain("window.GameClients['flip7']={render,inspect,unmount,act:clientAct}");
   });
+
+  it("provides a shared GameActions helper and uses it in scaffolded clients", () => {
+    expect(core).toContain('const GameActions');
+    expect(qwixx).toContain('GameActions.send');
+    expect(skyjo).toContain('GameActions.send');
+    expect(flip7).toContain('GameActions.send');
+    expect(templateClient).toContain('GameActions.send');
+    expect(scaffold).toContain('GameActions.send');
+  });
 });
 
 describe("Qwixx client regressions", () => {
@@ -121,6 +132,14 @@ describe("client cross-game cleanup regressions", () => {
     expect(core).toContain("function unmount");
     expect(core).toContain("clearGlobal()");
     expect(networkLocal).toContain("GameShell.unmount()");
+  });
+
+  it("cancels lingering local sessions and Flip7 timelines on quit", () => {
+    expect(networkLocal).toContain('function resetLocalSession()');
+    expect(networkLocal).toContain('resetLocalSession();resetGameUi();showScreen(\'menuScreen\')');
+    expect(flip7).toContain('let lastSeq=-1, lifecycleToken=0;');
+    expect(flip7).toContain('invalidateToken()');
+    expect(flip7).toContain('tokenAlive(token)');
   });
 });
 

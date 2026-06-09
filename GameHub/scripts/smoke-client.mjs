@@ -296,6 +296,39 @@ async function smokeBotFlows(window, document) {
   assert(document.getElementById('overlay').classList.contains('hidden'), 'Cleanup: overlay should be hidden after quitting');
 }
 
+async function smokeMidAnimationQuit(window, document) {
+  // Flip7: quitting during event playback must not resurrect controls or boards.
+  setLocalConfig(window, 'flip7', [
+    { name: 'P1', bot: false },
+    { name: 'P2', bot: false },
+  ]);
+  window.startLocalGame();
+  await sleep(120);
+  window.GameClients['flip7'].act('hit');
+  window.quitLocal();
+  await sleep(2500);
+  assert(activeScreen(document) === 'menuScreen', 'Mid-animation quit: expected to stay on menu');
+  assert(!document.getElementById('f7Controls'), 'Mid-animation quit: Flip7 controls came back after quit');
+  assert(!document.getElementById('f7DealerWrap'), 'Mid-animation quit: Flip7 dealer came back after quit');
+  assert(document.querySelectorAll('[data-f7-seat]').length === 0, 'Mid-animation quit: Flip7 board markup leaked back in');
+
+  // Skyjo: quitting before deferred turn-end resolves must not re-render the table.
+  setLocalConfig(window, 'skyjo', [
+    { name: 'P1', bot: false },
+    { name: 'P2', bot: false },
+  ]);
+  window.startLocalGame();
+  await sleep(80);
+  window.localAct(0, { action: 'reveal', index: 0 });
+  window.localAct(0, { action: 'reveal', index: 1 });
+  window.localAct(1, { action: 'reveal', index: 0 });
+  window.localAct(1, { action: 'reveal', index: 1 });
+  window.quitLocal();
+  await sleep(1400);
+  assert(activeScreen(document) === 'menuScreen', 'Skyjo deferred quit: expected to stay on menu');
+  assert(document.querySelectorAll('[data-card-reg^="skyjo:"]').length === 0, 'Skyjo deferred quit: registry anchors leaked back in');
+}
+
 async function main() {
   const { window, document, errors } = await loadApp();
 
@@ -306,6 +339,7 @@ async function main() {
   await smokeQwixx(window, document);
   await smokeFlip7(window, document);
   await smokeBotFlows(window, document);
+  await smokeMidAnimationQuit(window, document);
 
   await sleep(50);
   if (errors.length) {

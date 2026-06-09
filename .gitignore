@@ -11,6 +11,10 @@ node_modules/
 *.log
 npm-debug.log*
 
+# local smoke/e2e output
+artifacts/
+GameHub/artifacts/
+
 # OS/editor
 .DS_Store
 .vscode/

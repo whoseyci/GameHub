@@ -17,10 +17,8 @@
   const ID = 'template';
 
   function send(action, extra = {}) {
-    const msg = { action, ...extra };
     const seat = window._renderView?.yourSeat ?? 0;
-    if (typeof localAct === 'function' && mode === 'local') localAct(seat, msg);
-    else if (typeof net !== 'undefined') net.send({ type: 'action', seat, ...msg });
+    GameActions.send(action, extra, seat);
   }
 
   function render(view, ctx = {}) {

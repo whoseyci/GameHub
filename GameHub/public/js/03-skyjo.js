@@ -160,10 +160,10 @@
   // seat = which player's board was acted on (needed for local pass-and-play REVEAL,
   // where each player flips their OWN cards). Online ignores it (server uses the
   // authenticated connection's seat).
-  function act(seat,msg){ if(mode==='local')localAct(seat,msg); else net.send({type:'action',seat,...msg}); }
+  function act(seat,msg){ GameActions.send(msg.action, Object.fromEntries(Object.entries(msg).filter(([k])=>k!=='action')), seat); }
   function clientAct(action, extra={}){
     const seat = window._renderView?.yourSeat ?? window._renderView?.skyjo?.currentPlayer ?? 0;
-    act(seat, { action, ...extra });
+    GameActions.send(action, extra, seat);
   }
 
   async function runAnim(s,viewer){

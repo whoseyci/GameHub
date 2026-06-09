@@ -269,8 +269,7 @@ window.GameClients = window.GameClients || {};
 
   function act(action, msg = {}){
     const view = window._renderView;
-    if(mode === 'local') localAct(view.yourSeat, { action, ...msg });
-    else net.send({ type:'action', seat:view.yourSeat, action, ...msg });
+    GameActions.send(action, msg, view?.yourSeat ?? 0);
   }
 
   function unmount(){removeQwixxUi();}
