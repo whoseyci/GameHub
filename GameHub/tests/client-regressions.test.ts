@@ -17,6 +17,21 @@ describe("client module split", () => {
   });
 });
 
+describe("shared game shell", () => {
+  it("defines shared table shell and routes game dispatch through it", () => {
+    expect(core).toContain("const SeatModel");
+    expect(core).toContain("const GameShell");
+    expect(core).toContain("function renderTable");
+    expect(networkLocal).toContain("GameShell.render(view,client)");
+  });
+
+  it("migrates built-in games to GameShell.renderTable", () => {
+    expect(qwixx).toContain("GameShell.renderTable");
+    expect(skyjo).toContain("GameShell.renderTable");
+    expect(flip7).toContain("GameShell.renderTable");
+  });
+});
+
 describe("Qwixx client regressions", () => {
   it("renders colored dice through explicit short-key mapping", () => {
     expect(qwixx).toContain("const COLOR_KEY");
@@ -43,12 +58,10 @@ describe("client cross-game cleanup regressions", () => {
     expect(networkLocal).toContain(".qwixx-dice-zone,.qwixx-top-mini-strip");
   });
 
-  it("cleans Qwixx dice UI before rendering Skyjo or Flip7", () => {
-    const skyjoRender = skyjo.match(/function render\(view\)\{\n\s+removeQwixxUi\(\);\n\s+\$\('topArea'\)\.style\.display=''; \/\/ Skyjo uses/);
-    expect(skyjoRender).not.toBeNull();
-
-    const flip7Draw = flip7.match(/function draw\(view\)\{\n\s+removeQwixxUi\(\);\n\s+const s=view\.flip7/);
-    expect(flip7Draw).not.toBeNull();
+  it("uses shell cleanup/lifecycle before game switches", () => {
+    expect(core).toContain("function unmount");
+    expect(core).toContain("clearGlobal()");
+    expect(networkLocal).toContain("GameShell.unmount()");
   });
 });
 

@@ -4,7 +4,9 @@
   function boardEl(pi){return document.getElementById('main-board-'+pi)||document.getElementById('mini-board-'+pi);}
   function cardAt(pi,idx){const b=boardEl(pi);return b?b.querySelectorAll('.board-card')[idx]:null;}
 
-  function render(view){
+  let renderCtx=null;
+  function render(view,ctx={}){
+    renderCtx=ctx;
     removeQwixxUi();
     $('topArea').style.display=''; // Skyjo uses the deck/discard piles
     const piles = $('topArea').querySelector('.piles');
@@ -86,15 +88,13 @@
   }
 
   function drawBoards(s,viewer){
+    const ctx=renderCtx||{};
     let mainIdx=[];
     if(mode==='local'){
-      const humanSeats=(typeof localSeats!=='undefined')?localSeats.map((x,i)=>!x.bot?i:-1).filter(i=>i>=0):[];
+      const humanSeats=SeatModel.localHumanSeats();
       if(s.phase==='ROUND_END'||s.phase==='GAME_OVER')mainIdx=humanSeats.length?humanSeats:s.players.map((_,i)=>i);
-      else if(s.phase==='REVEAL'){
-        mainIdx=humanSeats.length?humanSeats:[viewer>=0?viewer:0];
-      } else {
-        mainIdx=[viewer>=0?viewer:(humanSeats[0]??s.currentPlayer??0)];
-      }
+      else if(s.phase==='REVEAL') mainIdx=humanSeats.length?humanSeats:[viewer>=0?viewer:0];
+      else mainIdx=[ctx.focus?ctx.focus({actingSeat:s.currentPlayer,preferred:viewer}):(viewer>=0?viewer:(humanSeats[0]??s.currentPlayer??0))];
     }
     else if(viewer<0)mainIdx=[s.currentPlayer>=0?s.currentPlayer:0];
     else mainIdx=[viewer];

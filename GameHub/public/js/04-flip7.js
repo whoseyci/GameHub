@@ -32,19 +32,19 @@
   }
   // boards are rebuilt each render; find a player's row container
   let eventFocus=null;
+  let renderCtx=null;
   function boardOf(i){return document.querySelector(`[data-f7-seat="${i}"]`);}
   function rowOf(i){const b=boardOf(i);return b?b.querySelector('.f7-row'):null;}
   function rectOf(el){return el?el.getBoundingClientRect():null;}
   function cloneCard(card){return card?{kind:card.kind,v:card.v}:card;}
 
   // ---- static board render from state ----
-  function draw(view){
+  function draw(view,ctx=renderCtx||{}){
+    renderCtx=ctx;
     removeQwixxUi();
     const s=view.flip7,viewer=s.viewerSeat;
     const pending=s.pendingAction&&s.pendingAction.from===viewer;
-    const localHumanSeats=(typeof localSeats!=='undefined')?localSeats.map((x,idx)=>!x.bot?idx:-1).filter(idx=>idx>=0):[];
-    const localFocus = (eventFocus!=null && !(typeof localSeats!=='undefined'&&localSeats[eventFocus]?.bot)) ? eventFocus : (viewer>=0 ? viewer : (localHumanSeats[0]??s.current));
-    const focus = mode==='local' ? localFocus : (viewer>=0 ? viewer : s.current);
+    const focus = ctx.focus ? ctx.focus({actingSeat:s.current,eventSeat:eventFocus,preferred:viewer}) : (viewer>=0 ? viewer : s.current);
     const miniFrag=document.createDocumentFragment();
     const mainFrag=document.createDocumentFragment();
     s.players.forEach((p,i)=>{
@@ -358,7 +358,8 @@
   }
 
 
-  function render(view){
+  function render(view,ctx={}){
+    renderCtx=ctx;
     // turn banner on turn change (only when not mid-animation start)
     if(prevView&&prevView.flip7&&view.flip7.phase==='PLAY'&&view.flip7.current!==prevView.flip7.current&&(!view.flip7.events||!view.flip7.events.length)){
       const mine=view.flip7.current===view.flip7.viewerSeat;Kit.turnBanner(mine?'Your turn!':(view.flip7.players[view.flip7.current]?.name+"'s turn"),mine);bumpStatus();if(mine)SFX.yourTurn();

@@ -189,7 +189,7 @@ window.GameClients = window.GameClients || {};
     return html;
   }
 
-  function render(view){
+  function render(view,ctx={}){
     const s = view.state;
     const dice = s.dice || { w:[0,0], r:0, y:0, g:0, b:0 };
     const isAct = s.activeSeat === view.yourSeat;
@@ -200,7 +200,7 @@ window.GameClients = window.GameClients || {};
     const diceSig = `${s.round}|${s.activeSeat}|${dice.w.join(',')}|${dice.r}|${dice.y}|${dice.g}|${dice.b}`;
     const diceRevealed = window._qwixxDiceSig === diceSig;
     const displayState = {...s, diceHidden: !diceRevealed};
-    const focusSeat = view.yourSeat >= 0 ? view.yourSeat : s.activeSeat;
+    const focusSeat = ctx.focus ? ctx.focus({actingSeat:s.activeSeat, preferred:view.yourSeat}) : (view.yourSeat >= 0 ? view.yourSeat : s.activeSeat);
     const focused = s.allPlayers.find(p => p.seat === focusSeat) || s.allPlayers[0];
     const others = s.allPlayers.filter(p => p.seat !== focused.seat);
 
