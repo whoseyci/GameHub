@@ -325,7 +325,12 @@ const Kit=(()=>{
           c.overlayEl.className=rendered.className+' kit-card-registered';
           c.overlayEl.innerHTML=rendered.innerHTML;
           if(!rendered.innerHTML)c.overlayEl.textContent=rendered.textContent||'';
-          for(const attr of [...rendered.attributes])if(attr.name!=='style'&&attr.name!=='class')c.overlayEl.setAttribute(attr.name,attr.value);
+          for(const attr of [...rendered.attributes]){
+            if(attr.name!=='class')c.overlayEl.setAttribute(attr.name,attr.value);
+          }
+          // Copy computed inline styles (background, color, border) that
+          // the renderer sets directly on the element.
+          if(rendered.style.cssText)c.overlayEl.style.cssText+=';'+rendered.style.cssText;
         }
       }
       c.overlayEl.style.zIndex=opts.zIndex||80;
@@ -356,6 +361,9 @@ const Kit=(()=>{
       const fromEl=c.overlayEl||c.anchor;
       if(!fromEl||!toAnchor)return;
       const savedTargetVis=toAnchor.style.visibility;
+      // Hide the original overlay during flight — the clone (moveEl) is the
+      // only visible element. Prevents double-vision at the source.
+      if(c.overlayEl)c.overlayEl.style.opacity='0';
       const rendered=renderCard(c);
       let moveEl;
       if(rendered){moveEl=rendered;moveEl.classList.add('kit-card-moving');}
@@ -383,6 +391,7 @@ const Kit=(()=>{
       moveEl.remove();
       toAnchor.style.visibility=savedTargetVis||'';
       if(opts.toLocation)c.location={...opts.toLocation};
+      // pin() restores the overlay opacity via positionOverlay (sets opacity:1)
       pin(id,toAnchor,{hideAnchor:opts.hideTarget!==false});
       if(opts.land!==false)await Card.bounce(toAnchor,{duration:260});
       if(opts.onArrive)opts.onArrive(toAnchor);
