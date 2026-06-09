@@ -172,12 +172,18 @@
   }
   // deal a face-down card from the deck onto a player's row, then it stays hidden
   // until the caller reveals (we just animate the travel; the rebuilt board shows the real card)
-  function dealTravel(toRowEl,card,seq='x'){
+  function dealTravel(toRowEl,card,seq='x',before=null){
     return new Promise(async res=>{
       const deck=$('f7Deck');if(!deck||!toRowEl){res();return;}
       deck.classList.remove('deal');void deck.offsetWidth;deck.classList.add('deal');
       const ghost=cardEl(card?.kind||'num',card?.v??'?');
-      toRowEl.appendChild(ghost);ghost.style.visibility='hidden';
+      ghost.style.visibility='hidden';
+      if(card?.kind==='num'){
+        const nums=[...toRowEl.querySelectorAll('.f7-card.num')];
+        const after=nums.find(el=>Number(el.textContent)>Number(card.v));
+        toRowEl.insertBefore(ghost,after||null);
+      } else toRowEl.appendChild(ghost);
+      if(before) animateF7Layout(before);
       SFX.flip();
       await Kit.CardMotion.move('flip7:deal:'+seq,deck,ghost,{value:card?.v??'?',color:card?.kind==='num'?'#111827':card?.kind==='mod'?'#7c3aed':'#b45309',startFaceDown:true,revealMidway:true,spin:true,duration:620,land:false});
       ghost.remove();
@@ -197,6 +203,15 @@
     else if(card.v==='second') p.second=true;
     else p.actionCards.push(card.v);
     p.unique=new Set(p.nums).size;
+    p.live=liveScore(p);
+  }
+  function removeCardFromShadow(p,card){
+    if(!p||!card)return;
+    if(card.kind==='num') removeOne(p.nums,card.v);
+    else if(card.kind==='mod') removeOne(p.mods,card.v);
+    else if(card.v==='second') p.second=false;
+    else if(p.actionCards) removeOne(p.actionCards,card.v);
+    p.unique=new Set(p.nums||[]).size;
     p.live=liveScore(p);
   }
   function liveScore(p){
@@ -257,23 +272,25 @@
       }
       case 'card':{
         if(mode==='local')eventFocus=e.player;
+        removeCardFromShadow(shadow.flip7.players[e.player],e.card);
         draw(shadow);
         const row=rowOf(e.player); if(e.flip3)await sleep(SPEED.flip3Gap*0.2);
         const before=captureF7Layout();
-        await dealTravel(row,e.card,e.seq);
+        await dealTravel(row,e.card,e.seq,before);
         applyShadowEvent(shadow,e);
-        draw(shadow); animateF7Layout(before);
+        draw(shadow);
         await sleep(SPEED.beat*0.18);
         break;
       }
       case 'action_card':{
         if(mode==='local')eventFocus=e.player;
+        removeCardFromShadow(shadow.flip7.players[e.player],{kind:'act',v:e.kind});
         draw(shadow);
         const row=rowOf(e.player);
         const before=captureF7Layout();
-        await dealTravel(row,{kind:'act',v:e.kind},e.seq);
+        await dealTravel(row,{kind:'act',v:e.kind},e.seq,before);
         applyShadowEvent(shadow,e);
-        draw(shadow); animateF7Layout(before);
+        draw(shadow);
         await sleep(SPEED.beat*0.2);
         break;
       }
