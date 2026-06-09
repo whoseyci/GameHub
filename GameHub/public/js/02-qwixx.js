@@ -193,6 +193,7 @@ window.GameClients = window.GameClients || {};
     const s = view.state;
     const dice = s.dice || { w:[0,0], r:0, y:0, g:0, b:0 };
     removeQwixxUi();
+    const mini=$('miniBoardsContainer');if(mini){mini.innerHTML='';mini.className='mini-boards-container';}
     $('topArea').style.display = 'flex';
     const piles = $('topArea').querySelector('.piles');
     if(piles) piles.style.display = 'none';

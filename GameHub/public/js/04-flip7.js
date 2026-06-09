@@ -19,7 +19,7 @@
 
   function addF7Card(row,el,key){ el.dataset.cardKey=key; row.appendChild(el); return el; }
   function captureF7Layout(){ const m=new Map(); document.querySelectorAll('.f7-focus-board .f7-card[data-card-key]').forEach(el=>m.set(el.dataset.cardKey,el.getBoundingClientRect())); return m; }
-  function animateF7Layout(before){ document.querySelectorAll('.f7-focus-board .f7-card[data-card-key]').forEach(el=>{ const a=before.get(el.dataset.cardKey); if(!a)return; const b=el.getBoundingClientRect(); const dx=a.left-b.left,dy=a.top-b.top; if(Math.abs(dx)+Math.abs(dy)<1)return; el.style.transition='none'; el.style.transform=`translate(${dx}px,${dy}px)`; el.offsetHeight; el.style.transition='transform .28s var(--spring-soft)'; el.style.transform=''; setTimeout(()=>{el.style.transition='';},320); }); }
+  function animateF7Layout(before){ document.querySelectorAll('.f7-focus-board .f7-card[data-card-key]').forEach(el=>{ const a=before.get(el.dataset.cardKey); if(!a)return; const b=el.getBoundingClientRect(); const dx=a.left-b.left; if(Math.abs(dx)<3)return; el.style.transition='none'; el.style.transform=`translateX(${dx}px)`; el.offsetHeight; el.style.transition='transform .16s ease-out'; el.style.transform=''; setTimeout(()=>{el.style.transition='';},190); }); }
 
   function actionVfx(kind){
     const o=document.createElement('div');o.style.cssText='position:fixed;inset:0;z-index:400;pointer-events:none;display:flex;align-items:center;justify-content:center';
@@ -52,7 +52,9 @@
     const cntEl=dealerWrap.querySelector('.cnt');if(cntEl)cntEl.textContent='deck '+s.deckCount+' \u00b7 out '+s.discardCount;
     const main=$('mainBoardsContainer');main.innerHTML='';
     const pending=s.pendingAction&&s.pendingAction.from===viewer;
-    const focus = mode==='local' ? (eventFocus!=null ? eventFocus : s.current) : (viewer>=0 ? viewer : s.current);
+    const localHumanSeats=(typeof localSeats!=='undefined')?localSeats.map((x,idx)=>!x.bot?idx:-1).filter(idx=>idx>=0):[];
+    const localFocus = (eventFocus!=null && !(typeof localSeats!=='undefined'&&localSeats[eventFocus]?.bot)) ? eventFocus : (viewer>=0 ? viewer : (localHumanSeats[0]??s.current));
+    const focus = mode==='local' ? localFocus : (viewer>=0 ? viewer : s.current);
     s.players.forEach((p,i)=>{
       if(i!==focus){mini.appendChild(miniDOM(s,p,i,viewer,pending));return;}
       const wrap=document.createElement('div');const busted=p.status==='busted';
@@ -199,7 +201,8 @@
       ghost.style.visibility='hidden';
       if(card?.kind==='num'){
         const nums=[...toRowEl.querySelectorAll('.f7-card.num')];
-        const after=nums.find(el=>Number(el.textContent)>Number(card.v));
+        const firstSpecial=[...toRowEl.querySelectorAll('.f7-card:not(.num)')][0]||null;
+        const after=nums.find(el=>Number(el.textContent)>Number(card.v))||firstSpecial;
         toRowEl.insertBefore(ghost,after||null);
       } else toRowEl.appendChild(ghost);
       if(before) animateF7Layout(before);
