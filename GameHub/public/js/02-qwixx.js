@@ -244,7 +244,13 @@ window.GameClients = window.GameClients || {};
 
     const shouldRoll = !diceRevealed;
     const diceTray = $('qwixxDiceKit'), throwBtn = $('qwixxThrowBtn');
-    const doThrow = () => { if(throwBtn) throwBtn.classList.add('hidden'); window._qwixxDiceSig = diceSig; Kit.rollDice(diceTray, diceList(dice), {size: innerWidth < 760 ? 30 : 42, animate: true, originEl: throwBtn}).then(()=>{ if(window._renderView&&window._renderView.game==='qwixx') render(window._renderView); }); };
+    const doThrow = () => {
+      if(throwBtn) throwBtn.classList.add('hidden');
+      window._qwixxDiceSig = diceSig;
+      Kit.rollDice(diceTray, diceList(dice), {size: innerWidth < 760 ? 30 : 42, animate: true, originEl: throwBtn}).then(()=>{
+        if(window._renderView && window._renderView.game === 'qwixx') dispatchView(window._renderView);
+      });
+    };
     if(shouldRoll){ diceTray.innerHTML=''; if(throwBtn){ throwBtn.classList.remove('hidden'); throwBtn.onclick=doThrow; } }
     else { if(throwBtn) throwBtn.classList.add('hidden'); Kit.rollDice(diceTray, diceList(dice), {size: innerWidth < 760 ? 30 : 42, animate: false}); }
 

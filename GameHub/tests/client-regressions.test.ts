@@ -39,6 +39,12 @@ describe("client module split", () => {
     expect(botSkyjo).toContain("BotDriver.register('skyjo'");
     expect(botInit).toContain('BotDriver.choose');
   });
+
+  it("keeps Qwixx bots gated behind the visible dice reveal", () => {
+    expect(botQwixx).toContain('function diceRevealed');
+    expect(botQwixx).toContain('window._qwixxDiceSig');
+    expect(botQwixx).toContain('if (!s || !diceRevealed(s)) return false;');
+  });
 });
 
 describe("shared game shell", () => {
@@ -73,6 +79,12 @@ describe("shared game shell", () => {
     expect(skyjo).toContain("GameShell.renderTable");
     expect(flip7).toContain("GameShell.renderTable");
   });
+
+  it("exposes a consistent GameClients.act API across built-in games", () => {
+    expect(qwixx).toContain("window.GameClients['qwixx'] = { render, act, inspect, unmount }");
+    expect(skyjo).toContain("window.GameClients['skyjo']={render,unmount,act:clientAct}");
+    expect(flip7).toContain("window.GameClients['flip7']={render,inspect,unmount,act:clientAct}");
+  });
 });
 
 describe("Qwixx client regressions", () => {
@@ -92,6 +104,10 @@ describe("Qwixx client regressions", () => {
     expect(qwixx).toContain("possibleColorMarks");
     expect(qwixx).toContain("recommendedMove");
     expect(qwixx).toContain("renderMiniBoard");
+  });
+
+  it("re-dispatches Qwixx after a throw so bot scheduling and status refresh resume", () => {
+    expect(qwixx).toContain("dispatchView(window._renderView)");
   });
 });
 

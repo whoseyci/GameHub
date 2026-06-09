@@ -161,6 +161,10 @@
   // where each player flips their OWN cards). Online ignores it (server uses the
   // authenticated connection's seat).
   function act(seat,msg){ if(mode==='local')localAct(seat,msg); else net.send({type:'action',seat,...msg}); }
+  function clientAct(action, extra={}){
+    const seat = window._renderView?.yourSeat ?? window._renderView?.skyjo?.currentPlayer ?? 0;
+    act(seat, { action, ...extra });
+  }
 
   async function runAnim(s,viewer){
     const a=s.lastAction;if(!a)return;
@@ -185,7 +189,7 @@
   }
 
   function unmount(){const mini=$('miniBoardsContainer');if(mini)mini.innerHTML='';}
-  window.GameClients['skyjo']={render,unmount};
+  window.GameClients['skyjo']={render,unmount,act:clientAct};
 
   /* ---- Local engine wrapper for Skyjo (offline play; mirrors server module) ---- */
   // Minimal port of the engine just for local mode (no network).

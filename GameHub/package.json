@@ -12,7 +12,9 @@
     "test": "vitest",
     "deploy:dry-run": "wrangler deploy --dry-run",
     "check:client": "node scripts/check-client-js.mjs",
+    "smoke:client": "node scripts/smoke-client.mjs",
     "validate": "npm run typecheck && npm run check:client && npm test -- --run && npm run deploy:dry-run",
+    "validate:ci": "npm run typecheck && npm run check:client && npm test -- --run && npm run smoke:client && npm run deploy:dry-run",
     "scaffold:game": "node scripts/scaffold-game.mjs"
   },
   "dependencies": {
@@ -20,6 +22,7 @@
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260609.1",
+    "jsdom": "^26.1.0",
     "typescript": "^5.4.0",
     "vitest": "^4.1.8",
     "wrangler": "^4.98.0"

@@ -169,17 +169,20 @@ card/deck state.
 
 ## Local development (optional)
 
-Requires Node.js 22+ for current Wrangler tooling.
+Requires Node.js 22+ for current Wrangler tooling. The repo pins this in `.nvmrc`
+and `.node-version`, and CI runs the same checks on GitHub Actions.
 
 ```bash
 npm install
-npm run dev        # wrangler dev — runs Worker + DOs + static client locally
+npm run dev           # wrangler dev — runs Worker + DOs + static client locally
 # open the printed http://localhost:8787
-npm run typecheck      # tsc --noEmit
-npm run check:client   # syntax-check browser JS modules
-npm test -- --run      # Vitest contract/regression tests
+npm run typecheck     # tsc --noEmit
+npm run check:client  # syntax-check browser JS modules
+npm test -- --run     # Vitest contract/regression tests
+npm run smoke:client  # jsdom smoke test for cross-game UI/bot cleanup quirks
 npm run deploy:dry-run
-npm run validate       # all of the above
+npm run validate      # local validation gate (no smoke)
+npm run validate:ci   # CI-equivalent gate, including the smoke pass
 ```
 
 `npm run deploy:dry-run` validates the Worker bundle, Durable Object bindings, and static assets without deploying (no login needed).
