@@ -3,6 +3,7 @@ window.GameClients = window.GameClients || {};
 
 /* -------------------- QWIXX client -------------------- */
 (function(){
+  window.GameRules['qwixx']={title:'🎲 Qwixx',quick:'Cross off numbers left-to-right for the highest score.',steps:['Each turn rolls two white dice and four colored dice.','In the <b>White Phase</b>, everyone may cross one number equal to white + white on any row.','In the <b>Color Phase</b>, only the active player may cross one number equal to one white die + the matching colored die.','Numbers must always be crossed from left to right; you can skip numbers but never go back.','The far-right number locks a row only after enough marks. Two locked rows or four penalties ends the game.','More marks in a row score quadratically; penalties subtract points.'],tip:'Skipping is allowed. Avoid penalties, but do not wait too long to score rows.'};
   const COLORS = ['red', 'yellow', 'green', 'blue'];
   const COLOR_KEY = { red: 'r', yellow: 'y', green: 'g', blue: 'b' };
   const C_HEX = { red: '#e74c3c', yellow: '#f1c40f', green: '#2ecc71', blue: '#3498db' };

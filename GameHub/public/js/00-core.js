@@ -8,10 +8,11 @@
    shape as Skyjo below. The hub never needs to change.
    ==================================================================== */
 const PARTYKIT_HOST = location.host; // served by the same Worker
-const BUILD_VERSION = "v21-browser-smoke-unify-polish"; // bump on each change; shown on the menu
+const BUILD_VERSION = "v22-packaged-games-pass"; // bump on each change; shown on the menu
 
 const $=id=>document.getElementById(id);
 function esc(v){return String(v ?? '').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));}
+window.GameRules = window.GameRules || {};
 function showScreen(id){
   // Leaving the game screen? Tear down any body-level game widgets (Flip 7 controls/dealer)
   // so Hit/Stay etc. can never linger over a menu.
@@ -704,39 +705,8 @@ catalogue=[
 ];
 
 /* ---- Rulebooks (accessible from menu, pickers, and inside a game) ---- */
-const RULES={
-  skyjo:{title:'🃏 Skyjo',quick:'Get the LOWEST score.',
-    steps:[
-      'Each player has a 4×3 grid of face-down cards. Flip 2 to start.',
-      'On your turn: take the <b>Deck</b> card or the <b>Discard</b> top, then either swap it onto your grid (discarding the old card) — or, if from the deck, discard it and flip one face-down card.',
-      'Three of the same number in a column clear (count as 0).',
-      'When someone reveals their whole grid, everyone else gets one last turn.',
-      'Lowest total wins the round. First to 100 ends the game — lowest total wins.',
-    ],
-    tip:'Dump high cards, keep low/negative ones. Watch for column triplets!'},
-  flip7:{title:'🎴 Flip 7',quick:'Push your luck — race to 200.',
-    steps:[
-      'On your turn choose <b>Hit</b> (draw a card) or <b>Stay</b> (bank your points, you’re out for the round).',
-      'Number cards: there’s one 0, two 2s, three 3s … twelve 12s. Draw a <b>duplicate number → BUST</b> (score 0 this round).',
-      'Get <b>7 unique numbers → Flip 7!</b> +15 bonus and the round ends instantly.',
-      'Modifiers (+2…+10, ×2) boost your score; ×2 doubles numbers first, then + adds on.',
-      'Action cards: <b>Freeze</b> (target banks &amp; is out), <b>Flip Three</b> (target draws 3), <b>Second Chance</b> (saves you from one bust).',
-      'Round ends when all players bust/stay or someone Flip 7s. First to 200 wins.',
-    ],
-    tip:'High numbers are riskier (more copies in the deck). The 0 is always safe.'},
-  qwixx:{title:'🎲 Qwixx',quick:'Cross off numbers left-to-right for the highest score.',
-    steps:[
-      'Each turn rolls two white dice and four colored dice.',
-      'In the <b>White Phase</b>, everyone may cross one number equal to white + white on any row.',
-      'In the <b>Color Phase</b>, only the active player may cross one number equal to one white die + the matching colored die.',
-      'Numbers must always be crossed from left to right; you can skip numbers but never go back.',
-      'The far-right number locks a row only after enough marks. Two locked rows or four penalties ends the game.',
-      'More marks in a row score quadratically; penalties subtract points.',
-    ],
-    tip:'Skipping is allowed. Avoid penalties, but do not wait too long to score rows.'},
-};
 function openRules(gameId){
-  const r=RULES[gameId];if(!r){showRulesMenu();return;}
+  const r=window.GameRules?.[gameId];if(!r){showRulesMenu();return;}
   $('rulesBox').innerHTML=`<h2 style="margin:0 0 4px">${r.title}</h2><div class="muted" style="margin-bottom:10px">${r.quick}</div>
     <ol style="text-align:left;line-height:1.55;font-weight:600;padding-left:20px;margin:0 0 12px">${r.steps.map(s=>`<li style="margin-bottom:7px">${s}</li>`).join('')}</ol>
     <div style="background:var(--bg);border:2px solid var(--border);border-radius:12px;padding:10px;font-weight:700;text-align:left">💡 ${r.tip}</div>

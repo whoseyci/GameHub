@@ -15,6 +15,12 @@
 
 (function(){
   const ID = 'template';
+  window.GameRules[ID] = {
+    title: '🧩 Template',
+    quick: 'Replace this with a one-line summary.',
+    steps: ['Describe setup.', 'Describe the turn.', 'Describe how the game ends.'],
+    tip: 'Keep rule text registered with the game client so built-ins and scaffolded games use the same path.',
+  };
 
   function send(action, extra = {}) {
     const seat = window._renderView?.yourSeat ?? 0;

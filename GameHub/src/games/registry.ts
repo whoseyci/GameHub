@@ -2,9 +2,9 @@
 // To add a game: implement a GameModule, import it here, add it to GAMES.
 // Existing games are untouched, so a new game can't break them.
 import type { GameModule, GameFeatures } from "./types";
-import { Skyjo, skyjoCompleteTurnEnd } from "./skyjo";
-import { Flip7 } from "./flip7";
-import { Qwixx } from "./qwixx";
+import { Skyjo, skyjoCompleteTurnEnd } from "./skyjo/server";
+import { Flip7 } from "./flip7/server";
+import { Qwixx } from "./qwixx/server";
 
 export const GAMES: Record<string, GameModule> = {
   [Skyjo.meta.id]: Skyjo,

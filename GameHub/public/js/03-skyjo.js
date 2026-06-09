@@ -1,5 +1,6 @@
 /* -------------------- SKYJO client -------------------- */
 (function(){
+  window.GameRules['skyjo']={title:'🃏 Skyjo',quick:'Get the LOWEST score.',steps:['Each player has a 4×3 grid of face-down cards. Flip 2 to start.','On your turn: take the <b>Deck</b> card or the <b>Discard</b> top, then either swap it onto your grid (discarding the old card) — or, if from the deck, discard it and flip one face-down card.','Three of the same number in a column clear (count as 0).','When someone reveals their whole grid, everyone else gets one last turn.','Lowest total wins the round. First to 100 ends the game — lowest total wins.'],tip:'Dump high cards, keep low/negative ones. Watch for column triplets!'};
   const C=Kit.cardColor;
   function boardEl(pi){return document.getElementById('main-board-'+pi)||document.getElementById('mini-board-'+pi);}
   function cardAt(pi,idx){const b=boardEl(pi);return b?b.querySelectorAll('.board-card')[idx]:null;}

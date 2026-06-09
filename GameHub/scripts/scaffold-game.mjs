@@ -20,18 +20,44 @@ if (!/^[a-z][a-z0-9_]*$/.test(id) || !name || !Number.isInteger(min) || !Number.
 }
 
 const pascal = id.split('_').map((s) => s[0].toUpperCase() + s.slice(1)).join('');
-const tsPath = `src/games/${id}.ts`;
+const gameDir = `src/games/${id}`;
+const metaPath = `${gameDir}/meta.ts`;
+const serverPath = `${gameDir}/server.ts`;
+const indexPath = `${gameDir}/index.ts`;
+const compatPath = `src/games/${id}.ts`;
 const clientPath = `public/js/games/${id}.js`;
 const testPath = `tests/${id}.test.ts`;
 const sampleNames = Array.from({ length: Math.max(min, 2) }, (_, i) => JSON.stringify(`P${i + 1}`)).join(', ');
-for (const path of [tsPath, clientPath, testPath]) {
+for (const path of [metaPath, serverPath, indexPath, compatPath, clientPath, testPath]) {
   if (existsSync(path)) throw new Error(`${path} already exists`);
   mkdirSync(dirname(path), { recursive: true });
 }
 
-// Server module with standardized GameViewState and GameFeatures
-writeFileSync(tsPath, `import type { GameModule, GameView, GameViewState, GameLifecyclePhase } from "./types";
-import { makeSeed, type RngStateHolder } from "../rng";
+// Server package with standardized GameViewState and GameFeatures
+writeFileSync(metaPath, `import type { GameMeta } from "../types";
+
+export const ${pascal}Meta: GameMeta = {
+  id: "${id}",
+  name: "${name}",
+  minPlayers: ${min},
+  maxPlayers: ${max},
+  description: "TODO: describe ${name}.",
+  emoji: "${emoji}",
+  features: {
+    hasBots: false,
+    simultaneousTurns: false,
+    usesTick: false,
+    hasMultiRound: false,
+    canSpectate: false,
+    minDurationSec: 60,
+    maxDurationSec: 300,
+  },
+};
+`);
+
+writeFileSync(serverPath, `import type { GameModule, GameView, GameViewState, GameLifecyclePhase } from "../types";
+import { makeSeed, type RngStateHolder } from "../../rng";
+import { ${pascal}Meta } from "./meta";
 
 interface ${pascal}Player {
   name: string;
@@ -73,23 +99,7 @@ function buildViewState(state: ${pascal}State): GameViewState {
 }
 
 export const ${pascal}: GameModule = {
-  meta: {
-    id: "${id}",
-    name: "${name}",
-    minPlayers: ${min},
-    maxPlayers: ${max},
-    description: "TODO: describe ${name}.",
-    emoji: "${emoji}",
-    features: {
-      hasBots: false,
-      simultaneousTurns: false,
-      usesTick: false,
-      hasMultiRound: false,
-      canSpectate: false,
-      minDurationSec: 60,
-      maxDurationSec: 300,
-    },
-  },
+  meta: ${pascal}Meta,
 
   create(names: string[]): ${pascal}State {
     return {
@@ -130,6 +140,9 @@ export const ${pascal}: GameModule = {
 };
 `);
 
+writeFileSync(indexPath, `export * from './meta';\nexport * from './server';\n`);
+writeFileSync(compatPath, `// Compatibility wrapper — the authoritative ${name} package now lives in src/games/${id}/.\nexport * from './${id}/index';\n`);
+
 // Client module using the standardized GameClient contract
 writeFileSync(clientPath, `/**
  * Client renderer for ${name} (${id}).
@@ -141,6 +154,12 @@ writeFileSync(clientPath, `/**
  */
 (function(){
   const ID = '${id}';
+  window.GameRules[ID] = {
+    title: '${emoji} ${name}',
+    quick: 'TODO: add a one-line how-to-play summary.',
+    steps: ['TODO: explain setup.', 'TODO: explain a turn.', 'TODO: explain scoring/end conditions.'],
+    tip: 'TODO: add one useful strategy tip.',
+  };
 
   function send(action, extra = {}) {
     const seat = window._renderView?.yourSeat ?? 0;
@@ -226,7 +245,7 @@ describe("${name}", () => {
 
 // Register in the game registry
 let registry = readFileSync('src/games/registry.ts', 'utf8');
-registry = registry.replace('import { Qwixx } from "./qwixx";\n', `import { Qwixx } from "./qwixx";\nimport { ${pascal} } from "./${id}";\n`);
+registry = registry.replace('import { Qwixx } from "./qwixx/server";\n', `import { Qwixx } from "./qwixx/server";\nimport { ${pascal} } from "./${id}/server";\n`);
 registry = registry.replace('  [Qwixx.meta.id]: Qwixx,\n};', `  [Qwixx.meta.id]: Qwixx,\n  [${pascal}.meta.id]: ${pascal},\n};`);
 writeFileSync('src/games/registry.ts', registry);
 
@@ -239,7 +258,7 @@ if (!html.includes(scriptTag)) {
 }
 
 console.log(`✅ Scaffolded ${name} (${id}). Next:`);
-console.log(`  1. Implement rules in ${tsPath}`);
-console.log(`  2. Implement UI in ${clientPath}`);
+console.log(`  1. Implement server/meta in ${serverPath} and ${metaPath}`);
+console.log(`  2. Implement UI + rules in ${clientPath}`);
 console.log(`  3. Expand tests in ${testPath}`);
 console.log(`  4. Run npm run validate`);

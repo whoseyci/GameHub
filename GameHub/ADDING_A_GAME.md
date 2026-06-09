@@ -10,10 +10,13 @@ A game = **server module** (authoritative rules) + **client module** (renders th
 view + sends input). They communicate through one personalized object: the `view`.
 
 ```
-src/games/<id>.ts        # server: implements GameModule (see src/games/types.ts)
-src/games/registry.ts    # add: GAMES[id] = YourGame  (+ TICK_RUNNERS if you use tick())
-public/index.html        # client: add window.GameClients['<id>'] = { render(view) }
-                         #         (+ window.LocalEngines['<id>'] for offline play)
+src/games/<id>/meta.ts      # metadata/features for the game package
+src/games/<id>/server.ts    # server: implements GameModule (see src/games/types.ts)
+src/games/<id>/index.ts     # package entrypoint
+src/games/<id>.ts           # compatibility wrapper (generated)
+src/games/registry.ts       # add: GAMES[id] = YourGame  (+ TICK_RUNNERS if you use tick())
+public/js/games/<id>.js     # client: registers GameClients['<id>'] and GameRules['<id>']
+                             #         (+ LocalEngines['<id>'] for offline play)
 ```
 
 ## Server side — implement `GameModule` (src/games/types.ts)
@@ -45,7 +48,7 @@ Rules (enforced by convention — keep them and games stay isolated):
 Register it:
 ```ts
 // src/games/registry.ts
-import { Hearts } from "./hearts";
+import { Hearts } from "./hearts/server";
 export const GAMES = { [Skyjo.meta.id]:Skyjo, [Hearts.meta.id]:Hearts };
 // if Hearts uses tick(): TICK_RUNNERS["hearts"] = heartsAdvance;
 ```
@@ -77,9 +80,9 @@ Quick Play and room pickers automatically once it's in `GAMES`.
 ## Hub features your game gets for free
 - **Group-size filter** — set `minPlayers`/`maxPlayers` in `meta`; the hub greys out
   your game in the picker when the group doesn't fit, and blocks launching it.
-- **Rulebook** — add an entry to the `RULES` object in `public/index.html`
-  (`{title, quick, steps[], tip}`). It appears via the `?` on the game tile, the menu's
-  "How to Play", and the 📖 button inside the game.
+- **Rulebook** — register `window.GameRules['<id>'] = {title, quick, steps[], tip}` in your
+  client file (`public/js/games/<id>.js`). It appears via the `?` on the game tile, the
+  menu's "How to Play", and the 📖 button inside the game.
 - **Round-by-round scores** — include `delta` on each `SummaryRow` (points this round)
   and the shared results table shows a Round column automatically.
 - **Quick Play sharding** — solo matchmaking + auto-roll to a new room when one fills.

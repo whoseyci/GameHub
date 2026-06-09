@@ -102,6 +102,24 @@ describe("shared game shell", () => {
     expect(templateClient).toContain('GameActions.send');
     expect(scaffold).toContain('GameActions.send');
   });
+
+  it("scaffolds games as packages with meta/server/index structure", () => {
+    expect(scaffold).toContain('const gameDir = `src/games/${id}`;');
+    expect(scaffold).toContain('const metaPath = `${gameDir}/meta.ts`;');
+    expect(scaffold).toContain('const serverPath = `${gameDir}/server.ts`;');
+    expect(scaffold).toContain('const indexPath = `${gameDir}/index.ts`;');
+    expect(scaffold).toContain('const compatPath = `src/games/${id}.ts`;');
+  });
+
+  it("keeps rulebooks registered per game instead of hard-coding them in core", () => {
+    expect(core).toContain('window.GameRules = window.GameRules || {}');
+    expect(core).toContain('const r=window.GameRules?.[gameId]');
+    expect(qwixx).toContain("window.GameRules['qwixx']");
+    expect(skyjo).toContain("window.GameRules['skyjo']");
+    expect(flip7).toContain("window.GameRules['flip7']");
+    expect(templateClient).toContain('window.GameRules[ID]');
+    expect(scaffold).toContain('window.GameRules[ID]');
+  });
 });
 
 describe("Qwixx client regressions", () => {

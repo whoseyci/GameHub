@@ -1,5 +1,6 @@
 /* -------------------- FLIP 7 client (event-timeline) -------------------- */
 (function(){
+  window.GameRules['flip7']={title:'🎴 Flip 7',quick:'Push your luck — race to 200.',steps:['On your turn choose <b>Hit</b> (draw a card) or <b>Stay</b> (bank your points, you’re out for the round).','Number cards: there’s one 0, two 2s, three 3s … twelve 12s. Draw a <b>duplicate number → BUST</b> (score 0 this round).','Get <b>7 unique numbers → Flip 7!</b> +15 bonus and the round ends instantly.','Modifiers (+2…+10, ×2) boost your score; ×2 doubles numbers first, then + adds on.','Action cards: <b>Freeze</b> (target banks &amp; is out), <b>Flip Three</b> (target draws 3), <b>Second Chance</b> (saves you from one bust).','Round ends when all players bust/stay or someone Flip 7s. First to 200 wins.'],tip:'High numbers are riskier (more copies in the deck). The 0 is always safe.'};
   function modText(m){return m==='x2'?'×2':m;}
   const NUMCOL=['#94a3b8','#38bdf8','#22d3ee','#34d399','#4ade80','#a3e635','#facc15','#fb923c','#f97316','#ef4444','#ec4899','#d946ef','#a855f7'];
   function numFace(n){return NUMCOL[Math.max(0,Math.min(12,n))];}
