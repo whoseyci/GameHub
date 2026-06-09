@@ -25,6 +25,16 @@ describe("shared game shell", () => {
     expect(networkLocal).toContain("GameShell.render(view,client)");
   });
 
+  it("defines reusable card animation API and Skyjo uses it", () => {
+    expect(core).toContain("const Card=(()=>");
+    expect(core).toContain("const CardEffects");
+    expect(core).toContain("async function move");
+    expect(core).toContain("async function flip");
+    expect(skyjo).toContain("Kit.Card.move");
+    expect(skyjo).toContain("Kit.Card.reveal");
+    expect(skyjo).toContain("Kit.CardEffects.triplet");
+  });
+
   it("migrates built-in games to GameShell.renderTable", () => {
     expect(qwixx).toContain("GameShell.renderTable");
     expect(skyjo).toContain("GameShell.renderTable");

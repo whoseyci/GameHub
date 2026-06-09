@@ -148,14 +148,14 @@
     const a=s.lastAction;if(!a)return;
     if(a.type==='draw_deck'){ // everyone: card flips up on the deck (done in drawPiles via publicDrawn); active player also pulls into hand
       SFX.draw();
-      if(a.player===viewer&&s.myDrawnCard!=null){animating=true;await Kit.flyToHeld($('uiDeck'),$('uiHeldCard'),{value:s.myDrawnCard,color:C(s.myDrawnCard),startFaceDown:false,reveal:false});animating=false;flushView();}
+      if(a.player===viewer&&s.myDrawnCard!=null){animating=true;await Kit.Card.move('skyjo:draw:'+a.t,{from:$('uiDeck'),to:$('uiHeldCard'),value:s.myDrawnCard,color:C(s.myDrawnCard),startFaceDown:false,revealMidway:false,duration:460,land:true});animating=false;flushView();}
       return;
     }
-    if(a.type==='take_discard'){SFX.draw();if(a.player===viewer){animating=true;await Kit.flyToHeld($('uiDiscard'),$('uiHeldCard'),{value:a.value,color:C(a.value),startFaceDown:false,reveal:false});animating=false;flushView();}return;}
-    if(a.type==='swap'){animating=true;SFX.swap();await Kit.flyCard(cardAt(a.player,a.index),$('uiDiscard'),{value:a.oldVal,color:C(a.oldVal),startFaceDown:!a.wasRevealed,revealMidway:!a.wasRevealed,spin:a.wasRevealed});if(a.diff!=null&&a.diff!==0){const sg=a.diff>0?'+':'';Kit.floatText(boardEl(a.player),sg+a.diff,a.diff>0?'#10b981':'#ef4444');(a.diff>0?SFX.good:SFX.bad)();}animating=false;flushView();return;}
-    if(a.type==='discard_drawn'){animating=true;SFX.discard();await Kit.flyCard($('uiHeldCard'),$('uiDiscard'),{value:a.value,color:C(a.value),spin:true});animating=false;flushView();return;}
-    if(a.type==='reveal'||a.type==='reveal_after_discard'){const el=cardAt(a.player,a.card!=null?a.card:a.index);if(el){el.classList.remove('anim-flip');void el.offsetWidth;el.classList.add('anim-flip');}SFX.reveal();return;}
-    if(a.type==='triplet'){animating=true;SFX.triplet();Kit.floatText(boardEl(a.player),'Triplet!','#eab308');for(let k=0;k<a.indices.length;k++){Kit.flyCard(cardAt(a.player,a.indices[k]),$('uiDiscard'),{value:a.value,color:C(a.value),spin:true,duration:600});await sleep(120);}await sleep(500);animating=false;flushView();return;}
+    if(a.type==='take_discard'){SFX.draw();if(a.player===viewer){animating=true;await Kit.Card.move('skyjo:discardtake:'+a.t,{from:$('uiDiscard'),to:$('uiHeldCard'),value:a.value,color:C(a.value),startFaceDown:false,revealMidway:false,duration:460,land:true});animating=false;flushView();}return;}
+    if(a.type==='swap'){animating=true;SFX.swap();await Kit.Card.move('skyjo:swap:'+a.t,{from:cardAt(a.player,a.index),to:$('uiDiscard'),value:a.oldVal,color:C(a.oldVal),startFaceDown:!a.wasRevealed,revealMidway:!a.wasRevealed,spin:a.wasRevealed,duration:520,land:true});if(a.diff!=null&&a.diff!==0){const sg=a.diff>0?'+':'';Kit.floatText(boardEl(a.player),sg+a.diff,a.diff>0?'#10b981':'#ef4444');(a.diff>0?SFX.good:SFX.bad)();}animating=false;flushView();return;}
+    if(a.type==='discard_drawn'){animating=true;SFX.discard();await Kit.Card.move('skyjo:discard:'+a.t,{from:$('uiHeldCard'),to:$('uiDiscard'),value:a.value,color:C(a.value),spin:true,duration:520,land:true});animating=false;flushView();return;}
+    if(a.type==='reveal'||a.type==='reveal_after_discard'){const el=cardAt(a.player,a.card!=null?a.card:a.index);SFX.reveal();await Kit.Card.reveal(el,a.value,{color:C(a.value)});return;}
+    if(a.type==='triplet'){animating=true;await Kit.CardEffects.triplet({cards:a.indices.map(i=>cardAt(a.player,i)).filter(Boolean),discardEl:$('uiDiscard'),value:a.value,color:C(a.value),boardEl:boardEl(a.player)});await sleep(250);animating=false;flushView();return;}
   }
   function investigate(s,pi,viewer){
     const seats=s.players.map((_,i)=>i).filter(i=>i!==viewer);

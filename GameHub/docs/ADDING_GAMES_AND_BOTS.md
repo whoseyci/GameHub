@@ -93,9 +93,11 @@ window.LocalEngines['hearts'] = function(names) {
 
 Use existing helpers:
 
-- `Kit` for card animation/visuals
+- `Kit.Card.move(cardIdOrOpts, opts?)` for card transfer
+- `Kit.Card.flip/reveal/hide/bounce/tilt/untilt/shake/glow/stack/discard` for card object animation
+- `Kit.CardEffects.triplet/bust/secondChance/actionTransfer` for common composed effects
 - `Kit.EventRunner.run(events, handler)` for sequential event playback
-- `Kit.CardMotion.move(cardId, fromEl, toEl, opts)` for every card transfer
+- `Kit.CardMotion.move(cardId, fromEl, toEl, opts)` only as the low-level primitive behind `Kit.Card.move`
 - `SFX` for sound
 - `showSummary(view)` for end screens
 - `removeQwixxUi()` / game cleanup helpers when entering a renderer

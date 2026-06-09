@@ -140,6 +140,62 @@ const Kit=(()=>{
       requestAnimationFrame(step);
     });
   }
+  const Card=(()=>{
+    function asMoveArgs(cardIdOrOpts,maybeOpts){
+      if(typeof cardIdOrOpts==='string')return {cardId:cardIdOrOpts,...(maybeOpts||{})};
+      return {cardId:'card:'+Date.now()+':'+Math.random().toString(36).slice(2),...(cardIdOrOpts||{})};
+    }
+    async function move(cardIdOrOpts,maybeOpts){
+      const o=asMoveArgs(cardIdOrOpts,maybeOpts);
+      return CardMotion.move(o.cardId,o.from,o.to,{value:o.value,color:o.color,startFaceDown:!!o.startFaceDown,revealMidway:!!o.revealMidway,spin:!!o.spin,duration:o.duration??520,land:o.land!==false});
+    }
+    async function flip(el,{value=null,color=null,faceUp=true,duration=420}={}){
+      if(!el)return;
+      el.classList.remove('anim-flip');void el.offsetWidth;el.classList.add('anim-flip');
+      await sleep(duration/2);
+      if(faceUp){
+        if(value!=null)el.textContent=value;
+        if(color)el.style.color=color;
+        el.classList.remove('face-down');el.classList.add('revealed');
+      }else{
+        el.textContent='';el.style.color='';el.classList.add('face-down');el.classList.remove('revealed');
+      }
+      await sleep(duration/2);
+    }
+    async function reveal(el,value,{color=null,duration=420}={}){return flip(el,{value,color,faceUp:true,duration});}
+    async function hide(el,opts={}){return flip(el,{...opts,faceUp:false});}
+    function bounce(el,{duration=400}={}){if(!el)return Promise.resolve();el.classList.remove('anim-land');void el.offsetWidth;el.classList.add('anim-land');return sleep(duration);}
+    function tilt(el,degrees=8,{duration=180}={}){if(!el)return Promise.resolve();el.style.transition=`transform ${duration}ms var(--spring-soft)`;el.style.transform=`rotate(${degrees}deg)`;return sleep(duration);}
+    function untilt(el,{duration=180}={}){if(!el)return Promise.resolve();el.style.transition=`transform ${duration}ms var(--spring-soft)`;el.style.transform='';return sleep(duration);}
+    async function shake(el,{duration=500}={}){if(!el)return;el.style.animation='shakeX '+duration+'ms ease';await sleep(duration);el.style.animation='';}
+    async function glow(el,{duration=350}={}){if(!el)return;const old=el.style.filter;el.style.transition='filter .3s';el.style.filter='brightness(1.4) saturate(1.35)';await sleep(duration);el.style.filter=old||'';}
+    async function stack(els,{tiltDegrees=8,stagger=70}={}){for(let i=0;i<els.length;i++){tilt(els[i],(i-(els.length-1)/2)*tiltDegrees);await sleep(stagger);} }
+    async function discard(els,to,{cardId='discard',value=null,color=null,duration=560,stagger=110}={}){for(let i=0;i<els.length;i++){await move(cardId+':'+i,{from:els[i],to,value,color,spin:true,duration,land:false});await sleep(stagger);} }
+    return {move,flip,reveal,hide,bounce,tilt,untilt,shake,glow,stack,discard};
+  })();
+  const CardEffects={
+    async triplet({cards=[],discardEl=null,value=null,color=null,boardEl=null}={}){
+      if(boardEl)floatText(boardEl,'Triplet!','#eab308');
+      if(typeof SFX!=='undefined')SFX.triplet();
+      await Card.stack(cards,{tiltDegrees:10,stagger:70});
+      await Card.discard(cards,discardEl,{cardId:'triplet:'+Date.now(),value,color,duration:560,stagger:60});
+      cards.forEach(c=>Card.untilt(c));
+    },
+    async bust({boardEl=null,text='BUST!'}={}){
+      if(typeof SFX!=='undefined')SFX.bad();
+      await Card.shake(boardEl,{duration:520});
+      if(text)turnBanner(text,false);
+    },
+    async secondChance({cardEl=null}={}){
+      if(typeof SFX!=='undefined')SFX.good();
+      await Card.glow(cardEl,{duration:420});
+      turnBanner('Second Chance!',true);
+    },
+    async actionTransfer({kind='action',fromEl=null,toEl=null,seq=Date.now()}={}){
+      await Card.move('action:'+kind+':'+seq,{from:fromEl,to:toEl,value:kind,color:'#b45309',spin:true,duration:620,land:false});
+    }
+  };
+
   function confetti(){
     const cv=document.createElement('canvas');cv.style.cssText='position:fixed;inset:0;pointer-events:none;z-index:500';cv.width=innerWidth;cv.height=innerHeight;document.body.appendChild(cv);
     const x=cv.getContext('2d'),cols=['#3b82f6','#10b981','#eab308','#ef4444','#8b5cf6','#0ea5e9','#f59e0b'],ps=[];
@@ -147,7 +203,7 @@ const Kit=(()=>{
     burst(0.08);burst(0.92);setTimeout(()=>{burst(0.2);burst(0.8);},350);const end=Date.now()+3800;
     (function f(){x.clearRect(0,0,cv.width,cv.height);for(const p of ps){p.vy+=0.28;p.vx*=0.99;p.x+=p.vx;p.y+=p.vy;p.a+=p.va;x.save();x.translate(p.x,p.y);x.rotate(p.a);x.fillStyle=p.c;x.fillRect(-p.r/2,-p.r/2,p.r,p.r*0.6);x.restore();}if(Date.now()<end)requestAnimationFrame(f);else cv.remove();})();
   }
-  return {cardColor,floatText,turnBanner,flyCard,flyToHeld,dealCascade,EventRunner,CardMotion,rollDice,confetti};
+  return {cardColor,floatText,turnBanner,flyCard,flyToHeld,dealCascade,EventRunner,CardMotion,Card,CardEffects,rollDice,confetti};
 })();
 
 /* ====================== SOUND (arcade) ====================== */
