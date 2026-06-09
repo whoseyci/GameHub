@@ -3,8 +3,24 @@
   const C=Kit.cardColor;
   function boardEl(pi){return document.getElementById('main-board-'+pi)||document.getElementById('mini-board-'+pi);}
   function cardAt(pi,idx){const b=boardEl(pi);return b?b.querySelectorAll('.board-card')[idx]:null;}
-  function skyjoVisual(c){const el=document.createElement('div');if(c.cleared)el.className='board-card cleared';else if(c.revealed){el.className='board-card revealed';el.textContent=c.value;el.style.color=C(c.value);}else el.className='board-card face-down';return el;}
+  function skyjoSvg(kind,value=null,color=null){
+    if(kind==='back')return `<svg class="card-svg" viewBox="0 0 100 142" aria-hidden="true"><rect x="4" y="4" width="92" height="134" rx="14" fill="url(#g)"/><defs><linearGradient id="g" x1="0" x2="1" y1="0" y2="1"><stop stop-color="#6366f1"/><stop offset="1" stop-color="#4338ca"/></linearGradient></defs><text x="50" y="81" text-anchor="middle" font-size="42" font-weight="900" fill="#c7d2fe">✦</text></svg>`;
+    return `<svg class="card-svg" viewBox="0 0 100 142" aria-hidden="true"><rect x="4" y="4" width="92" height="134" rx="14" fill="#fff"/><text x="50" y="85" text-anchor="middle" font-size="48" font-weight="900" font-family="system-ui,-apple-system,Segoe UI,sans-serif" fill="${color||'#111'}">${esc(value)}</text></svg>`;
+  }
+  function skyjoVisual(c){const el=document.createElement('div');if(c.cleared)el.className='board-card cleared';else if(c.revealed){el.className='board-card revealed svg-card';el.innerHTML=skyjoSvg('front',c.value,C(c.value));el.style.color=C(c.value);}else{el.className='board-card face-down svg-card';el.innerHTML=skyjoSvg('back');}return el;}
   function skyjoCardId(s,pi,ci){return `skyjo:table:r${s.round}:p${pi}:c${ci}`;}
+  async function revealSkyjoRegistryCard(id,value){
+    const el=Kit.CardRegistry.get(id);
+    if(!el)return false;
+    const back=skyjoVisual({revealed:false,cleared:false,value:null});
+    el.className=back.className+' kit-card-registered';el.innerHTML=back.innerHTML;el.style.color='';
+    el.classList.remove('anim-flip');void el.offsetWidth;el.classList.add('anim-flip');
+    await sleep(210);
+    const front=skyjoVisual({revealed:true,cleared:false,value});
+    el.className=front.className+' kit-card-registered anim-flip';el.innerHTML=front.innerHTML;el.style.color=C(value);
+    await sleep(210);
+    return true;
+  }
   function syncSkyjoCards(s){const active=[];s.players.forEach((p,pi)=>p.board.forEach((c,ci)=>{const id=skyjoCardId(s,pi,ci),anchor=document.querySelector(`[data-card-reg="${id}"]`);if(anchor){active.push(id);Kit.CardRegistry.renderSlot(id,anchor,{render:()=>skyjoVisual(c)});}}));Kit.CardRegistry.reconcile('skyjo:table:',active);}
 
   let renderCtx=null;
@@ -156,7 +172,7 @@
     if(a.type==='take_discard'){SFX.draw();if(a.player===viewer){animating=true;await Kit.CardRegistry.move('skyjo:held',{from:$('uiDiscard'),to:$('uiHeldCard'),value:a.value,color:C(a.value),startFaceDown:false,revealMidway:false,duration:460,land:false,hideTarget:true});animating=false;flushView();}return;}
     if(a.type==='swap'){animating=true;SFX.swap();const target=cardAt(a.player,a.index);if(Kit.CardRegistry.has('skyjo:held')){await Kit.CardRegistry.move('skyjo:held',{to:target,value:a.newVal,color:C(a.newVal),duration:360,land:false,hideTarget:true});Kit.CardRegistry.remove('skyjo:held');}await Kit.Card.move('skyjo:swap:'+a.t,{from:target,to:$('uiDiscard'),value:a.oldVal,color:C(a.oldVal),startFaceDown:!a.wasRevealed,revealMidway:!a.wasRevealed,spin:a.wasRevealed,duration:520,land:false,hideTarget:true});if(a.diff!=null&&a.diff!==0){const sg=a.diff>0?'+':'';Kit.floatText(boardEl(a.player),sg+a.diff,a.diff>0?'#10b981':'#ef4444');(a.diff>0?SFX.good:SFX.bad)();}animating=false;flushView();return;}
     if(a.type==='discard_drawn'){animating=true;SFX.discard();await Kit.CardRegistry.move('skyjo:held',{to:$('uiDiscard'),value:a.value,color:C(a.value),spin:true,duration:520,land:false,hideTarget:true});Kit.CardRegistry.remove('skyjo:held');animating=false;flushView();return;}
-    if(a.type==='reveal'||a.type==='reveal_after_discard'){const idx=a.card!=null?a.card:a.index,id=skyjoCardId(s,a.player,idx);SFX.reveal();if(Kit.CardRegistry.has(id)){await Kit.CardRegistry.hide(id);await Kit.CardRegistry.reveal(id,a.value,{color:C(a.value)});}else{const el=cardAt(a.player,idx);await Kit.Card.reveal(el,a.value,{color:C(a.value)});}return;}
+    if(a.type==='reveal'||a.type==='reveal_after_discard'){const idx=a.card!=null?a.card:a.index,id=skyjoCardId(s,a.player,idx);SFX.reveal();if(!(await revealSkyjoRegistryCard(id,a.value))){const el=cardAt(a.player,idx);await Kit.Card.reveal(el,a.value,{color:C(a.value)});}return;}
     if(a.type==='triplet'){animating=true;await Kit.CardEffects.triplet({cards:a.indices.map(i=>cardAt(a.player,i)).filter(Boolean),discardEl:$('uiDiscard'),value:a.value,color:C(a.value),boardEl:boardEl(a.player)});await sleep(250);animating=false;flushView();return;}
   }
   function investigate(s,pi,viewer){

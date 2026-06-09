@@ -370,3 +370,6 @@ html,body,#app{min-height:100%;height:auto;max-height:none;overflow-x:hidden;ove
 
 /* Registry-owned Skyjo cards scale their values with the slot they occupy. */
 .kit-card-registered.board-card{line-height:1}.kit-card-registered.board-card.face-down::after{font-size:inherit}
+
+/* SVG-backed registry cards keep numbers/icons proportional at every card size. */
+.board-card.svg-card{font-size:0!important;overflow:hidden}.board-card.svg-card::after{content:none!important}.board-card .card-svg{width:100%;height:100%;display:block}.kit-card-registered.board-card.svg-card{font-size:0!important}
