@@ -229,6 +229,59 @@ const Kit=(()=>{
     function idle(){return chain;}
     return {move,moveToSlot,reserveSlot,flip,reveal,hide,bounce,tilt,untilt,shake,glow,stack,discard,trigger,idle};
   })();
+  const CardRegistry=(()=>{
+    const items=new Map();
+    function makeNode(o={}){
+      if(o.el)return o.el;
+      if(o.render)return o.render(o.card||o);
+      if(o.html)return nodeFromHTML(o.html);
+      const el=document.createElement('div');el.className=o.className||'card-slot revealed';el.textContent=o.value??'';if(o.color)el.style.color=o.color;return el;
+    }
+    function ensure(id,o={}){
+      let it=items.get(id);
+      if(!it){
+        const el=makeNode(o);el.dataset.cardRegistryId=id;el.classList.add('kit-card-registered');
+        Object.assign(el.style,{position:'fixed',zIndex:o.zIndex||900,pointerEvents:o.pointerEvents||'none',boxSizing:'border-box'});
+        document.body.appendChild(el);it={id,el,anchor:null,hidden:null,faceUp:true};items.set(id,it);
+      }
+      return it;
+    }
+    function restore(it){if(it?.hidden){it.hidden.el.style.visibility=it.hidden.visibility||'';it.hidden=null;}}
+    function rect(anchor){return anchor?anchor.getBoundingClientRect():null;}
+    function setAt(it,anchor,{hideAnchor=false}={}){
+      if(!it||!anchor)return;
+      restore(it);
+      const r=rect(anchor);if(!r)return;
+      Object.assign(it.el.style,{top:r.top+'px',left:r.left+'px',width:r.width+'px',height:r.height+'px',opacity:'1'});
+      it.anchor=anchor;
+      if(hideAnchor){it.hidden={el:anchor,visibility:anchor.style.visibility};anchor.style.visibility='hidden';}
+    }
+    function create(id,o={}){const it=ensure(id,o);if(o.at)setAt(it,o.at,{hideAnchor:!!o.hideAnchor});return it.el;}
+    function get(id){return items.get(id)?.el||null;}
+    function has(id){return items.has(id);}
+    async function move(id,{from=null,to=null,hideSource=false,hideTarget=true,startFaceDown=false,revealMidway=false,render=null,backHTML=null,card=null,value=null,color=null,spin=true,duration=520,land=false,onReveal=null,onArrive=null}={}){
+      const it=ensure(id,{render,card,value,color,html:backHTML&&startFaceDown?backHTML:null});
+      const start=from||it.anchor;
+      if(start)setAt(it,start,{hideAnchor:hideSource});
+      const oldTarget=to?{el:to,visibility:to.style.visibility}:null;
+      if(to&&hideTarget)to.style.visibility='hidden';
+      await Card.move(id+':motion:'+Date.now(),{from:it.el,to:to||it.el,render,card,value,color,html:startFaceDown&&backHTML?backHTML:null,backHTML,startFaceDown,revealMidway,spin,duration,land,onReveal});
+      restore(it);
+      if(oldTarget&&hideTarget){oldTarget.el.style.visibility=oldTarget.visibility||'';}
+      if(to)setAt(it,to,{hideAnchor:hideTarget});
+      if(onArrive)onArrive(it.el);
+      return it.el;
+    }
+    async function flip(id,opts={}){const el=get(id);return Card.flip(el,opts);}
+    async function reveal(id,value,opts={}){const el=get(id);return Card.reveal(el,value,opts);}
+    async function hide(id,opts={}){const el=get(id);return Card.hide(el,opts);}
+    function remove(id){const it=items.get(id);if(!it)return;restore(it);it.el.remove();items.delete(id);}
+    function release(id){remove(id);}
+    function sync(){for(const it of items.values())if(it.anchor)setAt(it,it.anchor,{hideAnchor:!!it.hidden});}
+    function clear(prefix=''){for(const id of [...items.keys()])if(!prefix||id.startsWith(prefix))remove(id);}
+    return {create,get,has,move,place:(id,anchor,o={})=>setAt(ensure(id,o),anchor,o),flip,reveal,hide,remove,release,sync,clear};
+  })();
+
   const CardEffects={
     async triplet({cards=[],discardEl=null,value=null,color=null,boardEl=null}={}){
       if(boardEl)floatText(boardEl,'Triplet!','#eab308');
@@ -259,7 +312,7 @@ const Kit=(()=>{
     burst(0.08);burst(0.92);setTimeout(()=>{burst(0.2);burst(0.8);},350);const end=Date.now()+3800;
     (function f(){x.clearRect(0,0,cv.width,cv.height);for(const p of ps){p.vy+=0.28;p.vx*=0.99;p.x+=p.vx;p.y+=p.vy;p.a+=p.va;x.save();x.translate(p.x,p.y);x.rotate(p.a);x.fillStyle=p.c;x.fillRect(-p.r/2,-p.r/2,p.r,p.r*0.6);x.restore();}if(Date.now()<end)requestAnimationFrame(f);else cv.remove();})();
   }
-  return {cardColor,floatText,turnBanner,flyCard,flyToHeld,dealCascade,EventRunner,CardMotion,Card,CardEffects,rollDice,confetti};
+  return {cardColor,floatText,turnBanner,flyCard,flyToHeld,dealCascade,EventRunner,CardMotion,Card,CardRegistry,CardEffects,rollDice,confetti};
 })();
 
 /* ====================== SOUND (arcade) ====================== */

@@ -93,9 +93,10 @@ window.LocalEngines['hearts'] = function(names) {
 
 Use existing helpers:
 
-- `Kit.Card.move(cardIdOrOpts, opts?)` for card transfer; accepts generic values or custom `render(card)`/`backHTML` for game-specific card art
+- `Kit.CardRegistry.create/place/move/flip/reveal/hide/remove/sync/clear` when a card must feel like one persistent visual object across zones/renders
+- `Kit.Card.move(cardIdOrOpts, opts?)` for one-off card transfer; accepts generic values or custom `render(card)`/`backHTML` for game-specific card art
 - `Kit.Card.moveToSlot(...)` and `Kit.Card.reserveSlot(...)` for ordered rows where existing cards must slide aside before arrival
-- `Kit.Card.flip/reveal/hide/bounce/tilt/untilt/shake/glow/stack/discard/trigger` for card object animation
+- `Kit.Card.flip/reveal/hide/bounce/tilt/untilt/shake/glow/stack/discard/trigger` for lower-level card object animation
 - `Kit.CardEffects.triplet/bust/secondChance/actionTransfer` for common composed effects
 - `Kit.EventRunner.run(events, handler)` for sequential event playback
 - `Kit.CardMotion.move(cardId, fromEl, toEl, opts)` only as the low-level primitive behind `Kit.Card.move`

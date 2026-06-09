@@ -169,8 +169,9 @@
     });
   }
 
-  function flyF7Card(fromEl,toEl,card,{duration=620,startFaceDown=false,revealMidway=false,spin=true}={}){
-    return Kit.Card.move('flip7:card:'+Date.now()+':'+Math.random().toString(36).slice(2),{
+  async function flyF7Card(fromEl,toEl,card,{duration=620,startFaceDown=false,revealMidway=false,spin=true}={}){
+    const id='flip7:flying:'+Date.now()+':'+Math.random().toString(36).slice(2);
+    await Kit.CardRegistry.move(id,{
       from:fromEl,
       to:toEl,
       card,
@@ -181,8 +182,10 @@
       spin,
       duration,
       land:false,
+      hideTarget:true,
       onReveal:()=>SFX.flip(),
     });
+    Kit.CardRegistry.remove(id);
   }
 
 
