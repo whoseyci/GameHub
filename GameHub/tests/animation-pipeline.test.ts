@@ -395,19 +395,22 @@ describe("CardManager: permanent card system invariants", () => {
     expect(core).toContain("const CardManager=");
     expect(core).toContain("return {create,get,has,ids,inZone,destroy,pin,unpin,sync,moveTo,flip");
     expect(core).toContain("verifyInvariants");
-    // Kit return includes CardManager
-    expect(core).toContain("CardManager,CardRegistry,CardEffects");
+    // Kit return includes CardManager (and the dev-mode invariant guard).
+    expect(core).toContain("CardManager,assertCardInvariants,CardEffects");
   });
 
-  it("CardRegistry is a backward-compatible shim over CardManager", () => {
+  it("the legacy CardRegistry shim has been retired (CardManager is the only system)", () => {
     const core = readFileSync(new URL("../public/js/00-core.js", import.meta.url), "utf8");
-    expect(core).toContain("Backward-compatible CardRegistry shim");
-    // Shim delegates to CardManager
-    expect(core).toContain("CardManager.has(id)");
-    expect(core).toContain("CardManager.pin(id,anchor");
-    expect(core).toContain("CardManager.destroy(id)");
-    expect(core).toContain("CardManager.sync()");
-    expect(core).toContain("CardManager.reconcile(");
+    expect(core).not.toContain("const CardRegistry");
+    expect(core).not.toContain("Backward-compatible CardRegistry shim");
+    // No client module references the removed shim any more.
+    const flip7 = readFileSync(new URL("../public/js/04-flip7.js", import.meta.url), "utf8");
+    const skyjo = readFileSync(new URL("../public/js/03-skyjo.js", import.meta.url), "utf8");
+    expect(flip7).not.toContain("Kit.CardRegistry");
+    expect(skyjo).not.toContain("Kit.CardRegistry");
+    // Core wires the dev-mode invariant guard into the render path.
+    expect(core).toContain("assertCardInvariants");
+    expect(core).toContain("CardManager.verifyInvariants()");
   });
 
   it("CardManager has single-location invariant check", () => {
@@ -429,8 +432,11 @@ describe("CardManager: permanent card system invariants", () => {
 
   it("Flip 7 card.deal: permanent card pinned by draw, then animated from deck inline", () => {
     const flip7Source = readFileSync(new URL("../public/js/04-flip7.js", import.meta.url), "utf8");
-    // card.deal draws the board WITH the card first, then animates the overlay
-    expect(flip7Source).toContain("applyShadowEvent(shadow,e);");
+    // card.deal advances the single live view (no separate shadow / scattered
+    // mutators), then animates the permanent CardManager overlay.
+    expect(flip7Source).toContain("advanceLiveView(liveView,e);");
+    expect(flip7Source).not.toContain("applyShadowEvent(shadow");
+    expect(flip7Source).not.toContain("removeCardFromShadow(");
     expect(flip7Source).toContain("animateF7Layout(before);");
     // Card is found by its permanent ID after draw pins it
     expect(flip7Source).toContain("Kit.CardManager.get(permId);");

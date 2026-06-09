@@ -59,8 +59,10 @@ describe("shared game shell", () => {
 
   it("defines reusable card animation API and Skyjo uses it", () => {
     expect(core).toContain("const Card=(()=>");
-    expect(core).toContain("const CardRegistry");
-    expect(core).toContain("renderSlot");
+    // The backward-compat CardRegistry shim was retired; CardManager is the
+    // single permanent-card system now.
+    expect(core).toContain("const CardManager=");
+    expect(core).not.toContain("const CardRegistry");
     expect(core).toContain("reconcile");
     expect(core).toContain("const CardEffects");
     expect(core).toContain("async function move");

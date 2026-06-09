@@ -50,7 +50,7 @@
     requestAnimationFrame(()=>Kit.CardManager.sync());
   }
   function captureF7Layout(){ const m=new Map(); document.querySelectorAll('.f7-focus-board [data-card-reg]').forEach(el=>m.set(el.dataset.cardReg,el.getBoundingClientRect())); return m; }
-  function animateF7Layout(before){ document.querySelectorAll('.f7-focus-board [data-card-reg]').forEach(anchor=>{ const a=before.get(anchor.dataset.cardReg); if(!a)return; const b=anchor.getBoundingClientRect(); const dx=a.left-b.left,dy=a.top-b.top; if(Math.abs(dx)+Math.abs(dy)<3)return; const card=Kit.CardManager.get(anchor.dataset.cardReg)?.overlayEl||Kit.CardRegistry.get(anchor.dataset.cardReg); if(!card)return; card.style.transition='none'; card.style.transform=`translate(${dx}px,${dy}px)`; card.offsetHeight; card.style.transition='transform .34s var(--spring-soft)'; requestAnimationFrame(()=>{card.style.transform='';}); setTimeout(()=>{card.style.transition='';card.style.transform='';},390); }); }
+  function animateF7Layout(before){ document.querySelectorAll('.f7-focus-board [data-card-reg]').forEach(anchor=>{ const a=before.get(anchor.dataset.cardReg); if(!a)return; const b=anchor.getBoundingClientRect(); const dx=a.left-b.left,dy=a.top-b.top; if(Math.abs(dx)+Math.abs(dy)<3)return; const card=Kit.CardManager.get(anchor.dataset.cardReg)?.overlayEl; if(!card)return; card.style.transition='none'; card.style.transform=`translate(${dx}px,${dy}px)`; card.offsetHeight; card.style.transition='transform .34s var(--spring-soft)'; requestAnimationFrame(()=>{card.style.transform='';}); setTimeout(()=>{card.style.transition='';card.style.transform='';},390); }); }
 
   function actionVfx(kind){
     const o=document.createElement('div');
@@ -75,7 +75,7 @@
     const row=rowOf(seat); if(!row)return null;
     const anchors=[...row.querySelectorAll('[data-card-reg]')];
     const a=anchors.find(x=>x.dataset.kind==='act'&&x.dataset.value===kind);
-    return a ? (Kit.CardManager.get(a.dataset.cardReg)?.overlayEl||Kit.CardRegistry.get(a.dataset.cardReg)||a) : row;
+    return a ? (Kit.CardManager.get(a.dataset.cardReg)?.overlayEl||a) : row;
   }
   function makeActionTargetSlot(targetSeat,card){
     const row=rowOf(targetSeat); if(!row)return null;
@@ -265,28 +265,17 @@
   }
   window.normalizeFlip7Event=normalizeFlip7Event;
 
+  // ── Permanent Card System: a single evolving "live view" ──
+  // Per the Card System design, we no longer keep a separate "shadow" copy with
+  // its own scattered mutators (addCardToShadow/removeCardFromShadow/
+  // applyShadowEvent). Instead one liveView object is advanced event-by-event by
+  // a single reducer (advanceLiveView), and the permanent CardManager cards are
+  // the source of truth for the on-screen card overlays. This removes the
+  // duplicate "what's drawn vs. what the state is" bookkeeping.
   function cloneView(v){ return JSON.parse(JSON.stringify(v)); }
   function eventView(base, seat){ const v=cloneView(base); v.flip7.viewerSeat=seat; return v; }
-  function ensureExtras(shadow){ shadow.flip7.players.forEach(p=>{ if(!p.actionCards)p.actionCards=[]; }); }
+  function ensureExtras(lv){ lv.flip7.players.forEach(p=>{ if(!p.actionCards)p.actionCards=[]; }); }
   function removeOne(arr,val){ const i=arr.indexOf(val); if(i>=0)arr.splice(i,1); }
-  function addCardToShadow(p,card){
-    if(!card)return;
-    if(card.kind==='num'){ if(!p.nums.includes(card.v)){p.nums.push(card.v);p.nums.sort((a,b)=>a-b);} }
-    else if(card.kind==='mod') p.mods.push(card.v);
-    else if(card.v==='second') p.second=true;
-    else p.actionCards.push(card.v);
-    p.unique=new Set(p.nums).size;
-    p.live=liveScore(p);
-  }
-  function removeCardFromShadow(p,card){
-    if(!p||!card)return;
-    if(card.kind==='num') removeOne(p.nums,card.v);
-    else if(card.kind==='mod') removeOne(p.mods,card.v);
-    else if(card.v==='second') p.second=false;
-    else if(p.actionCards) removeOne(p.actionCards,card.v);
-    p.unique=new Set(p.nums||[]).size;
-    p.live=liveScore(p);
-  }
   function liveScore(p){
     if(p.status==='busted')return 0;
     let base=(p.nums||[]).reduce((a,b)=>a+b,0);
@@ -295,22 +284,42 @@
     if(new Set(p.nums||[]).size>=7)base+=15;
     return base;
   }
-  function applyShadowEvent(shadow,e){
-    ensureExtras(shadow);
+  function recalcAll(lv){ lv.flip7.players.forEach(x=>{x.unique=new Set(x.nums||[]).size;x.live=liveScore(x);}); }
+  // Add a freshly-dealt card to a player in the live view (used so the card can
+  // be "removed then re-added" to render the pre-deal frame, then the post-deal
+  // frame, while the permanent CardManager overlay flies in).
+  function addCard(p,card){
+    if(!p||!card)return;
+    if(card.kind==='num'){ if(!p.nums.includes(card.v)){p.nums.push(card.v);p.nums.sort((a,b)=>a-b);} }
+    else if(card.kind==='mod') p.mods.push(card.v);
+    else if(card.v==='second') p.second=true;
+    else p.actionCards.push(card.v);
+  }
+  function removeCard(p,card){
+    if(!p||!card)return;
+    if(card.kind==='num') removeOne(p.nums,card.v);
+    else if(card.kind==='mod') removeOne(p.mods,card.v);
+    else if(card.v==='second') p.second=false;
+    else if(p.actionCards) removeOne(p.actionCards,card.v);
+  }
+  // Single reducer: advance the live view to reflect one event. Replaces the old
+  // applyShadowEvent + add/removeCardToShadow trio with one mutation point.
+  function advanceLiveView(lv,e){
+    ensureExtras(lv);
     e=normalizeFlip7Event(e);
-    const p=e.actor!=null?shadow.flip7.players[e.actor]:null;
-    if(e.type==='card.deal') addCardToShadow(p,e.card);
-    else if(e.type==='effect.bust'&&p){ p.status='busted'; p.bustCard=e.value; p.live=0; }
+    const p=e.actor!=null?lv.flip7.players[e.actor]:null;
+    if(e.type==='card.deal') addCard(p,e.card);
+    else if(e.type==='effect.bust'&&p){ p.status='busted'; p.bustCard=e.value; }
     else if(e.type==='effect.second_used'&&p){ p.second=false; }
     else if(e.type==='effect.flip7'&&p){ p.status='stayed'; }
     else if(e.type==='effect.stay'&&p){ p.status='stayed'; }
     else if(e.type==='card.transfer'){
-      const fp=shadow.flip7.players[e.actor];
+      const fp=lv.flip7.players[e.actor];
       if(fp&&fp.actionCards) removeOne(fp.actionCards,e.actionKind||e.card?.v);
-      if(e.secondPass){ const tp=shadow.flip7.players[e.target]; if(tp)tp.second=true; }
+      if(e.secondPass){ const tp=lv.flip7.players[e.target]; if(tp)tp.second=true; }
     }
-    else if(e.type==='effect.freeze_done'){ const tp=shadow.flip7.players[e.target]; if(tp)tp.status='stayed'; }
-    shadow.flip7.players.forEach(x=>{x.unique=new Set(x.nums||[]).size;x.live=liveScore(x);});
+    else if(e.type==='effect.freeze_done'){ const tp=lv.flip7.players[e.target]; if(tp)tp.status='stayed'; }
+    recalcAll(lv);
   }
 
 
@@ -323,13 +332,13 @@
     const ev=(view.flip7.events||[]).map(normalizeFlip7Event).filter(e=>e.seq>lastSeq);
     if(!ev.length){ if(!tokenAlive(token)) return; draw(view); prevView=cloneView(view); curView=cloneView(view); maybeSummary(view); return; }
     animating=true;
-    const shadow=cloneView(prevView&&prevView.flip7?prevView:view);
-    shadow.flip7.viewerSeat=view.flip7.viewerSeat;
-    ensureExtras(shadow);
+    const liveView=cloneView(prevView&&prevView.flip7?prevView:view);
+    liveView.flip7.viewerSeat=view.flip7.viewerSeat;
+    ensureExtras(liveView);
     await Kit.EventRunner.run(ev, async(e)=>{
       if(!tokenAlive(token)) return;
       lastSeq=Math.max(lastSeq,e.seq);
-      await runUnifiedEvent(shadow,e,view,token);
+      await runUnifiedEvent(liveView,e,view,token);
     });
     if(!tokenAlive(token)) { animating=false; return; }
     if(mode==='local'&&eventFocus!=null&&view.flip7.phase==='PLAY'&&view.flip7.current!==eventFocus){Kit.turnBanner('Next: '+(view.flip7.players[view.flip7.current]?.name||'player'),false);await sleep(700); if(!tokenAlive(token)) { animating=false; return; }}
@@ -351,25 +360,27 @@
     if(s.phase==='ROUND_END'||s.phase==='GAME_OVER'){if(!summaryShown){summaryShown=true;showSummary(view);}const c=$('f7Controls');if(c)c.innerHTML='';}
     else{summaryShown=false;hideOverlay();}
   }
-  async function runUnifiedEvent(shadow,e,finalView,token=currentToken()){
+  async function runUnifiedEvent(liveView,e,finalView,token=currentToken()){
     if(!tokenAlive(token)) return;
     e=normalizeFlip7Event(e);
-    const focusSeat=e.actor??e.target??shadow.flip7.viewerSeat;
+    const focusSeat=e.actor??e.target??liveView.flip7.viewerSeat;
     if(mode==='local')eventFocus=focusSeat;
     switch(e.type){
       case 'deck.wiggle':{
-        draw(shadow); SFX.draw(); await wiggleReveal(e.prob||0); break;
+        draw(liveView); SFX.draw(); await wiggleReveal(e.prob||0); break;
       }
       case 'card.deal':{
         if(mode==='local')eventFocus=e.actor;
-        removeCardFromShadow(shadow.flip7.players[e.actor],e.card);
-        draw(shadow);
+        // Render the pre-deal frame (card not yet on the board)…
+        removeCard(liveView.flip7.players[e.actor],e.card); recalcAll(liveView);
+        draw(liveView);
         const row=rowOf(e.actor); if(e.flip3)await sleep(SPEED.flip3Gap*0.2); if(!tokenAlive(token)) return;
         const before=captureF7Layout();
         // ── Permanent Card System ──
-        // 1. Add card to shadow + draw — syncF7Cards pins it at final position
-        applyShadowEvent(shadow,e);
-        draw(shadow);
+        // 1. Advance the live view (card added) + draw — syncF7Cards pins the
+        //    permanent CardManager card at its final board position.
+        advanceLiveView(liveView,e);
+        draw(liveView);
         // 2. Smooth layout shift for existing cards (new card skipped — no 'before' entry)
         animateF7Layout(before);
         // 3. Find the permanent card's overlay (already at final position)
@@ -412,11 +423,11 @@
       }
       case 'card.transfer':{
         if(mode==='local')eventFocus=e.actor;
-        draw(shadow);
+        draw(liveView);
         await transferActionCard(e); if(!tokenAlive(token)) return;
-        applyShadowEvent(shadow,e);
+        advanceLiveView(liveView,e);
         if(mode==='local')eventFocus=e.target;
-        draw(shadow);
+        draw(liveView);
         if(!e.secondPass&&e.actionKind){
           actionVfx(e.actionKind); SFX[e.actionKind==='freeze'?'discard':'triplet']();
           if(e.auto)Kit.turnBanner((e.actionKind==='freeze'?'\u2744 ':'\ud83d\udd03 ')+'on self!',false);
@@ -426,26 +437,26 @@
         await sleep(SPEED.beat*0.45); break;
       }
       case 'effect.bust':{
-        applyShadowEvent(shadow,e);
+        advanceLiveView(liveView,e);
         if(mode==='local')eventFocus=e.actor;
-        draw(shadow); SFX.bad();
+        draw(liveView); SFX.bad();
         const b=boardOf(e.actor); if(b){b.style.animation='shakeX .5s ease';setTimeout(()=>b&&(b.style.animation=''),520);}
-        Kit.turnBanner((shadow.flip7.players[e.actor]?.name||'')+' BUST!',false);
+        Kit.turnBanner((liveView.flip7.players[e.actor]?.name||'')+' BUST!',false);
         await sleep(SPEED.beat); break;
       }
       case 'effect.freeze_done':{
-        applyShadowEvent(shadow,e); draw(shadow);
+        advanceLiveView(liveView,e); draw(liveView);
         const b=boardOf(e.target); if(b){b.style.transition='filter .3s';b.style.filter='brightness(1.4) saturate(1.4)';setTimeout(()=>b&&(b.style.filter=''),350);} await sleep(SPEED.beat*0.4); break;
       }
-      case 'effect.second_used':{ applyShadowEvent(shadow,e); draw(shadow); SFX.good(); Kit.turnBanner('Second Chance!',true); await sleep(SPEED.beat); break; }
-      case 'effect.flip7':{ applyShadowEvent(shadow,e); draw(shadow); SFX.win(); Kit.confetti(); Kit.turnBanner('FLIP 7! +15',true); await sleep(SPEED.beat); break; }
-      case 'effect.stay':{ applyShadowEvent(shadow,e); draw(shadow); SFX.good(); break; }
+      case 'effect.second_used':{ advanceLiveView(liveView,e); draw(liveView); SFX.good(); Kit.turnBanner('Second Chance!',true); await sleep(SPEED.beat); break; }
+      case 'effect.flip7':{ advanceLiveView(liveView,e); draw(liveView); SFX.win(); Kit.confetti(); Kit.turnBanner('FLIP 7! +15',true); await sleep(SPEED.beat); break; }
+      case 'effect.stay':{ advanceLiveView(liveView,e); draw(liveView); SFX.good(); break; }
       case 'effect.flip3_abandon':{ Kit.turnBanner('Flip 3 abandoned',false); await sleep(SPEED.beat*0.6); break; }
       case 'effect.second_discard':{ await sleep(SPEED.beat*0.3); break; }
       case 'deck.reshuffle':{ Kit.turnBanner('Deck reshuffled',false); await sleep(SPEED.beat); break; }
-      case 'target.prompt':{ draw(shadow); await sleep(SPEED.beat*0.2); break; }
+      case 'target.prompt':{ draw(liveView); await sleep(SPEED.beat*0.2); break; }
       case 'effect.round_end': case 'effect.game_over':{ await sleep(SPEED.beat*0.2); break; }
-      default:{ applyShadowEvent(shadow,e); draw(shadow); }
+      default:{ advanceLiveView(liveView,e); draw(liveView); }
     }
   }
 

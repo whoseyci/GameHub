@@ -403,7 +403,27 @@ No timing-sensitive cleanup. The card IS, and the renderer SHOWS it.
 
 ---
 
-## Implementation Strategy
+## Implementation Status (updated)
+
+- ✅ **Phase 1 — CardManager Core**: implemented in `public/js/00-core.js`
+  (`CardManager` with stable ids, single-location invariant, `verifyInvariants()`).
+- ✅ **Phase 2 — Skyjo**: migrated to `CardManager` (held card + board cards).
+- ✅ **Phase 3 — Flip 7**: migrated. The separate "shadow" copy and its scattered
+  mutators (`applyShadowEvent` / `addCardToShadow` / `removeCardFromShadow`) were
+  replaced by a single `liveView` advanced by one reducer (`advanceLiveView`),
+  with the permanent `CardManager` cards as the source of truth for overlays.
+- ✅ **Shim retired**: the backward-compat `CardRegistry` shim has been removed;
+  all consumers (core resize/scroll/clear/renderTable, Flip 7 fallbacks) now call
+  `CardManager` directly.
+- ✅ **Invariant guard wired**: `verifyInvariants()` runs after each table render
+  via `Kit.assertCardInvariants()`, gated by `localStorage.setItem('cardDebug','1')`
+  (dev-only; warns, never throws).
+- ⏸️ **Qwixx**: intentionally NOT migrated — it is a dice/grid game with no card
+  travel animations, so the permanent-card system does not apply.
+
+> Note: Qwixx is deliberately out of scope for the permanent-card system.
+
+## Implementation Strategy (original plan)
 
 This is a significant refactor but can be done incrementally:
 

@@ -8,7 +8,7 @@
    shape as Skyjo below. The hub never needs to change.
    ==================================================================== */
 const PARTYKIT_HOST = location.host; // served by the same Worker
-const BUILD_VERSION = "v22-packaged-games-pass"; // bump on each change; shown on the menu
+const BUILD_VERSION = "v23-permanent-cards-unified"; // bump on each change; shown on the menu
 
 const $=id=>document.getElementById(id);
 function esc(v){return String(v ?? '').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));}
@@ -500,52 +500,19 @@ const Kit=(()=>{
     return {create,get,has,ids,inZone,destroy,pin,unpin,sync,moveTo,flip:flipCard,clear,reconcile,renderCard,verifyInvariants};
   })();
 
-  // ── Backward-compatible CardRegistry shim ──
-  // Delegates to CardManager so existing game code keeps working.
-  const CardRegistry=(()=>{
-    function ensure(id,opts){
-      if(!CardManager.has(id)){
-        CardManager.create({kind:opts?.card?.kind||'generic',value:opts?.value??opts?.card?.v??''},{zone:'registry'},{id,renderer:opts?.render?()=>opts.render(opts.card||{kind:'generic',value:opts?.value??''}):null,faceUp:true});
-      }
-      return CardManager.get(id);
-    }
-    return {
-      create(id,opts={}){ensure(id,opts);if(opts.at)CardManager.pin(id,opts.at,{hideAnchor:!!opts.hideAnchor,updateContent:true});return CardManager.get(id)?.overlayEl||null;},
-      get(id){const c=CardManager.get(id);return c?.overlayEl||null;},
-      has(id){return CardManager.has(id);},
-      async move(id,opts={}){
-        if(!CardManager.has(id)){
-          CardManager.create({kind:opts?.card?.kind||'generic',value:opts?.value??opts?.card?.v??''},{zone:'registry'},{id,renderer:opts?.render||null,faceUp:true});
-          if(opts.from){CardManager.pin(id,opts.from,{hideAnchor:!!opts.hideSource,updateContent:true});}
-        }
-        await CardManager.moveTo(id,opts.to||document.body,{...opts,toLocation:{zone:'registry'},hideTarget:opts.hideTarget!==false});
-        return CardManager.get(id)?.overlayEl||null;
-      },
-      place(id,anchor,opts={}){
-        if(!CardManager.has(id))ensure(id,opts);
-        CardManager.pin(id,anchor,{hideAnchor:false,updateContent:true});
-      },
-      renderSlot(id,anchor,opts={}){
-        if(!CardManager.has(id)){
-          CardManager.create({kind:'slot',value:''},{zone:'registry'},{id,renderer:opts?.render||null,faceUp:true});
-        }else if(opts?.render){
-          const c=CardManager.get(id);if(c)c.renderer=opts.render;
-        }
-        CardManager.pin(id,anchor,{hideAnchor:false,updateContent:true});
-        return CardManager.get(id)?.overlayEl||null;
-      },
-      async flip(id,opts={}){return CardManager.flip(id,opts.faceUp!==false);},
-      async reveal(id,value,opts={}){return CardManager.flip(id,true);},
-      async hide(id,opts={}){return CardManager.flip(id,false);},
-      remove(id){CardManager.destroy(id);},
-      release(id){CardManager.destroy(id);},
-      sync(){CardManager.sync();},
-      reconcile(prefix,activeIds){CardManager.reconcile(prefix,activeIds);},
-      clear(prefix=''){CardManager.clear(prefix);},
-    };
-  })();
-  window.addEventListener('resize',()=>CardRegistry.sync(),{passive:true});
-  window.addEventListener('scroll',()=>CardRegistry.sync(),{passive:true});
+  // Dev-mode invariant guard. Off by default; enable in the console with
+  //   localStorage.setItem('cardDebug','1')   (then reload)
+  // When on, after each render we assert the single-location invariant and warn
+  // (never throw) so card-collision regressions surface during development.
+  const CARD_DEBUG = (()=>{ try { return localStorage.getItem('cardDebug')==='1'; } catch { return false; } })();
+  function assertCardInvariants(where){
+    if(!CARD_DEBUG)return;
+    const r=CardManager.verifyInvariants();
+    if(!r.ok)console.warn('[CardManager] invariant violation'+(where?(' @'+where):'')+':',r.errors);
+  }
+
+  window.addEventListener('resize',()=>CardManager.sync(),{passive:true});
+  window.addEventListener('scroll',()=>CardManager.sync(),{passive:true});
   const CardEffects={
     async triplet({cards=[],discardEl=null,value=null,color=null,boardEl=null}={}){
       if(boardEl)floatText(boardEl,'Triplet!','#eab308');
@@ -576,7 +543,7 @@ const Kit=(()=>{
     burst(0.08);burst(0.92);setTimeout(()=>{burst(0.2);burst(0.8);},350);const end=Date.now()+3800;
     (function f(){x.clearRect(0,0,cv.width,cv.height);for(const p of ps){p.vy+=0.28;p.vx*=0.99;p.x+=p.vx;p.y+=p.vy;p.a+=p.va;x.save();x.translate(p.x,p.y);x.rotate(p.a);x.fillStyle=p.c;x.fillRect(-p.r/2,-p.r/2,p.r,p.r*0.6);x.restore();}if(Date.now()<end)requestAnimationFrame(f);else cv.remove();})();
   }
-  return {cardColor,floatText,turnBanner,flyCard,flyToHeld,dealCascade,EventRunner,CardMotion,Card,CardManager,CardRegistry,CardEffects,rollDice,confetti};
+  return {cardColor,floatText,turnBanner,flyCard,flyToHeld,dealCascade,EventRunner,CardMotion,Card,CardManager,assertCardInvariants,CardEffects,rollDice,confetti};
 })();
 
 /* ====================== SOUND (arcade) ====================== */
@@ -650,7 +617,7 @@ const GameShell=(()=>{
     const top=$('topArea');if(top){top.querySelectorAll('.game-shell-center,.qwixx-dice-zone,.qwixx-top-mini-strip').forEach(n=>n.remove());}
     const f7=$('f7Controls');if(f7)f7.remove();
     const dw=$('f7DealerWrap');if(dw)dw.remove();
-    if(typeof Kit!=='undefined'&&Kit.CardRegistry)Kit.CardRegistry.clear();
+    if(typeof Kit!=='undefined'&&Kit.CardManager)Kit.CardManager.clear();
     $('investigateOverlay')?.classList.add('hidden');
   }
   function restoreSharedTop(){
@@ -692,7 +659,7 @@ const GameShell=(()=>{
     }
     if(main)setHTML(main,focus);
     if(sb&&status!=null)sb.innerHTML=status||'';
-    if(typeof Kit!=='undefined'&&Kit.CardRegistry){requestAnimationFrame(()=>Kit.CardRegistry.sync());setTimeout(()=>Kit.CardRegistry.sync(),80);setTimeout(()=>Kit.CardRegistry.sync(),550);}
+    if(typeof Kit!=='undefined'&&Kit.CardManager){requestAnimationFrame(()=>{Kit.CardManager.sync();Kit.assertCardInvariants&&Kit.assertCardInvariants('renderTable');});setTimeout(()=>Kit.CardManager.sync(),80);setTimeout(()=>Kit.CardManager.sync(),550);}
   }
   return {render,unmount,clearGlobal,renderTable,focus:(opts)=>SeatModel.resolve(opts)};
 })();

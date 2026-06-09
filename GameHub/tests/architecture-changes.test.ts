@@ -4,6 +4,7 @@
 //   • Every game that schedules a tick() also implements completeTick().
 //   • summarize() is generic via the GameModule contract (no per-game branches).
 import { describe, expect, it, vi } from "vitest";
+import { readFileSync } from "node:fs";
 import { GAMES } from "../src/games/registry";
 import { summarizeGameState } from "../src/replay";
 
@@ -139,5 +140,36 @@ describe("generic summarize() via contract", () => {
   it("returns null for unknown / missing game", () => {
     expect(summarizeGameState(null, null)).toBeNull();
     expect(summarizeGameState("nope", { players: [] })).not.toBeNull(); // base still built
+  });
+});
+
+// ── Permanent Card System (client) — source-level guards ────────────────────
+describe("Permanent Card System: Flip 7 fully on CardManager", () => {
+  const core = readFileSync(new URL("../public/js/00-core.js", import.meta.url), "utf8");
+  const flip7 = readFileSync(new URL("../public/js/04-flip7.js", import.meta.url), "utf8");
+
+  it("the CardRegistry shim is gone everywhere", () => {
+    expect(core).not.toContain("const CardRegistry");
+    expect(core).not.toContain("Kit.CardRegistry");
+    expect(flip7).not.toContain("Kit.CardRegistry");
+  });
+
+  it("Flip 7 uses one live-view reducer instead of scattered shadow mutators", () => {
+    expect(flip7).toContain("function advanceLiveView(");
+    expect(flip7).toContain("advanceLiveView(liveView,e)");
+    // The old trio is removed.
+    expect(flip7).not.toContain("function applyShadowEvent(");
+    expect(flip7).not.toContain("function addCardToShadow(");
+    expect(flip7).not.toContain("function removeCardFromShadow(");
+  });
+
+  it("the dev-mode invariant guard is wired into the render path", () => {
+    expect(core).toContain("function assertCardInvariants(");
+    expect(core).toContain("CardManager.verifyInvariants()");
+    // Gated by a debug flag so it costs nothing in production.
+    expect(core).toContain("localStorage.getItem('cardDebug')");
+    // Exposed on Kit and called by the table renderer.
+    expect(core).toContain("CardManager,assertCardInvariants,CardEffects");
+    expect(core).toContain("assertCardInvariants('renderTable')");
   });
 });
