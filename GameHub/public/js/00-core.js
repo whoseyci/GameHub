@@ -456,6 +456,7 @@ const GameShell=(()=>{
     }
     if(main)setHTML(main,focus);
     if(sb&&status!=null)sb.innerHTML=status||'';
+    if(typeof Kit!=='undefined'&&Kit.CardRegistry){requestAnimationFrame(()=>Kit.CardRegistry.sync());setTimeout(()=>Kit.CardRegistry.sync(),80);}
   }
   return {render,unmount,clearGlobal,renderTable,focus:(opts)=>SeatModel.resolve(opts)};
 })();

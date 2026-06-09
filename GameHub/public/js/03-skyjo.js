@@ -21,7 +21,7 @@
     await sleep(210);
     return true;
   }
-  function syncSkyjoCards(s){const active=[];s.players.forEach((p,pi)=>p.board.forEach((c,ci)=>{const id=skyjoCardId(s,pi,ci),anchor=document.querySelector(`[data-card-reg="${id}"]`);if(anchor){active.push(id);Kit.CardRegistry.renderSlot(id,anchor,{render:()=>skyjoVisual(c)});}}));Kit.CardRegistry.reconcile('skyjo:table:',active);}
+  function syncSkyjoCards(s){const active=[];s.players.forEach((p,pi)=>p.board.forEach((c,ci)=>{const id=skyjoCardId(s,pi,ci),anchor=document.querySelector(`[data-card-reg="${id}"]`);if(anchor){active.push(id);Kit.CardRegistry.renderSlot(id,anchor,{render:()=>skyjoVisual(c)});}}));Kit.CardRegistry.reconcile('skyjo:table:',active);requestAnimationFrame(()=>Kit.CardRegistry.sync());}
 
   let renderCtx=null;
   function render(view,ctx={}){

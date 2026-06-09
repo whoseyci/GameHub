@@ -40,9 +40,10 @@
       active.push(id);Kit.CardRegistry.renderSlot(id,anchor,{render:()=>cardEl(kind,val,{busted:anchor.dataset.busted==='1',cause:anchor.dataset.cause==='1'})});
     });
     Kit.CardRegistry.reconcile('flip7:table:',active);
+    requestAnimationFrame(()=>Kit.CardRegistry.sync());
   }
   function captureF7Layout(){ const m=new Map(); document.querySelectorAll('.f7-focus-board [data-card-reg]').forEach(el=>m.set(el.dataset.cardReg,el.getBoundingClientRect())); return m; }
-  function animateF7Layout(before){ document.querySelectorAll('.f7-focus-board [data-card-reg]').forEach(anchor=>{ const a=before.get(anchor.dataset.cardReg); if(!a)return; const b=anchor.getBoundingClientRect(); const dx=a.left-b.left,dy=a.top-b.top; if(Math.abs(dx)+Math.abs(dy)<3)return; const card=Kit.CardRegistry.get(anchor.dataset.cardReg); if(!card)return; card.style.transition='none'; card.style.transform=`translate(${dx}px,${dy}px)`; card.offsetHeight; card.style.transition='transform .18s ease-out'; card.style.transform=''; setTimeout(()=>{card.style.transition='';},220); }); }
+  function animateF7Layout(before){ document.querySelectorAll('.f7-focus-board [data-card-reg]').forEach(anchor=>{ const a=before.get(anchor.dataset.cardReg); if(!a)return; const b=anchor.getBoundingClientRect(); const dx=a.left-b.left,dy=a.top-b.top; if(Math.abs(dx)+Math.abs(dy)<3)return; const card=Kit.CardRegistry.get(anchor.dataset.cardReg); if(!card)return; card.style.transition='none'; card.style.transform=`translate(${dx}px,${dy}px)`; card.offsetHeight; card.style.transition='transform .34s var(--spring-soft)'; requestAnimationFrame(()=>{card.style.transform='';}); setTimeout(()=>{card.style.transition='';card.style.transform='';},390); }); }
 
   function actionVfx(kind){
     const o=document.createElement('div');
@@ -62,6 +63,27 @@
   function rowOf(i){const b=boardOf(i);return b?b.querySelector('.f7-row'):null;}
   function rectOf(el){return el?el.getBoundingClientRect():null;}
   function cloneCard(card){return card?{kind:card.kind,v:card.v}:card;}
+  function f7BackHTML(){return '<div class="f7-card f7-card-back"><span>7</span></div>';}
+  function actionCardSourceEl(seat,kind){
+    const row=rowOf(seat); if(!row)return null;
+    const anchors=[...row.querySelectorAll('[data-card-reg]')];
+    const a=anchors.find(x=>x.dataset.kind==='act'&&x.dataset.value===kind);
+    return a ? (Kit.CardRegistry.get(a.dataset.cardReg)||a) : row;
+  }
+  function makeActionTargetSlot(targetSeat,card){
+    const row=rowOf(targetSeat); if(!row)return null;
+    const ghost=cardEl(card?.kind||'act',card?.v||'flip3');
+    ghost.classList.add('registry-anchor');ghost.style.visibility='hidden';
+    row.appendChild(ghost);
+    return ghost;
+  }
+  async function transferActionCard(e){
+    const card=e.card||{kind:'act',v:e.actionKind};
+    const fromEl=actionCardSourceEl(e.actor,e.actionKind||card.v);
+    const toEl=makeActionTargetSlot(e.target,card) || rowOf(e.target) || boardOf(e.target);
+    await flyF7Card(fromEl,toEl,card,{startFaceDown:false,spin:true,duration:SPEED.actionFly});
+    if(toEl&&toEl.classList.contains('registry-anchor'))toEl.remove();
+  }
 
   function renderF7PlayerCards(row,p,busted){
     const cards=Array.isArray(p.cards)?p.cards:null;
@@ -207,7 +229,7 @@
       to:toEl,
       card,
       render:(c)=>{const el=cardEl(c?.kind||'num',c?.v??'?');el.classList.add('f7-flying-card');return el;},
-      backHTML:'<div class="f7-card f7-fly-back"><span>✦</span></div>',
+      backHTML:f7BackHTML(),
       startFaceDown,
       revealMidway,
       spin,
@@ -372,8 +394,7 @@
       case 'card.transfer':{
         if(mode==='local')eventFocus=e.actor;
         draw(shadow);
-        const fromRow=rowOf(e.actor),toRow=rowOf(e.target);
-        await flyF7Card(fromRow,toRow,e.card||{kind:'act',v:e.actionKind},{startFaceDown:false,spin:true,duration:SPEED.actionFly});
+        await transferActionCard(e);
         applyShadowEvent(shadow,e);
         if(mode==='local')eventFocus=e.target;
         draw(shadow);
