@@ -10,23 +10,33 @@ import { GAMES } from "../src/games/registry";
 const pub = (p: string) => readFileSync(new URL(`../public/${p}`, import.meta.url), "utf8");
 const core = pub("js/00-core.js");
 const indexHtml = pub("js/../index.html");
-// All client JS concatenated (game clients live in 02/03/04-*.js and js/games/*).
-const clientJs = readdirSync(new URL("../public/js", import.meta.url))
-  .filter((f) => f.endsWith(".js"))
-  .map((f) => pub(`js/${f}`))
+// All client JS concatenated. Built-in clients live in top-level 02/03/04-*.js;
+// scaffolded clients live in js/games/<id>.js — include BOTH (recurse one level).
+const topJs = readdirSync(new URL("../public/js", import.meta.url)).filter((f) => f.endsWith(".js")).map((f) => `js/${f}`);
+let gamesJs: string[] = [];
+try { gamesJs = readdirSync(new URL("../public/js/games", import.meta.url)).filter((f) => f.endsWith(".js")).map((f) => `js/games/${f}`); } catch { /* none */ }
+const clientJs = [...topJs, ...gamesJs]
+  .map((rel) => pub(rel))
   .join("\n");
 
 describe("server game ↔ client parity", () => {
   for (const id of Object.keys(GAMES)) {
     describe(id, () => {
+      // A client file registers either with a string literal (GameClients['id'])
+      // or via a local `const ID='id'` + GameClients[ID] (the scaffold's style).
+      const registersWith = (sym: string) => {
+        const literal = new RegExp(`${sym}\\[['"]${id}['"]\\]\\s*=`);
+        if (literal.test(clientJs)) return true;
+        // variable form: a file that declares ID='id' AND uses ${sym}[ID]=
+        const idDecl = new RegExp(`ID\\s*=\\s*['"]${id}['"]`);
+        const varUse = new RegExp(`${sym}\\[ID\\]\\s*=`);
+        return idDecl.test(clientJs) && varUse.test(clientJs);
+      };
       it("has a client GameClients registration", () => {
-        // matches window.GameClients['id'] = ... or window.GameClients['id']={...}
-        const re = new RegExp(`GameClients\\[['"]${id}['"]\\]\\s*=`);
-        expect(re.test(clientJs)).toBe(true);
+        expect(registersWith("GameClients")).toBe(true);
       });
       it("registers rule text (GameRules)", () => {
-        const re = new RegExp(`GameRules\\[['"]${id}['"]\\]\\s*=`);
-        expect(re.test(clientJs)).toBe(true);
+        expect(registersWith("GameRules")).toBe(true);
       });
       it("is present in the hardcoded fallback catalogue", () => {
         const re = new RegExp(`id\\s*:\\s*['"]${id}['"]`);

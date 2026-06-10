@@ -8,7 +8,7 @@
    shape as Skyjo below. The hub never needs to change.
    ==================================================================== */
 const PARTYKIT_HOST = location.host; // served by the same Worker
-const BUILD_VERSION = "v35-skyjo-discard-click-and-number-fix"; // bump on each change; shown on the menu
+const BUILD_VERSION = "v36-add-schotten-totten"; // bump on each change; shown on the menu
 
 const $=id=>document.getElementById(id);
 function esc(v){return String(v ?? '').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));}
@@ -620,6 +620,7 @@ catalogue=[
   {id:'skyjo',name:'Skyjo',minPlayers:2,maxPlayers:8,description:'Lowest score wins.',emoji:'🃏'},
   {id:'flip7',name:'Flip 7',minPlayers:2,maxPlayers:8,description:'Push your luck to 200.',emoji:'🎴'},
   {id:'qwixx',name:'Qwixx',minPlayers:2,maxPlayers:8,description:'Dice rolling strategy game.',emoji:'🎲'},
+  {id:'schotten',name:'Schotten Totten',minPlayers:2,maxPlayers:2,description:'Win border stones with the best formations.',emoji:'🪨'},
 ];
 
 /* ---- Rulebooks (accessible from menu, pickers, and inside a game) ---- */

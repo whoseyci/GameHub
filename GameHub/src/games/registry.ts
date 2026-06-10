@@ -5,11 +5,13 @@ import type { GameModule, GameFeatures } from "./types";
 import { Skyjo } from "./skyjo/server";
 import { Flip7 } from "./flip7/server";
 import { Qwixx } from "./qwixx/server";
+import { Schotten } from "./schotten/server";
 
 export const GAMES: Record<string, GameModule> = {
   [Skyjo.meta.id]: Skyjo,
   [Flip7.meta.id]: Flip7,
   [Qwixx.meta.id]: Qwixx,
+  [Schotten.meta.id]: Schotten,
 };
 
 // Public catalogue for the hub UI (no logic, just metadata + features).
