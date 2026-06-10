@@ -8,7 +8,7 @@
    shape as Skyjo below. The hub never needs to change.
    ==================================================================== */
 const PARTYKIT_HOST = location.host; // served by the same Worker
-const BUILD_VERSION = "v31-discard-card-flip7-end"; // bump on each change; shown on the menu
+const BUILD_VERSION = "v32-one-cardmanager"; // bump on each change; shown on the menu
 
 const $=id=>document.getElementById(id);
 function esc(v){return String(v ?? '').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));}
@@ -34,70 +34,24 @@ const GameActions={
 
 /* ====================== CARD KIT (shared) ====================== */
 const Kit=(()=>{
-  // ── Card-movement API: which one to use ──────────────────────────────────
-  // Games should use ONLY these two entry points (both now share the same
-  // uniform transform:scale flight, so animations look identical everywhere):
-  //   • Kit.CardManager.moveTo(id, toAnchor, opts)
-  //       The PERMANENT-card system. The overlay IS the card; it has a stable id
-  //       and one location. Use for cards that persist on the table and move
-  //       between real slots (Skyjo held↔board↔discard, Flip 7 deck→slot).
-  //   • Kit.Card.move(id, {from, to, render, ...})
-  //       A TRANSIENT one-off fly of an ad-hoc element between two DOM points
-  //       (e.g. Flip 7 action-card transfers between boards). No permanent
-  //       identity/location bookkeeping.
-  // The rest below are internal plumbing that these two are built on, kept
-  // separate only by layering — NOT meant to be called by games directly:
-  //   flyCard()      → low-level arc tween used by CardMotion.
-  //   CardMotion     → id-tracked wrapper around flyCard (Card.move's simple path).
-  //   Card.move      → public transient API; simple path → CardMotion, custom
-  //                    (render/card) path → its own tween.
-  //   flyToHeld()    → legacy helper, currently unused.
+  // ── Card animation: ONE system — Kit.CardManager ─────────────────────────
+  // All card movement/animation goes through CardManager. The legacy layers
+  // (flyCard / CardMotion / Card / CardEffects / flyToHeld) were removed; their
+  // capabilities now live as CardManager methods that all share the same clean,
+  // uniform transform:scale flight:
+  //   • moveTo(id, toAnchor, opts)   — move a PERMANENT card (stable id + one
+  //       location; the overlay IS the card) between real slots.
+  //   • flyTransient(fromEl, toEl, opts) — a one-off fly of an ad-hoc element
+  //       (no permanent identity), e.g. Flip 7 action-card transfers, Skyjo
+  //       swap→discard. Builds on moveTo and self-destroys on arrival.
+  //   • triplet({cards, discardEl, ...}) — composite clear effect (tilt-stack +
+  //       fly to discard).
+  //   • revealEl(el, value, opts) — in-place flip/reveal of any DOM element.
+  //   • flip(id, faceUp) / pin / unpin / sync / reconcile / clear / etc.
   // ─────────────────────────────────────────────────────────────────────────
   function cardColor(v){if(v<0)return'#4338ca';if(v===0)return'#0ea5e9';if(v<=4)return'#22c55e';if(v<=8)return'#eab308';return'#ef4444';}
   function floatText(boardEl,text,color){if(!boardEl)return;const f=document.createElement('div');f.className='floating-text';f.style.color=color;f.textContent=text;boardEl.appendChild(f);setTimeout(()=>f.remove(),1500);}
   function turnBanner(text,mine){const b=document.createElement('div');b.className='turn-banner';b.textContent=text;b.style.color=mine?'#10b981':'#60a5fa';document.body.appendChild(b);setTimeout(()=>b.remove(),1700);}
-  // fly a card between two elements (playful arc + optional spin / mid-flight reveal)
-  function flyCard(startEl,endEl,{value=null,color=null,startFaceDown=false,revealMidway=false,spin=false,duration=520,land=true}={}){
-    return new Promise(res=>{
-      if(!startEl||!endEl){res();return;}
-      const a=startEl.getBoundingClientRect(),b=endEl.getBoundingClientRect();
-      const c=document.createElement('div');
-      // Keep the SOURCE box for the whole flight; animate transform:scale toward
-      // the destination size so the card AND its text scale uniformly (no oversized
-      // font when flying to a tiny board). Positioned by CENTER.
-      const endScale=a.width>0?(b.width/a.width):1;
-      const cx2l=cx=>cx-a.width/2, cy2t=cy=>cy-a.height/2;
-      const srcCx=a.left+a.width/2,dstCx=b.left+b.width/2,dstCy=b.top+b.height/2;
-      Object.assign(c.style,{position:'fixed',top:a.top+'px',left:a.left+'px',width:a.width+'px',height:a.height+'px',zIndex:1000,borderRadius:'12px',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:'900',boxSizing:'border-box',boxShadow:'0 18px 34px rgba(0,0,0,.55)',pointerEvents:'none',transformOrigin:'center',transition:`top ${duration}ms var(--spring-soft),left ${duration}ms var(--spring-soft),transform ${duration}ms var(--spring-soft)`});
-      if(startFaceDown){c.style.background='var(--card-back)';c.style.border='2px solid #818cf8';c.innerHTML='<span style="color:#c7d2fe;font-size:1.5rem">✦</span>';}
-      else{c.style.background='#fff';c.style.border='2px solid #fff';c.style.color=color;c.textContent=value;c.style.fontSize=a.width>50?'2.2rem':'1.3rem';}
-      document.body.appendChild(c);c.offsetHeight;
-      const midX=(srcCx+dstCx)/2,midY=Math.min(a.top,b.top)-46;
-      setTimeout(()=>{c.style.top=cy2t(midY)+'px';c.style.left=cx2l(midX)+'px';c.style.transform=(spin?'rotateZ(180deg) ':'')+'scale('+((1+endScale)/2*1.12)+')';},10);
-      setTimeout(()=>{c.style.top=cy2t(dstCy)+'px';c.style.left=cx2l(dstCx)+'px';c.style.transform=(spin?'rotateZ(360deg) ':'')+'scale('+endScale+')';},Math.floor(duration*0.5));
-      if(startFaceDown&&revealMidway)setTimeout(()=>{c.style.background='#fff';c.style.border='2px solid #fff';c.style.color=color;c.textContent=value;c.style.fontSize=a.width>50?'2.2rem':'1.3rem';c.style.animation='popReveal .32s var(--spring)';},Math.floor(duration*0.42));
-      setTimeout(()=>{c.remove();if(land&&endEl){endEl.classList.remove('anim-land');void endEl.offsetWidth;endEl.classList.add('anim-land');}res();},duration+40);
-    });
-  }
-  // fly from a pile INTO the held window (face-down reveals mid-flight)
-  function flyToHeld(srcEl,heldEl,{value=null,color=null,startFaceDown=false,reveal=false,duration=460}={}){
-    return new Promise(res=>{
-      if(!srcEl||!heldEl){res();return;}
-      const a=srcEl.getBoundingClientRect(),b=heldEl.getBoundingClientRect();
-      if(b.width===0){res();return;}
-      const pv=heldEl.style.visibility;heldEl.style.visibility='hidden';
-      const c=document.createElement('div');
-      Object.assign(c.style,{position:'fixed',top:a.top+'px',left:a.left+'px',width:a.width+'px',height:a.height+'px',zIndex:1000,borderRadius:'12px',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:'900',boxSizing:'border-box',boxShadow:'0 18px 34px rgba(0,0,0,.55)',pointerEvents:'none',transition:`top ${duration}ms var(--spring-soft),left ${duration}ms var(--spring-soft),width ${duration}ms var(--spring-soft),height ${duration}ms var(--spring-soft),transform ${duration}ms var(--spring-soft)`});
-      if(startFaceDown){c.style.background='var(--card-back)';c.style.border='2px solid #818cf8';c.innerHTML='<span style="color:#c7d2fe;font-size:1.6rem">✦</span>';}
-      else{c.style.background='#fff';c.style.border='2px solid #fff';c.style.color=color;c.textContent=value;c.style.fontSize=a.width>50?'2.2rem':'1.4rem';}
-      document.body.appendChild(c);c.offsetHeight;
-      const midX=(a.left+b.left)/2,midY=Math.min(a.top,b.top)-40;
-      requestAnimationFrame(()=>{c.style.top=midY+'px';c.style.left=midX+'px';c.style.transform='scale(1.08) rotateZ(-6deg)';});
-      if(startFaceDown&&reveal)setTimeout(()=>{c.style.background='#fff';c.style.border='2px solid #fff';c.style.color=color;c.innerHTML='';c.textContent=value;c.style.fontSize='2.2rem';c.style.animation='popReveal .28s var(--spring)';SFX.flip();},Math.floor(duration*0.42));
-      setTimeout(()=>{c.style.top=b.top+'px';c.style.left=b.left+'px';c.style.width=b.width+'px';c.style.height=b.height+'px';c.style.transform='scale(1) rotateZ(0)';},Math.floor(duration*0.5));
-      setTimeout(()=>{c.remove();heldEl.style.visibility=pv||'';heldEl.classList.remove('anim-pop');void heldEl.offsetWidth;heldEl.classList.add('anim-pop');res();},duration+40);
-    });
-  }
   function dealCascade(){
     const cards=document.querySelectorAll('#mainBoardsContainer .board-card, #miniBoardsContainer .board-card');
     cards.forEach((c,i)=>{c.classList.remove('anim-deal');void c.offsetWidth;c.style.animationDelay=(i%12)*0.035+'s';c.classList.add('anim-deal');if(i%4===0)setTimeout(()=>SFX.deal(),(i%12)*35);setTimeout(()=>{c.style.animationDelay='';c.classList.remove('anim-deal');},700+(i%12)*40);});
@@ -110,24 +64,6 @@ const Kit=(()=>{
     }
     function idle(){return chain;}
     return {run,idle};
-  })();
-  const CardMotion=(()=>{
-    let chain=Promise.resolve();
-    const locations=new Map();
-    function run(step){chain=chain.then(step,step);return chain;}
-    async function move(id,fromEl,toEl,opts={}){
-      return run(async()=>{
-        locations.set(id,{state:'moving',from:fromEl?.id||null,to:toEl?.id||null});
-        await flyCard(fromEl,toEl,opts);
-        locations.set(id,{state:'arrived',at:toEl?.id||null});
-      });
-    }
-    function location(id){return locations.get(id)||null;}
-    function clear(prefix=''){
-      for(const k of [...locations.keys()]) if(!prefix||k.startsWith(prefix)) locations.delete(k);
-    }
-    function idle(){return chain;}
-    return {move,location,clear,idle};
   })();
   function rollDice(container,dice,{duration=900,size=42,animate=true,originEl=null}={}){
     return new Promise(res=>{
@@ -174,101 +110,13 @@ const Kit=(()=>{
       requestAnimationFrame(step);
     });
   }
-  const Card=(()=>{
-    let chain=Promise.resolve();
-    function asMoveArgs(cardIdOrOpts,maybeOpts){
-      if(typeof cardIdOrOpts==='string')return {cardId:cardIdOrOpts,...(maybeOpts||{})};
-      return {cardId:'card:'+Date.now()+':'+Math.random().toString(36).slice(2),...(cardIdOrOpts||{})};
-    }
-    function run(step){ chain=chain.then(step,step); return chain; }
-    function nodeFromHTML(html){const t=document.createElement('template');t.innerHTML=String(html||'').trim();return t.content.firstElementChild;}
-    function materialize(o,faceDown=false){
-      let el=null;
-      if(faceDown&&o.backRender)el=o.backRender(o.card||o);
-      if(!el&&faceDown&&o.backHTML)el=nodeFromHTML(o.backHTML);
-      if(!el&&o.render)el=o.render(o.card||o);
-      if(!el&&o.el)el=o.el.cloneNode(true);
-      if(!el&&o.cloneFrom)el=o.cloneFrom.cloneNode(true);
-      if(!el&&o.html)el=nodeFromHTML(o.html);
-      if(!el){el=document.createElement('div');el.className=o.className||'card-slot revealed';el.textContent=o.value??'';if(o.color)el.style.color=o.color;}
-      if(o.className&&!el.classList.contains(o.className))el.className=o.className;
-      return el;
-    }
-    function fixedLike(el,rect,z=1000){
-      Object.assign(el.style,{position:'fixed',top:rect.top+'px',left:rect.left+'px',width:rect.width+'px',height:rect.height+'px',margin:0,zIndex:z,pointerEvents:'none',boxSizing:'border-box'});
-    }
-    async function move(cardIdOrOpts,maybeOpts){
-      const o=asMoveArgs(cardIdOrOpts,maybeOpts);
-      return run(async()=>{
-        if(!o.from||!o.to)return;
-        const oldTargetVis=o.to.style.visibility, oldSourceVis=o.from.style.visibility;
-        if(o.hideTarget)o.to.style.visibility='hidden';
-        if(o.hideSource)o.from.style.visibility='hidden';
-        const finish=()=>{ if(o.hideTarget)o.to.style.visibility=oldTargetVis||''; if(o.hideSource)o.from.style.visibility=oldSourceVis||''; };
-        // Generic/simple path keeps old Skyjo behaviour unless a custom renderer is supplied.
-        const custom=!!(o.render||o.el||o.cloneFrom||o.html||o.backRender||o.backHTML||o.card||o.useClone);
-        if(!custom){await CardMotion.move(o.cardId,o.from,o.to,{value:o.value,color:o.color,startFaceDown:!!o.startFaceDown,revealMidway:!!o.revealMidway,spin:!!o.spin,duration:o.duration??520,land:o.land!==false});finish();return;}
-        const a=o.from.getBoundingClientRect(),b=o.to.getBoundingClientRect(),duration=o.duration??520;
-        const el=materialize(o,!!o.startFaceDown);el.classList.add('kit-card-moving');fixedLike(el,a,o.zIndex??1000);
-        // Uniform-scale flight: keep source box, animate transform:scale to the dest
-        // size (positioned by center) so card + text scale together.
-        const endScale=a.width>0?(b.width/a.width):1;
-        const cx2l=cx=>cx-a.width/2, cy2t=cy=>cy-a.height/2;
-        const srcCx=a.left+a.width/2,dstCx=b.left+b.width/2,dstCy=b.top+b.height/2;
-        el.style.transformOrigin='center';
-        el.style.transition=`top ${duration}ms var(--spring-soft),left ${duration}ms var(--spring-soft),transform ${duration}ms var(--spring-soft),opacity ${duration}ms ease`;
-        document.body.appendChild(el);el.offsetHeight;
-        const midX=(srcCx+dstCx)/2,midY=Math.min(a.top,b.top)-(o.arc??46);
-        requestAnimationFrame(()=>{el.style.top=cy2t(midY)+'px';el.style.left=cx2l(midX)+'px';el.style.transform=(o.spin?'rotateZ(180deg) ':'')+'scale('+((o.midScale??1.12)*((1+endScale)/2))+')';});
-        if(o.startFaceDown&&o.revealMidway)setTimeout(()=>{
-          const front=materialize({...o,startFaceDown:false},false);
-          el.className=front.className+' kit-card-moving';el.innerHTML=front.innerHTML;if(!front.innerHTML)el.textContent=front.textContent||el.textContent;
-          for(const attr of [...front.attributes]) if(attr.name!=='style'&&attr.name!=='class')el.setAttribute(attr.name,attr.value);
-          el.style.background=front.style.background||el.style.background;el.style.color=front.style.color||el.style.color;
-          el.style.animation='popReveal .26s var(--spring)'; if(o.onReveal)o.onReveal(el);
-        },Math.floor(duration*(o.revealAt??0.42)));
-        setTimeout(()=>{el.style.top=cy2t(dstCy)+'px';el.style.left=cx2l(dstCx)+'px';el.style.transform=(o.spin?'rotateZ(360deg) ':'')+'scale('+endScale+')';},Math.floor(duration*0.5));
-        await sleep(duration+45); el.remove(); finish(); if(o.land!==false)await bounce(o.to,{duration:260}); if(o.onArrive)o.onArrive(o.to);
-      });
-    }
-    function reserveSlot(container,{before=null,render=null,card=null,className='kit-card-ghost'}={}){
-      if(!container)return null;
-      const ghost=render?render(card):document.createElement('div');
-      ghost.classList.add(className);ghost.style.visibility='hidden';
-      container.insertBefore(ghost,before||null);return ghost;
-    }
-    async function moveToSlot({cardId,from,container,before=null,render=null,card=null,...opts}={}){
-      const ghost=reserveSlot(container,{before,render,card});
-      await move(cardId||('slot:'+Date.now()),{from,to:ghost,render,card,...opts});
-      if(opts.removeGhost!==false&&ghost)ghost.remove();
-      return ghost;
-    }
-    async function flip(el,{value=null,color=null,faceUp=true,duration=420}={}){
-      if(!el)return;
-      el.classList.remove('anim-flip');void el.offsetWidth;el.classList.add('anim-flip');
-      await sleep(duration/2);
-      if(faceUp){
-        if(value!=null)el.textContent=value;
-        if(color)el.style.color=color;
-        el.classList.remove('face-down');el.classList.add('revealed');
-      }else{
-        el.textContent='';el.style.color='';el.classList.add('face-down');el.classList.remove('revealed');
-      }
-      await sleep(duration/2);
-    }
-    async function reveal(el,value,{color=null,duration=420}={}){return flip(el,{value,color,faceUp:true,duration});}
-    async function hide(el,opts={}){return flip(el,{...opts,faceUp:false});}
-    function bounce(el,{duration=400}={}){if(!el)return Promise.resolve();el.classList.remove('anim-land');void el.offsetWidth;el.classList.add('anim-land');return sleep(duration);}
-    function tilt(el,degrees=8,{duration=180}={}){if(!el)return Promise.resolve();el.style.transition=`transform ${duration}ms var(--spring-soft)`;el.style.transform=`rotate(${degrees}deg)`;return sleep(duration);}
-    function untilt(el,{duration=180}={}){if(!el)return Promise.resolve();el.style.transition=`transform ${duration}ms var(--spring-soft)`;el.style.transform='';return sleep(duration);}
-    async function shake(el,{duration=500}={}){if(!el)return;el.style.animation='shakeX '+duration+'ms ease';await sleep(duration);el.style.animation='';}
-    async function glow(el,{duration=350}={}){if(!el)return;const old=el.style.filter;el.style.transition='filter .3s';el.style.filter='brightness(1.4) saturate(1.35)';await sleep(duration);el.style.filter=old||'';}
-    async function stack(els,{tiltDegrees=8,stagger=70}={}){for(let i=0;i<els.length;i++){tilt(els[i],(i-(els.length-1)/2)*tiltDegrees);await sleep(stagger);} }
-    async function discard(els,to,{cardId='discard',value=null,color=null,duration=560,stagger=110,render=null,card=null}={}){for(let i=0;i<els.length;i++){await move(cardId+':'+i,{from:els[i],to,value,color,spin:true,duration,land:false,render,card});await sleep(stagger);} }
-    async function trigger(name,opts={}){if(CardEffects&&CardEffects[name])return CardEffects[name](opts);}
-    function idle(){return chain;}
-    return {move,moveToSlot,reserveSlot,flip,reveal,hide,bounce,tilt,untilt,shake,glow,stack,discard,trigger,idle};
-  })();
+  function confetti(){
+    const cv=document.createElement('canvas');cv.style.cssText='position:fixed;inset:0;pointer-events:none;z-index:500';cv.width=innerWidth;cv.height=innerHeight;document.body.appendChild(cv);
+    const x=cv.getContext('2d'),cols=['#3b82f6','#10b981','#eab308','#ef4444','#8b5cf6','#0ea5e9','#f59e0b'],ps=[];
+    const burst=ox=>{for(let i=0;i<90;i++){const an=(ox<0.5?-0.35:Math.PI+0.35)+(Math.random()-0.5)*1.1,sp=8+Math.random()*9;ps.push({x:ox*cv.width,y:cv.height*0.72,vx:Math.cos(an)*sp,vy:Math.sin(an)*sp-6,r:4+Math.random()*6,c:cols[(Math.random()*cols.length)|0],a:Math.random()*Math.PI,va:(Math.random()-0.5)*0.4});}};
+    burst(0.08);burst(0.92);setTimeout(()=>{burst(0.2);burst(0.8);},350);const end=Date.now()+3800;
+    (function f(){x.clearRect(0,0,cv.width,cv.height);for(const p of ps){p.vy+=0.28;p.vx*=0.99;p.x+=p.vx;p.y+=p.vy;p.a+=p.va;x.save();x.translate(p.x,p.y);x.rotate(p.a);x.fillStyle=p.c;x.fillRect(-p.r/2,-p.r/2,p.r,p.r*0.6);x.restore();}if(Date.now()<end)requestAnimationFrame(f);else cv.remove();})();
+  }
 
   // ────────────────────────────────────────────────────────────────
   // CardManager — Permanent Card System
@@ -567,7 +415,49 @@ const Kit=(()=>{
       }
       return {ok:errors.length===0,errors};
     }
-    return {create,get,has,ids,inZone,destroy,pin,unpin,sync,moveTo,flip:flipCard,clear,reconcile,renderCard,verifyInvariants};
+    // ── Transient fly: a one-off card flight between two DOM points, no
+    //    permanent identity/location. Reuses moveTo() so it shares the exact same
+    //    clean, uniform-scale flight. The temp card is destroyed on arrival.
+    //    opts: render()->Element (preferred) OR {value,color}; plus the usual
+    //    flight opts (spin, flip, startFaceDown, revealMidway, duration, arc,
+    //    land, hideTarget, hideSource, onArrive, onReveal).
+    async function flyTransient(fromEl,toEl,opts={}){
+      if(!fromEl||!toEl)return;
+      const id='cm:transit:'+(++_nextId);
+      const renderer=opts.render
+        ? ()=>opts.render()
+        : ()=>{const e=document.createElement('div');e.className=opts.className||'card-slot revealed';e.textContent=opts.value??'';if(opts.color)e.style.color=opts.color;return e;};
+      create({kind:opts.kind||'generic',value:opts.value??''},{zone:'transit'},{id,faceUp:!opts.startFaceDown,renderer});
+      const prevSrcVis=opts.hideSource?fromEl.style.visibility:null;
+      if(opts.hideSource)fromEl.style.visibility='hidden';
+      pin(id,fromEl,{hideAnchor:false,updateContent:true});
+      await moveTo(id,toEl,{...opts,toLocation:{zone:'transit'},hideTarget:opts.hideTarget===true});
+      if(opts.hideSource)fromEl.style.visibility=prevSrcVis||'';
+      destroy(id);
+    }
+    // ── In-place flip/reveal of ANY element (managed or a plain board DOM node).
+    //    If the element is a managed overlay we flip via flipCard; otherwise we
+    //    animate the element directly. Replaces the old Card.reveal/flip.
+    async function revealEl(el,value,{color=null,faceUp=true,duration=420}={}){
+      if(!el)return;
+      el.classList.remove('anim-flip');void el.offsetWidth;el.classList.add('anim-flip');
+      await sleep(duration/2);
+      if(faceUp){ if(value!=null)el.textContent=value; if(color)el.style.color=color; el.classList.remove('face-down');el.classList.add('revealed'); }
+      else { el.textContent='';el.style.color='';el.classList.add('face-down');el.classList.remove('revealed'); }
+      await sleep(duration/2);
+    }
+    // ── Composite: a triplet/clear effect — tilt-stack the cards, fly them to the
+    //    discard, then settle. Cards are board DOM elements (or overlays).
+    async function triplet({cards=[],discardEl=null,value=null,color=null,boardEl=null,render=null}={}){
+      if(boardEl)floatText(boardEl,'Triplet!','#eab308');
+      if(typeof SFX!=='undefined')SFX.triplet();
+      // tilt-stack
+      for(let i=0;i<cards.length;i++){const el=cards[i];if(!el)continue;el.style.transition='transform 180ms var(--spring-soft)';el.style.transform=`rotate(${(i-(cards.length-1)/2)*10}deg)`;await sleep(70);}
+      // fly each to discard (transient), staggered
+      for(let i=0;i<cards.length;i++){const el=cards[i];if(!el||!discardEl)continue;await flyTransient(el,discardEl,{render:render?()=>render():null,value,color,spin:true,duration:560,land:false,hideSource:true});await sleep(60);}
+      for(const el of cards){if(el){el.style.transition='transform 180ms var(--spring-soft)';el.style.transform='';}}
+    }
+    return {create,get,has,ids,inZone,destroy,pin,unpin,sync,moveTo,flyTransient,flip:flipCard,revealEl,triplet,clear,reconcile,renderCard,verifyInvariants};
   })();
 
   // Dev-mode invariant guard. Off by default; enable in the console with
@@ -583,37 +473,7 @@ const Kit=(()=>{
 
   window.addEventListener('resize',()=>CardManager.sync(),{passive:true});
   window.addEventListener('scroll',()=>CardManager.sync(),{passive:true});
-  const CardEffects={
-    async triplet({cards=[],discardEl=null,value=null,color=null,boardEl=null}={}){
-      if(boardEl)floatText(boardEl,'Triplet!','#eab308');
-      if(typeof SFX!=='undefined')SFX.triplet();
-      await Card.stack(cards,{tiltDegrees:10,stagger:70});
-      await Card.discard(cards,discardEl,{cardId:'triplet:'+Date.now(),value,color,duration:560,stagger:60});
-      cards.forEach(c=>Card.untilt(c));
-    },
-    async bust({boardEl=null,text='BUST!'}={}){
-      if(typeof SFX!=='undefined')SFX.bad();
-      await Card.shake(boardEl,{duration:520});
-      if(text)turnBanner(text,false);
-    },
-    async secondChance({cardEl=null}={}){
-      if(typeof SFX!=='undefined')SFX.good();
-      await Card.glow(cardEl,{duration:420});
-      turnBanner('Second Chance!',true);
-    },
-    async actionTransfer({kind='action',fromEl=null,toEl=null,seq=Date.now()}={}){
-      await Card.move('action:'+kind+':'+seq,{from:fromEl,to:toEl,value:kind,color:'#b45309',spin:true,duration:620,land:false});
-    }
-  };
-
-  function confetti(){
-    const cv=document.createElement('canvas');cv.style.cssText='position:fixed;inset:0;pointer-events:none;z-index:500';cv.width=innerWidth;cv.height=innerHeight;document.body.appendChild(cv);
-    const x=cv.getContext('2d'),cols=['#3b82f6','#10b981','#eab308','#ef4444','#8b5cf6','#0ea5e9','#f59e0b'],ps=[];
-    const burst=ox=>{for(let i=0;i<90;i++){const an=(ox<0.5?-0.35:Math.PI+0.35)+(Math.random()-0.5)*1.1,sp=8+Math.random()*9;ps.push({x:ox*cv.width,y:cv.height*0.72,vx:Math.cos(an)*sp,vy:Math.sin(an)*sp-6,r:4+Math.random()*6,c:cols[(Math.random()*cols.length)|0],a:Math.random()*Math.PI,va:(Math.random()-0.5)*0.4});}};
-    burst(0.08);burst(0.92);setTimeout(()=>{burst(0.2);burst(0.8);},350);const end=Date.now()+3800;
-    (function f(){x.clearRect(0,0,cv.width,cv.height);for(const p of ps){p.vy+=0.28;p.vx*=0.99;p.x+=p.vx;p.y+=p.vy;p.a+=p.va;x.save();x.translate(p.x,p.y);x.rotate(p.a);x.fillStyle=p.c;x.fillRect(-p.r/2,-p.r/2,p.r,p.r*0.6);x.restore();}if(Date.now()<end)requestAnimationFrame(f);else cv.remove();})();
-  }
-  return {cardColor,floatText,turnBanner,flyCard,flyToHeld,dealCascade,EventRunner,CardMotion,Card,CardManager,assertCardInvariants,CardEffects,rollDice,confetti};
+  return {cardColor,floatText,turnBanner,dealCascade,EventRunner,CardManager,assertCardInvariants,rollDice,confetti};
 })();
 
 /* ====================== SOUND (arcade) ====================== */

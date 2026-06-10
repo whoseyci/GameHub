@@ -224,9 +224,9 @@
         if(heldCard)heldCard.renderer=()=>skyjoVisual({revealed:true,cleared:false,value:a.newVal});
         await Kit.CardManager.moveTo('skyjo:held',target,{duration:360,hideTarget:true,land:false,toLocation:{zone:'grid',player:a.player,slot:a.index}});
         Kit.CardManager.destroy('skyjo:held');
-      }await Kit.Card.move('skyjo:swap:'+a.t,{from:target,to:$('uiDiscard'),value:a.oldVal,color:C(a.oldVal),startFaceDown:!a.wasRevealed,revealMidway:!a.wasRevealed,spin:a.wasRevealed,duration:520,land:false,hideTarget:true});if(a.diff!=null&&a.diff!==0){const sg=a.diff>0?'+':'';Kit.floatText(boardEl(a.player),sg+a.diff,a.diff>0?'#10b981':'#ef4444');(a.diff>0?SFX.good:SFX.bad)();}
+      }await Kit.CardManager.flyTransient(target,$('uiDiscard'),{render:()=>skyjoVisual({revealed:true,cleared:false,value:a.oldVal}),startFaceDown:!a.wasRevealed,revealMidway:!a.wasRevealed,spin:a.wasRevealed,duration:520,land:false});if(a.diff!=null&&a.diff!==0){const sg=a.diff>0?'+':'';Kit.floatText(boardEl(a.player),sg+a.diff,a.diff>0?'#10b981':'#ef4444');(a.diff>0?SFX.good:SFX.bad)();}
       // Handle chained triplet (swap triggered a column clear)
-      if(a.triplet){await Kit.CardEffects.triplet({cards:a.triplet.indices.map(i=>cardAt(a.player,i)).filter(Boolean),discardEl:$('uiDiscard'),value:a.triplet.value,color:C(a.triplet.value),boardEl:boardEl(a.player)});await sleep(250);}
+      if(a.triplet){await Kit.CardManager.triplet({cards:a.triplet.indices.map(i=>cardAt(a.player,i)).filter(Boolean),discardEl:$('uiDiscard'),value:a.triplet.value,color:C(a.triplet.value),boardEl:boardEl(a.player)});await sleep(250);}
       animating=false;flushView();return;}
     if(a.type==='discard_drawn'){animating=true;SFX.discard();
       // Hide DOM held card so only the overlay animates
@@ -237,8 +237,8 @@
       }
       await Kit.CardManager.moveTo('skyjo:held',$('uiDiscard'),{duration:520,spin:true,hideTarget:true,land:false,toLocation:{zone:'discard'}});
       Kit.CardManager.destroy('skyjo:held');animating=false;flushView();return;}
-    if(a.type==='reveal'||a.type==='reveal_after_discard'){const idx=a.card!=null?a.card:a.index,id=skyjoCardId(s,a.player,idx);SFX.reveal();if(!(await revealSkyjoRegistryCard(id,a.value))){const el=cardAt(a.player,idx);await Kit.Card.reveal(el,a.value,{color:C(a.value)});}return;}
-    if(a.type==='triplet'){animating=true;await Kit.CardEffects.triplet({cards:a.indices.map(i=>cardAt(a.player,i)).filter(Boolean),discardEl:$('uiDiscard'),value:a.value,color:C(a.value),boardEl:boardEl(a.player)});await sleep(250);animating=false;flushView();return;}
+    if(a.type==='reveal'||a.type==='reveal_after_discard'){const idx=a.card!=null?a.card:a.index,id=skyjoCardId(s,a.player,idx);SFX.reveal();if(!(await revealSkyjoRegistryCard(id,a.value))){const el=cardAt(a.player,idx);await Kit.CardManager.revealEl(el,a.value,{color:C(a.value)});}return;}
+    if(a.type==='triplet'){animating=true;await Kit.CardManager.triplet({cards:a.indices.map(i=>cardAt(a.player,i)).filter(Boolean),discardEl:$('uiDiscard'),value:a.value,color:C(a.value),boardEl:boardEl(a.player)});await sleep(250);animating=false;flushView();return;}
   }
   function investigate(s,pi,viewer){
     const seats=s.players.map((_,i)=>i).filter(i=>i!==viewer);

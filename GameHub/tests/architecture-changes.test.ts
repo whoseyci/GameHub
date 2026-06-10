@@ -169,7 +169,7 @@ describe("Permanent Card System: Flip 7 fully on CardManager", () => {
     // Gated by a debug flag so it costs nothing in production.
     expect(core).toContain("localStorage.getItem('cardDebug')");
     // Exposed on Kit and called by the table renderer.
-    expect(core).toContain("CardManager,assertCardInvariants,CardEffects");
+    expect(core).toContain("CardManager,assertCardInvariants,rollDice");
     expect(core).toContain("assertCardInvariants('renderTable')");
   });
 });

@@ -388,10 +388,10 @@ describe("CardManager: permanent card system invariants", () => {
   it("CardManager is exposed on Kit", () => {
     const core = readFileSync(new URL("../public/js/00-core.js", import.meta.url), "utf8");
     expect(core).toContain("const CardManager=");
-    expect(core).toContain("return {create,get,has,ids,inZone,destroy,pin,unpin,sync,moveTo,flip");
+    expect(core).toContain("return {create,get,has,ids,inZone,destroy,pin,unpin,sync,moveTo,flyTransient,flip");
     expect(core).toContain("verifyInvariants");
     // Kit return includes CardManager (and the dev-mode invariant guard).
-    expect(core).toContain("CardManager,assertCardInvariants,CardEffects");
+    expect(core).toContain("CardManager,assertCardInvariants,rollDice");
   });
 
   it("the legacy CardRegistry shim has been retired (CardManager is the only system)", () => {

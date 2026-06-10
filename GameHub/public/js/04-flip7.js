@@ -285,8 +285,9 @@
   }
 
   async function flyF7Card(fromEl,toEl,card,{duration=620,spin=true}={}){
-    // Simple fly for action card transfers — not part of the permanent card system
-    await Kit.Card.move('f7:fly:'+Date.now(),{from:fromEl,to:toEl,render:()=>{const el=cardEl(card?.kind||'num',card?.v??'?');el.classList.add('f7-flying-card');return el;},spin,duration,land:false,hideTarget:true});
+    // Action-card transfer (board → board): a transient one-off fly via the
+    // unified CardManager API (same clean, uniform-scale flight as everything).
+    await Kit.CardManager.flyTransient(fromEl,toEl,{render:()=>{const el=cardEl(card?.kind||'num',card?.v??'?');el.classList.add('f7-flying-card');return el;},spin,duration,land:false});
   }
 
 

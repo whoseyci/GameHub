@@ -318,25 +318,24 @@ async function smokeFlip7(window, document) {
   // Flip 7 force-ends the round for everyone (active players force-stay & bank).
   assert(f7src.includes('_forceEndRoundOnFlip7'), 'Flip7: a Flip 7 must force-end the round for all active players (client engine)');
 
-  // Every card-flight path in the animation API must scale UNIFORMLY via
-  // transform:scale, never animate raw width/height (which left text oversized
-  // mid-flight — e.g. device-board → mini-board transfers). Guard all fly paths,
-  // not just moveTo, so no path silently regresses to the wrong scaling.
+  // There is now ONE card system: CardManager. The legacy layers (flyCard,
+  // CardMotion, Card, CardEffects) have been removed — assert they are gone and
+  // that the single flight path (moveTo, used by flyTransient too) scales
+  // uniformly via transform:scale and never animates raw width/height.
   const coreSrc = readFileSync(new URL('../public/js/00-core.js', import.meta.url), 'utf8');
-  // Slice each fly function's body up to the next top-level function declaration.
-  const bodyAfter = (marker) => {
-    const i = coreSrc.indexOf(marker);
-    if (i < 0) return null;
-    const rest = coreSrc.slice(i + marker.length);
-    const next = rest.search(/\n  (?:async )?function /);
-    return rest.slice(0, next >= 0 ? next : 4000);
-  };
-  for (const marker of ['function flyCard', 'async function moveTo', 'async function move(cardIdOrOpts']) {
-    const body = bodyAfter(marker);
-    assert(body != null, `core: ${marker} not found`);
-    assert(!body.includes('width ${duration}ms'), `core: ${marker} must not transition raw width (use transform:scale for uniform sizing)`);
-    assert(body.includes('scale('), `core: ${marker} should size the flight via transform:scale`);
-  }
+  assert(!coreSrc.includes('const CardMotion='), 'core: legacy CardMotion should be removed');
+  assert(!coreSrc.includes('const Card=(()=>'), 'core: legacy Card subsystem should be removed');
+  assert(!coreSrc.includes('const CardEffects='), 'core: legacy CardEffects should be removed');
+  assert(!coreSrc.includes('function flyCard'), 'core: legacy flyCard should be removed');
+  assert(coreSrc.includes('async function flyTransient'), 'core: CardManager.flyTransient should exist (replaces Card.move)');
+  const moveToBody = (() => {
+    const i = coreSrc.indexOf('async function moveTo');
+    const rest = coreSrc.slice(i);
+    const next = rest.slice(20).search(/\n    async function |\n    function /);
+    return rest.slice(0, next >= 0 ? next + 20 : 4000);
+  })();
+  assert(!moveToBody.includes('width ${duration}ms'), 'core: moveTo must not transition raw width (use transform:scale)');
+  assert(moveToBody.includes('scale('), 'core: moveTo should size the flight via transform:scale');
 
   window.quitLocal();
   await sleep(50);

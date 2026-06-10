@@ -57,21 +57,27 @@ describe("shared game shell", () => {
     expect(networkLocal).toContain("GameShell.render(view,client)");
   });
 
-  it("defines reusable card animation API and Skyjo uses it", () => {
-    expect(core).toContain("const Card=(()=>");
-    // The backward-compat CardRegistry shim was retired; CardManager is the
-    // single permanent-card system now.
+  it("exposes a single CardManager animation API and the games use it", () => {
+    // ONE system: CardManager. Legacy layers (Card / CardMotion / CardEffects /
+    // CardRegistry / flyCard) have been removed.
     expect(core).toContain("const CardManager=");
     expect(core).not.toContain("const CardRegistry");
+    expect(core).not.toContain("const Card=(()=>");
+    expect(core).not.toContain("const CardMotion=");
+    expect(core).not.toContain("const CardEffects=");
+    expect(core).not.toContain("function flyCard");
+    // CardManager carries the capabilities the old layers provided.
+    expect(core).toContain("async function moveTo");
+    expect(core).toContain("async function flyTransient");
+    expect(core).toContain("async function triplet");
+    expect(core).toContain("async function revealEl");
     expect(core).toContain("reconcile");
-    expect(core).toContain("const CardEffects");
-    expect(core).toContain("async function move");
-    expect(core).toContain("async function moveToSlot");
-    expect(core).toContain("function reserveSlot");
-    expect(core).toContain("async function flip");
-    expect(skyjo).toContain("Kit.Card.move");
-    expect(skyjo).toContain("Kit.Card.reveal");
-    expect(skyjo).toContain("Kit.CardEffects.triplet");
+    // Games call CardManager (Skyjo: transient swap fly + triplet + in-place reveal).
+    expect(skyjo).toContain("Kit.CardManager.flyTransient");
+    expect(skyjo).toContain("Kit.CardManager.revealEl");
+    expect(skyjo).toContain("Kit.CardManager.triplet");
+    expect(skyjo).not.toContain("Kit.Card.move");
+    expect(skyjo).not.toContain("Kit.CardEffects");
     // Skyjo uses CardManager directly for permanent cards
     expect(skyjo).toContain("Kit.CardManager.pin");
     expect(skyjo).toContain("Kit.CardManager.reconcile");
