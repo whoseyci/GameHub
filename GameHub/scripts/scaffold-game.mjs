@@ -163,10 +163,31 @@ writeFileSync(clientPath, `/**
     tip: 'TODO: add one useful strategy tip.',
   };
 
+  const PREFIX = ID + ':'; // CardManager id namespace for this game's cards
+
   function send(action, extra = {}) {
     const seat = window._renderView?.yourSeat ?? 0;
     GameActions.send(action, extra, seat);
   }
+
+  // SHARED CARD KIT (recommended). Use Kit.cardFace for the unified card look and
+  // Kit.CardBoard for all create/pin/reconcile wiring + card-sized flights, so you
+  // never hand-roll the boilerplate (or reintroduce the "scale to container width"
+  // bug). Build each card anchor with Kit.cardFace + data-card-reg, then call
+  // Kit.CardBoard.sync(PREFIX, …) once after renderTable.
+  //
+  //   function cardAnchor(card) {
+  //     const el = Kit.cardFace({ value: card.v, suit: card.suit }); // .kit-card look
+  //     el.dataset.cardReg = PREFIX + card.id;        // stable id → smooth flights
+  //     el.dataset.val = card.v; el.dataset.suit = card.suit;
+  //     return el;
+  //   }
+  //   // after GameShell.renderTable(...):
+  //   Kit.CardBoard.sync(PREFIX, {
+  //     renderer: (a) => ({ value: a.dataset.val, suit: a.dataset.suit }),
+  //     location: (a, i) => ({ zone: 'board', player: 0, slot: i }),
+  //   });
+  //   // to animate a card a→b: Kit.CardBoard.fly(PREFIX + card.id, { to: destEl, fromRect, flip:true });
 
   function render(view, ctx = {}) {
     const s = view[ID];
@@ -178,7 +199,7 @@ writeFileSync(clientPath, `/**
     const focus = \`
       <div class="player-board">
         <div class="player-title">${emoji} ${name}</div>
-        <div class="muted">TODO: render game state.</div>
+        <div class="muted">TODO: render game state (see the SHARED CARD KIT notes above).</div>
         <button class="btn" onclick="window.GameClients['\${ID}'].act('example')">Example action</button>
       </div>\`;
 
@@ -193,10 +214,12 @@ writeFileSync(clientPath, `/**
       status: statusText,
     });
 
+    // Once you render card anchors: Kit.CardBoard.sync(PREFIX, { renderer, location });
+
     if (view.summary && !summaryShown) showSummary(view);
   }
 
-  function unmount() {}
+  function unmount() { Kit.CardManager.clear(PREFIX); }
 
   window.GameClients[ID] = { render, act: send, unmount };
 })();

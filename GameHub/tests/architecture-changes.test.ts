@@ -169,7 +169,28 @@ describe("Permanent Card System: Flip 7 fully on CardManager", () => {
     // Gated by a debug flag so it costs nothing in production.
     expect(core).toContain("localStorage.getItem('cardDebug')");
     // Exposed on Kit and called by the table renderer.
-    expect(core).toContain("CardManager,assertCardInvariants,rollDice");
+    expect(core).toContain("CardManager,CardBoard,cardFace,assertCardInvariants,rollDice");
     expect(core).toContain("assertCardInvariants('renderTable')");
+  });
+
+  it("exposes ONE unified card API (cardFace + CardBoard) and games share it", () => {
+    const schotten = readFileSync(new URL("../public/js/games/schotten.js", import.meta.url), "utf8");
+    // Core provides the shared visual (cardFace) and the shared create/pin/reconcile
+    // loop (CardBoard.sync) + card-sized flight staging (CardBoard.fly/snapshot).
+    expect(core).toContain("function cardFace(");
+    expect(core).toContain("const CardBoard=");
+    expect(core).toContain("function sync(prefix,opts");
+    expect(core).toContain("function snapshot(prefix)");
+    expect(core).toContain("async function fly(id,opts");
+    // The flight source is always a card-sized proxy (no ballooning to container width).
+    expect(core).toContain("function rectAnchor(rect)");
+    // Multiple games use the shared wiring (not a Schotten-only abstraction).
+    expect(flip7).toContain("Kit.CardBoard.sync('flip7:table:'");
+    expect(schotten).toContain("Kit.CardBoard.sync(PREFIX");
+    expect(schotten).toContain("Kit.CardBoard.fly(");
+    expect(schotten).toContain("Kit.cardFace(");
+    // The games no longer hand-roll their own create/pin/reconcile loop.
+    expect(flip7).not.toContain("Kit.CardManager.reconcile('flip7:table:'");
+    expect(schotten).not.toContain("Kit.CardManager.reconcile(PREFIX");
   });
 });

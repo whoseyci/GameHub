@@ -48,40 +48,24 @@
   }
   function act(action, extra = {}) { send(action, extra); }
 
-  // Renderer for a managed card (also used for the static board anchors).
-  function renderClanCard(face, faceUp, { small=false } = {}) {
-    const el = document.createElement('div');
-    el.className = 'kit-card st-clan' + (small ? ' kit-sm' : '');
-    if (!faceUp) { el.classList.add('kit-face-down'); return el; }
-    el.dataset.suit = face.c;
-    el.innerHTML = `<span class="kit-pip tl">${esc(face.v)}</span>`
-      + `<span class="st-val">${esc(face.v)}</span>`
-      + `<span class="kit-pip br">${esc(face.v)}</span>`;
-    return el;
-  }
-  // A plain anchor element placed in the DOM grid; the CardManager overlay sits on
-  // top of it. Anchors carry data-card-reg so the manager can find/pin them.
-  function clanAnchor(card, { small=false } = {}) {
-    const a = renderClanCard({ v: card.v, c: card.c }, true, { small });
+  // A clan card uses the SHARED card look (Kit.cardFace → .kit-card). We render the
+  // anchor with Kit.cardFace and stamp data-* so the unified Kit.CardBoard.sync()
+  // loop can rebuild each managed overlay from the anchor alone.
+  function clanAnchor(card, { small=false, loc=null } = {}) {
+    const a = Kit.cardFace({ value: card.v, suit: card.c, className: 'st-clan', sm: small });
     a.classList.add('st-anchor');
     a.dataset.cardReg = cmId(card);
+    a.dataset.val = card.v; a.dataset.suit = card.c; if (small) a.dataset.sm = '1';
+    if (loc) { a.dataset.zone = loc.zone; a.dataset.player = loc.player; a.dataset.slot = loc.slot; }
     return a;
   }
-
-  // Register (or update) a permanent CardManager card for `card`, then pin it onto
-  // its anchor so the overlay covers it.
-  function pinCard(card, anchor, location, { small=false } = {}) {
-    const id = cmId(card);
-    if (!Kit.CardManager.has(id)) {
-      Kit.CardManager.create({ v: card.v, c: card.c }, location, {
-        id, faceUp: true,
-        renderer: (face, up) => renderClanCard(face, up, { small }),
-      });
-    } else {
-      const c = Kit.CardManager.get(id);
-      if (c) { c.location = { ...location }; c.renderer = (face, up) => renderClanCard(face, up, { small }); }
-    }
-    Kit.CardManager.pin(id, anchor, { hideAnchor:false, updateContent:true });
+  // The renderer Kit.CardBoard.sync() calls for each anchor: read its data-* and
+  // produce the shared card spec. ONE place describes what a Schotten card looks like.
+  function clanSpec(anchor) {
+    return { value: anchor.dataset.val, suit: anchor.dataset.suit, className: 'st-clan', sm: anchor.dataset.sm === '1' };
+  }
+  function clanLoc(anchor) {
+    return { zone: anchor.dataset.zone || 'board', player: Number(anchor.dataset.player) || 0, slot: Number(anchor.dataset.slot) || 0 };
   }
 
   function render(view, ctx = {}) {
@@ -103,7 +87,7 @@
       const top = document.createElement('div'); top.className = 'st-side st-side-opp';
       for (let slot = 0; slot < 3; slot++) {
         const card = st.sides[opp][slot];
-        if (card) top.appendChild(clanAnchor(card, { small:true }));
+        if (card) top.appendChild(clanAnchor(card, { small:true, loc:{ zone:'stone', player:opp, slot:i*10+slot } }));
         else { const ph = document.createElement('div'); ph.className = 'st-slot-empty'; top.appendChild(ph); }
       }
 
@@ -126,7 +110,7 @@
       const bottom = document.createElement('div'); bottom.className = 'st-side st-side-me';
       for (let slot = 0; slot < 3; slot++) {
         const card = st.sides[me][slot];
-        if (card) bottom.appendChild(clanAnchor(card, { small:true }));
+        if (card) bottom.appendChild(clanAnchor(card, { small:true, loc:{ zone:'stone', player:me, slot:i*10+slot } }));
         else { const ph = document.createElement('div'); ph.className = 'st-slot-empty'; bottom.appendChild(ph); }
       }
       // drop target: a selected hand card may be placed on a stone with room
@@ -147,7 +131,7 @@
     hand.className = 'kit-hand st-hand';
     const myHand = s.players[me]?.hand || [];
     myHand.forEach((card, idx) => {
-      const el = clanAnchor(card);
+      const el = clanAnchor(card, { loc:{ zone:'hand', player:me, slot:idx } });
       el.classList.add('st-hand-card');
       if (myTurn && !s.placedThisTurn) {
         el.classList.add('kit-selectable');
@@ -185,44 +169,15 @@
     else if (!s.placedThisTurn) status = selectedHand != null ? '📍 Tap a stone to place your card' : '🎴 Your turn — pick a card to play';
     else status = '⚖️ Claim a stone you’ve won, or end your turn';
 
-    // ---------- FLIP snapshot: where is each managed card RIGHT NOW (pre-rebuild)?
-    // We capture each card overlay's current screen rect BEFORE renderTable rebuilds
-    // the DOM, so a card that just moved zones can fly from its true previous
-    // position (a card-sized rect) — never from a wide container. (Fixes cards
-    // ballooning to screen width: the flight source must be card-sized.)
-    const preRects = {};
-    Kit.CardManager.ids().forEach((id) => {
-      if (!id.startsWith(PREFIX)) return;
-      const c = Kit.CardManager.get(id);
-      if (c && c.overlayEl) {
-        const r = c.overlayEl.getBoundingClientRect();
-        if (r.width > 0) preRects[id] = { left: r.left, top: r.top, width: r.width, height: r.height };
-      }
-    });
+    // Capture where every card sits NOW (pre-rebuild) so a card that changed zones
+    // can fly from its true previous spot. (Unified: Kit.CardBoard.snapshot.)
+    const preRects = Kit.CardBoard.snapshot(PREFIX);
 
     GameShell.renderTable({ game: ID, focus, topMode: 'hidden', status });
 
-    // ---------- pin all on-table + hand cards to their anchors ----------
-    const active = [];
-    document.querySelectorAll(`[data-card-reg^="${PREFIX}"]`).forEach((anchor) => {
-      const id = anchor.dataset.cardReg;
-      active.push(id);
-    });
-    // (re)pin cards from the view model so each overlay tracks its anchor
-    s.stones.forEach((st, i) => {
-      [me, opp].forEach((seat, sideIdx) => {
-        st.sides[seat].forEach((card, slot) => {
-          const anchor = document.querySelector(`[data-card-reg="${cmId(card)}"]`);
-          if (anchor) pinCard(card, anchor, { zone:'stone', player:seat, slot: i*10+slot }, { small:true });
-        });
-      });
-    });
-    myHand.forEach((card, idx) => {
-      const anchor = document.querySelector(`[data-card-reg="${cmId(card)}"]`);
-      if (anchor) pinCard(card, anchor, { zone:'hand', player:me, slot:idx });
-    });
-    Kit.CardManager.reconcile(PREFIX, active);
-    requestAnimationFrame(() => Kit.CardManager.sync());
+    // Wire every [data-card-reg] anchor to its permanent card in ONE shared call —
+    // create-if-missing, refresh renderer, pin, reconcile, sync. (Unified: CardBoard.)
+    Kit.CardBoard.sync(PREFIX, { renderer: clanSpec, location: clanLoc });
 
     // ---------- ANIMATE the latest action ----------
     runAnimation(s, me, preRects).catch(() => {});
@@ -242,17 +197,7 @@
 
   // Animate the most recent lastAction (place / draw-on-end / claim). The cards
   // are already pinned at their FINAL anchors by render(); we re-stage the moving
-  // card at its source and fly it to the (already-correct) anchor.
-  // A card-sized, invisible proxy anchor placed at an absolute screen rect. We pin
-  // a permanent card to it so the flight SOURCE is exactly card-sized (never a wide
-  // container) — moveTo derives its source size from the anchor. Cleaned up after.
-  function rectAnchor(rect) {
-    const el = document.createElement('div');
-    el.style.cssText = `position:fixed;left:${rect.left}px;top:${rect.top}px;width:${rect.width}px;height:${rect.height}px;pointer-events:none;visibility:hidden`;
-    document.body.appendChild(el);
-    return el;
-  }
-
+  // card at its source (via Kit.CardBoard.fly) and fly it to the final anchor.
   async function runAnimation(s, me, preRects = {}) {
     const a = s.lastAction;
     if (!a || a.seq == null || a.seq === lastSeq) {
@@ -265,17 +210,13 @@
       const id = cmId(a.card);
       const dest = document.querySelector(`[data-card-reg="${id}"]`);
       if (Kit.CardManager.has(id) && dest) {
-        // Fly the SAME permanent card from where it sat last frame (its hand slot,
-        // captured pre-rebuild) to its stone slot. Source = a card-sized proxy at
-        // the captured rect, so the card never scales to the hand-row's width.
-        const src = preRects[id];
-        const fromEl = src ? rectAnchor(src) : dest;
-        Kit.CardManager.pin(id, fromEl, { hideAnchor:false, updateContent:true });
-        await Kit.CardManager.moveTo(id, dest, {
+        // Fly the SAME permanent card from its previous (hand) spot → stone, via the
+        // unified flight (card-sized source from the snapshot — no ballooning).
+        await Kit.CardBoard.fly(id, {
+          to: dest, fromRect: preRects[id],
           duration: 460, arc: 40, land: true, hideTarget: true,
           toLocation: { zone:'stone', player:a.player },
         });
-        if (src) fromEl.remove();
         if (typeof SFX !== 'undefined' && SFX.flip) SFX.flip();
       }
       return;
@@ -288,12 +229,12 @@
       deck.classList.remove('deal'); void deck.offsetWidth; deck.classList.add('deal');
       if (a.player === me && a.drew) {
         // The drawer sees the real card fly deck→hand with a mid-flight reveal.
-        // It's the SAME permanent card that now lives in the hand (no throwaway).
+        // Same permanent card that now lives in the hand (no throwaway).
         const id = cmId(a.drew);
         const dest = document.querySelector(`[data-card-reg="${id}"]`);
         if (Kit.CardManager.has(id) && dest) {
-          Kit.CardManager.pin(id, deck, { hideAnchor:false, updateContent:false });
-          await Kit.CardManager.moveTo(id, dest, {
+          await Kit.CardBoard.fly(id, {
+            to: dest, fromEl: deck, updateContent: false,
             duration: 520, arc: 46, flip: true, startFaceDown: true,
             backHTML: '<div class="kit-card kit-face-down"></div>', backClass: 'kit-face-down',
             revealMidway: true, revealAt: 0.5, land: true, hideTarget: true,
@@ -302,9 +243,8 @@
           if (typeof SFX !== 'undefined' && SFX.flip) SFX.flip();
         }
       } else {
-        // Opponent drew: their card is hidden info with no on-screen home, so there
-        // is nothing permanent to fly. We just pulse the deck (set above) — no
-        // transient throwaway card. (Eliminates flyTransient usage entirely.)
+        // Opponent drew: hidden info, no on-screen home → just the deck pulse above.
+        // No transient throwaway card.
         if (typeof SFX !== 'undefined' && SFX.flip) SFX.flip();
       }
       return;

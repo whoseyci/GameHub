@@ -393,7 +393,7 @@ describe("CardManager: permanent card system invariants", () => {
     expect(core).toContain("return {create,get,has,ids,inZone,destroy,pin,unpin,sync,moveTo,flyTransient,flip");
     expect(core).toContain("verifyInvariants");
     // Kit return includes CardManager (and the dev-mode invariant guard).
-    expect(core).toContain("CardManager,assertCardInvariants,rollDice");
+    expect(core).toContain("CardManager,CardBoard,cardFace,assertCardInvariants,rollDice");
   });
 
   it("the legacy CardRegistry shim has been retired (CardManager is the only system)", () => {
@@ -445,8 +445,10 @@ describe("CardManager: permanent card system invariants", () => {
     expect(flip7Source).toContain("startFaceDown:true");
     expect(flip7Source).toContain("revealMidway:true");
     // syncF7Cards pins all cards to real anchors
-    expect(flip7Source).toContain("Kit.CardManager.pin(id,anchor,{hideAnchor:false");
-    expect(flip7Source).toContain("Kit.CardManager.reconcile('flip7:table:'");
+    expect(flip7Source).toContain("Kit.CardBoard.sync('flip7:table:'");
+    // reconcile/pin/sync now live ONCE in the shared CardBoard.sync (core), not per-game.
+    const coreForBoard = readFileSync(new URL("../public/js/00-core.js", import.meta.url), "utf8");
+    expect(coreForBoard).toContain("CardManager.reconcile(prefix,active)");
     // Permanent TABLE cards are reconciled, never destroyed directly. (Transient
     // discard/bust cards may be destroyed — that's a different, temporary id.)
     expect(flip7Source).not.toContain("Kit.CardManager.destroy('flip7:table:");

@@ -34,20 +34,18 @@
     anchor.dataset.cause=el.classList.contains('bust-cause')?'1':'';
     row.appendChild(anchor);return anchor;
   }
+  // Flip 7 keeps its distinct `.f7-card` look (cardEl) but uses the SHARED board
+  // wiring (Kit.CardBoard.sync) for create/pin/reconcile — no per-game loop. The
+  // renderer returns an Element (advanced mode), so the unified loop just hosts it.
+  function f7AnchorEl(anchor){
+    const kind=anchor.dataset.kind, val=kind==='num'?Number(anchor.dataset.value):anchor.dataset.value;
+    return cardEl(kind==='num'?'num':(val==='second'||val==='freeze'||val==='flip3')?'act':'mod',val,{busted:anchor.dataset.busted==='1',cause:anchor.dataset.cause==='1'});
+  }
   function syncF7Cards(){
-    const active=[];
-    document.querySelectorAll('[data-card-reg^="flip7:table:"]').forEach(anchor=>{
-      const id=anchor.dataset.cardReg,kind=anchor.dataset.kind,val=kind==='num'?Number(anchor.dataset.value):anchor.dataset.value;
-      active.push(id);
-      if(!Kit.CardManager.has(id)){
-        Kit.CardManager.create({kind,value:val},{zone:'grid',player:Number(anchor.closest('[data-f7-seat]')?.dataset?.f7Seat)||0,slot:active.length-1},{id,renderer:(face,faceUp)=>cardEl(face.kind==='num'?'num':(face.value==='second'||face.value==='freeze'||face.value==='flip3')?'act':'mod',face.value,{busted:anchor.dataset.busted==='1',cause:anchor.dataset.cause==='1'}),faceUp:true});
-      }else{
-        const c=Kit.CardManager.get(id);if(c)c.renderer=(face,faceUp)=>cardEl(face.kind==='num'?'num':(face.value==='second'||face.value==='freeze'||face.value==='flip3')?'act':'mod',face.value,{busted:anchor.dataset.busted==='1',cause:anchor.dataset.cause==='1'});
-      }
-      Kit.CardManager.pin(id,anchor,{hideAnchor:false,updateContent:true});
+    Kit.CardBoard.sync('flip7:table:',{
+      renderer:f7AnchorEl,
+      location:(anchor,index)=>({zone:'grid',player:Number(anchor.closest('[data-f7-seat]')?.dataset?.f7Seat)||0,slot:index}),
     });
-    Kit.CardManager.reconcile('flip7:table:',active);
-    requestAnimationFrame(()=>Kit.CardManager.sync());
   }
   function cmCardSlot(permId){ const c=Kit.CardManager.get(permId); return c&&c.location?c.location.slot:undefined; }
   // Animate a permanent card flying from the deck to its board slot via the

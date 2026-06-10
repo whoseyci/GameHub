@@ -8,7 +8,7 @@
    shape as Skyjo below. The hub never needs to change.
    ==================================================================== */
 const PARTYKIT_HOST = location.host; // served by the same Worker
-const BUILD_VERSION = "v43-schotten-no-transients-card-sized-flights"; // bump on each change; shown on the menu
+const BUILD_VERSION = "v44-unified-card-api"; // bump on each change; shown on the menu
 
 const $=id=>document.getElementById(id);
 function esc(v){return String(v ?? '').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));}
@@ -485,6 +485,99 @@ const Kit=(()=>{
     return {create,get,has,ids,inZone,destroy,pin,unpin,sync,moveTo,flyTransient,flip:flipCard,revealEl,triplet,rename,clear,reconcile,renderCard,verifyInvariants};
   })();
 
+  // ── Unified card VISUAL — one look across every game ──────────────────────
+  // Build a `.kit-card` element from a small spec. Games describe WHAT a card is
+  // (value/suit/face-down/extra classes); they no longer hand-roll markup. This is
+  // the single place the shared card design lives, so the whole hub looks coherent.
+  //   spec: { value, suit, faceDown, kind, html, className, pips, sm, xs }
+  function cardFace(spec={}){
+    const el=document.createElement('div');
+    el.className='kit-card'+(spec.sm?' kit-sm':'')+(spec.xs?' kit-xs':'')+(spec.className?' '+spec.className:'');
+    if(spec.faceDown){el.classList.add('kit-face-down');return el;}
+    if(spec.suit)el.dataset.suit=spec.suit;
+    if(spec.kind)el.dataset.kind=spec.kind;
+    if(spec.html!=null){el.innerHTML=spec.html;return el;}
+    const v=spec.value;
+    if(spec.pips!==false&&v!=null&&v!==''){
+      el.innerHTML=`<span class="kit-pip tl">${v}</span><span class="kit-val">${v}</span><span class="kit-pip br">${v}</span>`;
+    }else if(v!=null){el.textContent=String(v);}
+    return el;
+  }
+
+  // ── Unified card BOARD wiring — one create/pin/reconcile loop for every game ──
+  // Every game used to repeat the same ~5-line sync loop: walk [data-card-reg]
+  // anchors, create the permanent CardManager card if missing (else refresh its
+  // renderer), pin the overlay onto the anchor, collect active ids, reconcile, sync.
+  // CardBoard owns that loop AND the card-sized flight staging so no game can
+  // reintroduce the "card scales to a container's width" bug or transient throwaways.
+  const CardBoard=(()=>{
+    // sync(prefix, opts): drive the whole board from the DOM anchors.
+    //   opts.renderer(anchor)      -> { value, suit, faceDown, html, className, kind, sm, xs }
+    //                                 OR an Element (advanced) — used as the card face.
+    //   opts.location(anchor)      -> { zone, player, slot }  (defaults derive from data-*)
+    //   opts.faceUp(anchor)        -> boolean (default true)
+    //   opts.hideAnchor            -> hide the underlying anchor (default false; overlay sits on top)
+    function sync(prefix,opts={}){
+      const active=[];
+      const renderFor=(anchor)=>{
+        const out=opts.renderer?opts.renderer(anchor):null;
+        return (out instanceof Element)?out:cardFace(out||{});
+      };
+      document.querySelectorAll(`[data-card-reg^="${prefix}"]`).forEach((anchor,index)=>{
+        const id=anchor.dataset.cardReg;active.push(id);
+        const faceUp=opts.faceUp?!!opts.faceUp(anchor):true;
+        const location=opts.location?opts.location(anchor,index):{zone:'board',slot:index};
+        const renderer=()=>renderFor(anchor);
+        if(!CardManager.has(id)){
+          CardManager.create({},location,{id,faceUp,renderer});
+        }else{
+          const c=CardManager.get(id);if(c){c.renderer=renderer;if(location)c.location={...location};}
+        }
+        CardManager.pin(id,anchor,{hideAnchor:opts.hideAnchor===true,updateContent:true});
+      });
+      CardManager.reconcile(prefix,active);
+      requestAnimationFrame(()=>CardManager.sync());
+      return active;
+    }
+    // snapshot(prefix): capture each managed overlay's CURRENT screen rect before a
+    // DOM rebuild, so a card that changes zones can fly from its true previous spot.
+    function snapshot(prefix){
+      const rects={};
+      for(const id of CardManager.ids()){
+        if(prefix&&!id.startsWith(prefix))continue;
+        const c=CardManager.get(id);
+        if(c&&c.overlayEl){const r=c.overlayEl.getBoundingClientRect();if(r.width>0)rects[id]={left:r.left,top:r.top,width:r.width,height:r.height};}
+      }
+      return rects;
+    }
+    // A card-sized, invisible, fixed-position proxy at an absolute rect. The flight
+    // SOURCE must be card-sized (never a wide container) or the card balloons toward
+    // the container width. Returns an element to pin to; auto-removed after the fly.
+    function rectAnchor(rect){
+      const el=document.createElement('div');
+      el.style.cssText=`position:fixed;left:${rect.left}px;top:${rect.top}px;width:${rect.width}px;height:${rect.height}px;pointer-events:none;visibility:hidden`;
+      el.dataset.kitProxy='1';document.body.appendChild(el);return el;
+    }
+    // fly(id, opts): move a PERMANENT card to its destination anchor, staging the
+    // source correctly. Pass exactly one source: fromRect (e.g. from snapshot()),
+    // fromEl (a real card-sized element like a deck), or neither (uses current spot).
+    //   opts.to            -> destination anchor Element (required)
+    //   opts.fromRect      -> {left,top,width,height}
+    //   opts.fromEl        -> source Element (should be card-sized)
+    //   ...rest            -> forwarded to CardManager.moveTo (duration, arc, flip, …)
+    async function fly(id,opts={}){
+      const {to,fromRect,fromEl,...moveOpts}=opts;
+      if(!to||!CardManager.has(id))return;
+      let proxy=null;
+      if(fromRect){proxy=rectAnchor(fromRect);CardManager.pin(id,proxy,{hideAnchor:false,updateContent:true});}
+      else if(fromEl){CardManager.pin(id,fromEl,{hideAnchor:false,updateContent:moveOpts.updateContent!==false});}
+      // else: fly from wherever the card currently sits (its overlay position).
+      await CardManager.moveTo(id,to,moveOpts);
+      if(proxy)proxy.remove();
+    }
+    return {sync,snapshot,rectAnchor,fly};
+  })();
+
   // Dev-mode invariant guard. Off by default; enable in the console with
   //   localStorage.setItem('cardDebug','1')   (then reload)
   // When on, after each render we assert the single-location invariant and warn
@@ -498,7 +591,7 @@ const Kit=(()=>{
 
   window.addEventListener('resize',()=>CardManager.sync(),{passive:true});
   window.addEventListener('scroll',()=>CardManager.sync(),{passive:true});
-  return {cardColor,floatText,turnBanner,dealCascade,EventRunner,CardManager,assertCardInvariants,rollDice,confetti};
+  return {cardColor,floatText,turnBanner,dealCascade,EventRunner,CardManager,CardBoard,cardFace,assertCardInvariants,rollDice,confetti};
 })();
 
 /* ====================== SOUND (arcade) ====================== */
