@@ -36,7 +36,6 @@
 
   let selectedHand = null;          // index of the currently picked hand card
   let lastSeq = -1;                 // last animated lastAction.seq (avoid re-animating)
-  let prevHandIds = null;           // hand card ids before the latest render (for draw anim)
 
   // Stable CardManager id for a card sitting somewhere. We key on the card's own
   // intrinsic id (st_<colour>_<value>) so a card keeps ITS identity as it moves
@@ -186,6 +185,21 @@
     else if (!s.placedThisTurn) status = selectedHand != null ? '📍 Tap a stone to place your card' : '🎴 Your turn — pick a card to play';
     else status = '⚖️ Claim a stone you’ve won, or end your turn';
 
+    // ---------- FLIP snapshot: where is each managed card RIGHT NOW (pre-rebuild)?
+    // We capture each card overlay's current screen rect BEFORE renderTable rebuilds
+    // the DOM, so a card that just moved zones can fly from its true previous
+    // position (a card-sized rect) — never from a wide container. (Fixes cards
+    // ballooning to screen width: the flight source must be card-sized.)
+    const preRects = {};
+    Kit.CardManager.ids().forEach((id) => {
+      if (!id.startsWith(PREFIX)) return;
+      const c = Kit.CardManager.get(id);
+      if (c && c.overlayEl) {
+        const r = c.overlayEl.getBoundingClientRect();
+        if (r.width > 0) preRects[id] = { left: r.left, top: r.top, width: r.width, height: r.height };
+      }
+    });
+
     GameShell.renderTable({ game: ID, focus, topMode: 'hidden', status });
 
     // ---------- pin all on-table + hand cards to their anchors ----------
@@ -211,7 +225,7 @@
     requestAnimationFrame(() => Kit.CardManager.sync());
 
     // ---------- ANIMATE the latest action ----------
-    runAnimation(s, me).catch(() => {});
+    runAnimation(s, me, preRects).catch(() => {});
 
     // ---------- end-turn control ----------
     let ctrl = document.getElementById('stControls');
@@ -223,14 +237,23 @@
       end.onclick = () => act('end'); ctrl.appendChild(end);
     }
 
-    prevHandIds = myHand.map(c => c.id);
     if (view.summary && typeof showSummary === 'function' && !summaryShown) showSummary(view);
   }
 
   // Animate the most recent lastAction (place / draw-on-end / claim). The cards
   // are already pinned at their FINAL anchors by render(); we re-stage the moving
   // card at its source and fly it to the (already-correct) anchor.
-  async function runAnimation(s, me) {
+  // A card-sized, invisible proxy anchor placed at an absolute screen rect. We pin
+  // a permanent card to it so the flight SOURCE is exactly card-sized (never a wide
+  // container) — moveTo derives its source size from the anchor. Cleaned up after.
+  function rectAnchor(rect) {
+    const el = document.createElement('div');
+    el.style.cssText = `position:fixed;left:${rect.left}px;top:${rect.top}px;width:${rect.width}px;height:${rect.height}px;pointer-events:none;visibility:hidden`;
+    document.body.appendChild(el);
+    return el;
+  }
+
+  async function runAnimation(s, me, preRects = {}) {
     const a = s.lastAction;
     if (!a || a.seq == null || a.seq === lastSeq) {
       if (a && a.seq != null) lastSeq = a.seq;
@@ -242,32 +265,33 @@
       const id = cmId(a.card);
       const dest = document.querySelector(`[data-card-reg="${id}"]`);
       if (Kit.CardManager.has(id) && dest) {
-        // Fly from the player's hand region toward the stone slot.
-        const handEl = document.querySelector('.st-hand') || dest;
-        const from = a.player === me ? handEl : (document.querySelector('.st-side-opp') || handEl);
-        Kit.CardManager.pin(id, from, { hideAnchor:false, updateContent:true });
+        // Fly the SAME permanent card from where it sat last frame (its hand slot,
+        // captured pre-rebuild) to its stone slot. Source = a card-sized proxy at
+        // the captured rect, so the card never scales to the hand-row's width.
+        const src = preRects[id];
+        const fromEl = src ? rectAnchor(src) : dest;
+        Kit.CardManager.pin(id, fromEl, { hideAnchor:false, updateContent:true });
         await Kit.CardManager.moveTo(id, dest, {
           duration: 460, arc: 40, land: true, hideTarget: true,
           toLocation: { zone:'stone', player:a.player },
         });
+        if (src) fromEl.remove();
         if (typeof SFX !== 'undefined' && SFX.flip) SFX.flip();
       }
       return;
     }
 
     if (a.type === 'end') {
-      // A draw happened. The drawer sees the real card (a.drew, present only in
-      // their own view) and gets a deck→hand flight with a mid-flip reveal. For the
-      // opponent we fly a FACE-DOWN card into the drawer's hand area — truthful
-      // (the value is hidden) and keeps the table feeling alive on every turn.
+      // A draw happened from the visible deck pile.
       const deck = document.getElementById('stDeck');
       if (!deck) return;
-      const iDrew = a.player === me && a.drew;
-      if (iDrew) {
+      deck.classList.remove('deal'); void deck.offsetWidth; deck.classList.add('deal');
+      if (a.player === me && a.drew) {
+        // The drawer sees the real card fly deck→hand with a mid-flight reveal.
+        // It's the SAME permanent card that now lives in the hand (no throwaway).
         const id = cmId(a.drew);
         const dest = document.querySelector(`[data-card-reg="${id}"]`);
         if (Kit.CardManager.has(id) && dest) {
-          deck.classList.remove('deal'); void deck.offsetWidth; deck.classList.add('deal');
           Kit.CardManager.pin(id, deck, { hideAnchor:false, updateContent:false });
           await Kit.CardManager.moveTo(id, dest, {
             duration: 520, arc: 46, flip: true, startFaceDown: true,
@@ -278,14 +302,9 @@
           if (typeof SFX !== 'undefined' && SFX.flip) SFX.flip();
         }
       } else {
-        // Opponent drew: a face-down card flies from the deck toward the opponent's
-        // side of the table (we don't render their hand, so aim at the board).
-        const target = document.querySelector('.st-side-opp') || document.querySelector('.st-border') || deck;
-        deck.classList.remove('deal'); void deck.offsetWidth; deck.classList.add('deal');
-        await Kit.CardManager.flyTransient(deck, target, {
-          className: 'kit-card kit-face-down', startFaceDown: true,
-          duration: 480, arc: 40, land: false,
-        });
+        // Opponent drew: their card is hidden info with no on-screen home, so there
+        // is nothing permanent to fly. We just pulse the deck (set above) — no
+        // transient throwaway card. (Eliminates flyTransient usage entirely.)
         if (typeof SFX !== 'undefined' && SFX.flip) SFX.flip();
       }
       return;
@@ -303,7 +322,7 @@
   }
 
   function unmount() {
-    selectedHand = null; lastSeq = -1; prevHandIds = null;
+    selectedHand = null; lastSeq = -1;
     const c = document.getElementById('stControls'); if (c) c.remove();
     Kit.CardManager.clear(PREFIX);
   }

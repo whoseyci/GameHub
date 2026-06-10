@@ -501,8 +501,15 @@ async function smokeSchotten(window, document) {
   window.GameClients['schotten'].act('end');
   await sleep(150);
   assert(
-    !!document.querySelector('#stDeck.deal') || document.querySelectorAll('.kit-card-moving, [data-cm-id^="cm:transit"]').length > 0,
+    !!document.querySelector('#stDeck.deal') || document.querySelectorAll('.kit-card-moving').length > 0,
     'Schotten: drawing on end-turn must animate from the deck'
+  );
+  // Schotten must NOT spawn transient throwaway cards — every flight uses a
+  // permanent CardManager card (or just a deck pulse). Guard against regressing to
+  // the legacy transit pattern.
+  assert(
+    document.querySelectorAll('[data-cm-id^="cm:transit"]').length === 0,
+    'Schotten: must not use transient (cm:transit) cards — animate permanent cards or pulse the deck'
   );
   await sleep(700);
   assert(localView(window, me).schotten.players[me].hand.length === 6, 'Schotten: hand should refill to 6 after drawing on end-turn');
