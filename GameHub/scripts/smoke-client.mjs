@@ -313,6 +313,26 @@ async function smokeFlip7(window, document) {
   assert(f7src.includes('flyPermToDiscard'), 'Flip7: discard should move the real permanent card to the pile');
   assert(!f7src.includes('function flyToDiscard'), 'Flip7: the transient-clone discard helper should be gone (caused a dupe on the board)');
 
+  // Every card-flight path in the animation API must scale UNIFORMLY via
+  // transform:scale, never animate raw width/height (which left text oversized
+  // mid-flight — e.g. device-board → mini-board transfers). Guard all fly paths,
+  // not just moveTo, so no path silently regresses to the wrong scaling.
+  const coreSrc = readFileSync(new URL('../public/js/00-core.js', import.meta.url), 'utf8');
+  // Slice each fly function's body up to the next top-level function declaration.
+  const bodyAfter = (marker) => {
+    const i = coreSrc.indexOf(marker);
+    if (i < 0) return null;
+    const rest = coreSrc.slice(i + marker.length);
+    const next = rest.search(/\n  (?:async )?function /);
+    return rest.slice(0, next >= 0 ? next : 4000);
+  };
+  for (const marker of ['function flyCard', 'async function moveTo', 'async function move(cardIdOrOpts']) {
+    const body = bodyAfter(marker);
+    assert(body != null, `core: ${marker} not found`);
+    assert(!body.includes('width ${duration}ms'), `core: ${marker} must not transition raw width (use transform:scale for uniform sizing)`);
+    assert(body.includes('scale('), `core: ${marker} should size the flight via transform:scale`);
+  }
+
   window.quitLocal();
   await sleep(50);
 }

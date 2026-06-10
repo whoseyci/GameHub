@@ -8,7 +8,7 @@
    shape as Skyjo below. The hub never needs to change.
    ==================================================================== */
 const PARTYKIT_HOST = location.host; // served by the same Worker
-const BUILD_VERSION = "v29-clean-flights-persistent-discard"; // bump on each change; shown on the menu
+const BUILD_VERSION = "v30-uniform-scale-all-flights"; // bump on each change; shown on the menu
 
 const $=id=>document.getElementById(id);
 function esc(v){return String(v ?? '').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));}
@@ -43,14 +43,20 @@ const Kit=(()=>{
       if(!startEl||!endEl){res();return;}
       const a=startEl.getBoundingClientRect(),b=endEl.getBoundingClientRect();
       const c=document.createElement('div');
-      Object.assign(c.style,{position:'fixed',top:a.top+'px',left:a.left+'px',width:a.width+'px',height:a.height+'px',zIndex:1000,borderRadius:'12px',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:'900',boxSizing:'border-box',boxShadow:'0 18px 34px rgba(0,0,0,.55)',pointerEvents:'none',transition:`top ${duration}ms var(--spring-soft),left ${duration}ms var(--spring-soft),width ${duration}ms var(--spring-soft),height ${duration}ms var(--spring-soft),transform ${duration}ms var(--spring-soft)`});
+      // Keep the SOURCE box for the whole flight; animate transform:scale toward
+      // the destination size so the card AND its text scale uniformly (no oversized
+      // font when flying to a tiny board). Positioned by CENTER.
+      const endScale=a.width>0?(b.width/a.width):1;
+      const cx2l=cx=>cx-a.width/2, cy2t=cy=>cy-a.height/2;
+      const srcCx=a.left+a.width/2,dstCx=b.left+b.width/2,dstCy=b.top+b.height/2;
+      Object.assign(c.style,{position:'fixed',top:a.top+'px',left:a.left+'px',width:a.width+'px',height:a.height+'px',zIndex:1000,borderRadius:'12px',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:'900',boxSizing:'border-box',boxShadow:'0 18px 34px rgba(0,0,0,.55)',pointerEvents:'none',transformOrigin:'center',transition:`top ${duration}ms var(--spring-soft),left ${duration}ms var(--spring-soft),transform ${duration}ms var(--spring-soft)`});
       if(startFaceDown){c.style.background='var(--card-back)';c.style.border='2px solid #818cf8';c.innerHTML='<span style="color:#c7d2fe;font-size:1.5rem">✦</span>';}
       else{c.style.background='#fff';c.style.border='2px solid #fff';c.style.color=color;c.textContent=value;c.style.fontSize=a.width>50?'2.2rem':'1.3rem';}
       document.body.appendChild(c);c.offsetHeight;
-      const midX=(a.left+b.left)/2,midY=Math.min(a.top,b.top)-46;
-      setTimeout(()=>{c.style.top=midY+'px';c.style.left=midX+'px';c.style.transform=(spin?'rotateZ(180deg) ':'')+'scale(1.12)';},10);
-      setTimeout(()=>{c.style.top=b.top+'px';c.style.left=b.left+'px';c.style.width=b.width+'px';c.style.height=b.height+'px';c.style.transform=(spin?'rotateZ(360deg) ':'')+'scale(1)';},Math.floor(duration*0.5));
-      if(startFaceDown&&revealMidway)setTimeout(()=>{c.style.background='#fff';c.style.border='2px solid #fff';c.style.color=color;c.textContent=value;c.style.fontSize='2.2rem';c.style.animation='popReveal .32s var(--spring)';},Math.floor(duration*0.42));
+      const midX=(srcCx+dstCx)/2,midY=Math.min(a.top,b.top)-46;
+      setTimeout(()=>{c.style.top=cy2t(midY)+'px';c.style.left=cx2l(midX)+'px';c.style.transform=(spin?'rotateZ(180deg) ':'')+'scale('+((1+endScale)/2*1.12)+')';},10);
+      setTimeout(()=>{c.style.top=cy2t(dstCy)+'px';c.style.left=cx2l(dstCx)+'px';c.style.transform=(spin?'rotateZ(360deg) ':'')+'scale('+endScale+')';},Math.floor(duration*0.5));
+      if(startFaceDown&&revealMidway)setTimeout(()=>{c.style.background='#fff';c.style.border='2px solid #fff';c.style.color=color;c.textContent=value;c.style.fontSize=a.width>50?'2.2rem':'1.3rem';c.style.animation='popReveal .32s var(--spring)';},Math.floor(duration*0.42));
       setTimeout(()=>{c.remove();if(land&&endEl){endEl.classList.remove('anim-land');void endEl.offsetWidth;endEl.classList.add('anim-land');}res();},duration+40);
     });
   }
@@ -185,10 +191,16 @@ const Kit=(()=>{
         if(!custom){await CardMotion.move(o.cardId,o.from,o.to,{value:o.value,color:o.color,startFaceDown:!!o.startFaceDown,revealMidway:!!o.revealMidway,spin:!!o.spin,duration:o.duration??520,land:o.land!==false});finish();return;}
         const a=o.from.getBoundingClientRect(),b=o.to.getBoundingClientRect(),duration=o.duration??520;
         const el=materialize(o,!!o.startFaceDown);el.classList.add('kit-card-moving');fixedLike(el,a,o.zIndex??1000);
-        el.style.transition=`top ${duration}ms var(--spring-soft),left ${duration}ms var(--spring-soft),width ${duration}ms var(--spring-soft),height ${duration}ms var(--spring-soft),transform ${duration}ms var(--spring-soft),opacity ${duration}ms ease`;
+        // Uniform-scale flight: keep source box, animate transform:scale to the dest
+        // size (positioned by center) so card + text scale together.
+        const endScale=a.width>0?(b.width/a.width):1;
+        const cx2l=cx=>cx-a.width/2, cy2t=cy=>cy-a.height/2;
+        const srcCx=a.left+a.width/2,dstCx=b.left+b.width/2,dstCy=b.top+b.height/2;
+        el.style.transformOrigin='center';
+        el.style.transition=`top ${duration}ms var(--spring-soft),left ${duration}ms var(--spring-soft),transform ${duration}ms var(--spring-soft),opacity ${duration}ms ease`;
         document.body.appendChild(el);el.offsetHeight;
-        const midX=(a.left+b.left)/2,midY=Math.min(a.top,b.top)-(o.arc??46);
-        requestAnimationFrame(()=>{el.style.top=midY+'px';el.style.left=midX+'px';el.style.transform=(o.spin?'rotateZ(180deg) ':'')+'scale('+(o.midScale??1.12)+')';});
+        const midX=(srcCx+dstCx)/2,midY=Math.min(a.top,b.top)-(o.arc??46);
+        requestAnimationFrame(()=>{el.style.top=cy2t(midY)+'px';el.style.left=cx2l(midX)+'px';el.style.transform=(o.spin?'rotateZ(180deg) ':'')+'scale('+((o.midScale??1.12)*((1+endScale)/2))+')';});
         if(o.startFaceDown&&o.revealMidway)setTimeout(()=>{
           const front=materialize({...o,startFaceDown:false},false);
           el.className=front.className+' kit-card-moving';el.innerHTML=front.innerHTML;if(!front.innerHTML)el.textContent=front.textContent||el.textContent;
@@ -196,7 +208,7 @@ const Kit=(()=>{
           el.style.background=front.style.background||el.style.background;el.style.color=front.style.color||el.style.color;
           el.style.animation='popReveal .26s var(--spring)'; if(o.onReveal)o.onReveal(el);
         },Math.floor(duration*(o.revealAt??0.42)));
-        setTimeout(()=>{el.style.top=b.top+'px';el.style.left=b.left+'px';el.style.width=b.width+'px';el.style.height=b.height+'px';el.style.transform=(o.spin?'rotateZ(360deg) ':'')+'scale(1)';},Math.floor(duration*0.5));
+        setTimeout(()=>{el.style.top=cy2t(dstCy)+'px';el.style.left=cx2l(dstCx)+'px';el.style.transform=(o.spin?'rotateZ(360deg) ':'')+'scale('+endScale+')';},Math.floor(duration*0.5));
         await sleep(duration+45); el.remove(); finish(); if(o.land!==false)await bounce(o.to,{duration:260}); if(o.onArrive)o.onArrive(o.to);
       });
     }
