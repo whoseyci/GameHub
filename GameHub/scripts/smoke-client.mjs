@@ -438,6 +438,46 @@ async function smokeMidAnimationQuit(window, document) {
   assert(document.querySelectorAll('[data-card-reg^="skyjo:"]').length === 0, 'Skyjo deferred quit: registry anchors leaked back in');
 }
 
+async function smokeSchotten(window, document) {
+  setLocalConfig(window, 'schotten', [
+    { name: 'You', bot: false },
+    { name: 'Rival', bot: false },
+  ]);
+  window.startLocalGame();
+  await sleep(120);
+
+  assert(activeScreen(document) === 'gameScreen', 'Schotten: game screen did not open');
+  // Redesign: a real visible DECK pile, 9 stones, a hand of 6.
+  assert(document.getElementById('stDeck'), 'Schotten: visible deck pile (#stDeck) missing');
+  assert(document.querySelectorAll('.st-stone').length === 9, 'Schotten: should render 9 boundary stones');
+  const me = localView(window).yourSeat;
+  assert(localView(window).schotten.players[me].hand.length === 6, 'Schotten: opening hand should be 6 cards');
+  assert(document.querySelectorAll('.st-hand-card').length === 6, 'Schotten: 6 hand cards should render');
+  // Every on-table/hand card is a permanent CardManager card (so it can animate).
+  const cmCards = window.eval('Kit.CardManager.ids().filter(i=>i.startsWith("schotten:")).length');
+  assert(cmCards >= 6, 'Schotten: hand cards must be registered with CardManager (got ' + cmCards + ')');
+
+  // Pick the first hand card, then place it on stone 0 (drop zone appears).
+  window.eval('document.querySelectorAll(".st-hand-card")[0].click()');
+  await sleep(60);
+  assert(document.querySelectorAll('.st-side-me.kit-drop').length > 0, 'Schotten: selecting a card should reveal stone drop zones');
+  window.eval('document.querySelectorAll(".st-side-me.kit-drop")[0].click()');
+  await sleep(700);
+  const afterPlace = localView(window, me).schotten;
+  assert(afterPlace.placedThisTurn === true, 'Schotten: placing a card should set placedThisTurn');
+  assert(afterPlace.stones[0].sides[me].length === 1, 'Schotten: the card should land on stone 0');
+  assert(!!document.querySelector('#stControls .btn'), 'Schotten: End-turn control should appear after placing');
+
+  // End turn → draws a replacement (hand back to 6) and passes.
+  window.GameClients['schotten'].act('end');
+  await sleep(700);
+  assert(localView(window, me).schotten.players[me].hand.length === 6, 'Schotten: hand should refill to 6 after drawing on end-turn');
+
+  window.quitLocal();
+  await sleep(50);
+  assert(document.querySelectorAll('[data-card-reg^="schotten:"]').length === 0, 'Schotten: card anchors should be cleaned up on quit');
+}
+
 async function main() {
   const { window, document, errors } = await loadApp();
 
@@ -447,6 +487,7 @@ async function main() {
   await smokeSkyjo(window, document);
   await smokeQwixx(window, document);
   await smokeFlip7(window, document);
+  await smokeSchotten(window, document);
   await smokeBotFlows(window, document);
   await smokeMidAnimationQuit(window, document);
 
