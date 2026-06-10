@@ -72,10 +72,12 @@ describe("shared game shell", () => {
     expect(core).toContain("async function triplet");
     expect(core).toContain("async function revealEl");
     expect(core).toContain("reconcile");
-    // Games call CardManager (Skyjo: transient swap fly + triplet + in-place reveal).
-    expect(skyjo).toContain("Kit.CardManager.flyTransient");
+    // Skyjo moves REAL cards to a permanent discard pile (no transient throwaways):
+    // swap/discard/triplet all route the actual card overlay onto skyjo:discard.
+    expect(skyjo).toContain("flyCardToDiscard");
+    expect(skyjo).toContain("clearTripletToDiscard");
     expect(skyjo).toContain("Kit.CardManager.revealEl");
-    expect(skyjo).toContain("Kit.CardManager.triplet");
+    expect(skyjo).not.toContain("Kit.CardManager.flyTransient"); // no transient discards
     expect(skyjo).not.toContain("Kit.Card.move");
     expect(skyjo).not.toContain("Kit.CardEffects");
     // Skyjo uses CardManager directly for permanent cards

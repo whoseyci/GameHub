@@ -327,7 +327,15 @@ async function smokeFlip7(window, document) {
   assert(!coreSrc.includes('const Card=(()=>'), 'core: legacy Card subsystem should be removed');
   assert(!coreSrc.includes('const CardEffects='), 'core: legacy CardEffects should be removed');
   assert(!coreSrc.includes('function flyCard'), 'core: legacy flyCard should be removed');
-  assert(coreSrc.includes('async function flyTransient'), 'core: CardManager.flyTransient should exist (replaces Card.move)');
+  assert(coreSrc.includes('async function flyTransient'), 'core: CardManager.flyTransient should exist (internal primitive / ephemeral fallback)');
+  // Permanent-identity goal: games move REAL cards between zones rather than
+  // spawning transient throwaways. Skyjo has a permanent discard card and routes
+  // swap/discard/triplet onto it; Flip 7 plays the real action-card overlay.
+  const skyjoSrc = readFileSync(new URL('../public/js/03-skyjo.js', import.meta.url), 'utf8');
+  const flip7Src2 = readFileSync(new URL('../public/js/04-flip7.js', import.meta.url), 'utf8');
+  assert(skyjoSrc.includes("'skyjo:discard'"), 'Skyjo: discard pile should be a permanent CardManager card');
+  assert(!skyjoSrc.includes('Kit.CardManager.flyTransient'), 'Skyjo: should not spawn transient discard cards (move the real card)');
+  assert(flip7Src2.includes('actionCardPermId'), 'Flip7: action-card transfer should move the real permanent overlay');
   const moveToBody = (() => {
     const i = coreSrc.indexOf('async function moveTo');
     const rest = coreSrc.slice(i);

@@ -127,6 +127,12 @@
     const a=anchors.find(x=>x.dataset.kind==='act'&&x.dataset.value===kind);
     return a ? (Kit.CardManager.get(a.dataset.cardReg)?.overlayEl||a) : row;
   }
+  // The permanent CardManager id of an action card sitting on a player's board.
+  function actionCardPermId(seat,kind){
+    const row=rowOf(seat); if(!row)return null;
+    const a=[...row.querySelectorAll('[data-card-reg]')].find(x=>x.dataset.kind==='act'&&x.dataset.value===kind);
+    return a&&Kit.CardManager.has(a.dataset.cardReg)?a.dataset.cardReg:null;
+  }
   function makeActionTargetSlot(targetSeat,card){
     const row=rowOf(targetSeat); if(!row)return null;
     const ghost=cardEl(card?.kind||'act',card?.v||'flip3');
@@ -136,9 +142,17 @@
   }
   async function transferActionCard(e){
     const card=e.card||{kind:'act',v:e.actionKind};
-    const fromEl=actionCardSourceEl(e.actor,e.actionKind||card.v);
+    const kind=e.actionKind||card.v;
     const toEl=makeActionTargetSlot(e.target,card) || rowOf(e.target) || boardOf(e.target);
-    await flyF7Card(fromEl,toEl,card,{startFaceDown:false,spin:true,duration:SPEED.actionFly});
+    // Prefer moving the REAL action-card overlay from the actor's board (a
+    // permanent CardManager card); it's "played" into the target, then destroyed.
+    const permId=actionCardPermId(e.actor,kind);
+    if(permId){
+      await Kit.CardManager.moveTo(permId,toEl,{duration:SPEED.actionFly,spin:true,land:false,hideTarget:false,toLocation:{zone:'transit'}});
+      Kit.CardManager.destroy(permId);
+    }else{
+      await flyF7Card(actionCardSourceEl(e.actor,kind),toEl,card,{startFaceDown:false,spin:true,duration:SPEED.actionFly});
+    }
     if(toEl&&toEl.classList.contains('registry-anchor'))toEl.remove();
   }
 
