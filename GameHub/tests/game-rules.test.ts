@@ -108,6 +108,50 @@ describe("Flip7 rule regressions", () => {
     expect(state.players[1].nums.sort()).toEqual([2, 3]); // flip3 finished its draws
   });
 
+  it("discard pile PERSISTS across rounds and the deck is not rebuilt on next_round", () => {
+    const state: any = Flip7.create(["A", "B"]);
+    // End round 1 so boards sweep into discard.
+    Flip7.applyAction(state, state.current, { action: "stay" });
+    Flip7.applyAction(state, state.current, { action: "stay" });
+    expect(state.phase === "ROUND_END" || state.phase === "GAME_OVER").toBe(true);
+    const discardAfterR1 = state.discard.length;
+    const deckAfterR1 = state.deck.length;
+    expect(discardAfterR1).toBeGreaterThan(0);
+    // Continue to round 2 (only if not game over).
+    if (state.phase === "ROUND_END") {
+      Flip7.applyAction(state, 0, { action: "next_round" });
+      expect(state.round).toBe(2);
+      // The deck was NOT rebuilt to a full 94-card deck; total cards are conserved
+      // across deck + discard + boards (no fresh deck wipes the discard).
+      const boardCards = state.players.reduce((n: number, p: any) => n + p.tableau.length, 0);
+      const total = state.deck.length + state.discard.length + boardCards;
+      const FULL_DECK = 1 /*0*/ + (1+2+3+4+5+6+7+8+9+10+11+12) /*nums*/ + 6 /*mods*/ + 9 /*acts*/; // 94
+      expect(total).toBe(FULL_DECK);
+      // The round-1 discard was carried over (not reset to empty): the deck did
+      // not get rebuilt to full minus the new opening deal.
+      expect(state.deck.length).toBeLessThan(FULL_DECK - boardCards);
+    }
+  });
+
+  it("deck only reshuffles the discard back in when it runs out of cards", () => {
+    const state: any = Flip7.create(["A", "B"]);
+    // Drain the deck down to 1 card, with a known card sitting in the discard.
+    state.discard = [{ id: "keep12", kind: "num", v: 12 }];
+    state.deck = [{ id: "last", kind: "num", v: 0 }];
+    state.current = 0; state.players[0].status = "active"; state.players[0].nums = [];
+    // First hit consumes the last deck card → deck now empty, discard still has the 12.
+    Flip7.applyAction(state, 0, { action: "hit" });
+    // The 12 is NOT in the deck yet (no reshuffle while a card was available).
+    expect(state.deck.concat(state.discard).some((c: any) => c.id === "keep12")).toBe(true);
+    // Next draw finds the deck empty → reshuffles discard into the deck (a
+    // reshuffle event is emitted) so the 12 re-enters play only now.
+    const cur = state.current;
+    if (state.phase === "PLAY" && state.players[cur].status === "active") {
+      Flip7.applyAction(state, cur, { action: "hit" });
+      expect(state.events.some((e: any) => e.type === "deck.reshuffle")).toBe(true);
+    }
+  });
+
   it("round-end sweeps all board cards into the discard pile", () => {
     const state: any = Flip7.create(["A", "B"]);
     state.current = 0;

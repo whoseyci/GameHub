@@ -110,6 +110,20 @@ function normalizeFlip7Event(e: any): any {
 }
 function emit(s: State, e: any) { const n = normalizeFlip7Event(e); n.seq = ++s.seq; s.events.push(n); s.log = n; }
 
+// Deal the opening hand (one NUMBER/MOD each; action cards reshuffled so nobody
+// starts frozen) from the CURRENT deck/discard. draw() reshuffles the discard
+// back in only when the deck runs dry, so the deck persists across rounds.
+function dealOpeningHands(s: State) {
+  for (let i = 0; i < s.players.length; i++) {
+    let c = draw(s); let guard = 0;
+    while (c.kind === "act" && guard++ < 200) { s.deck.unshift(c); shuffleInPlace(s.deck, s); c = draw(s); }
+    placeCard(s, i, c);
+  }
+  s.current = firstActive(s, 0);
+}
+
+// Build a brand-new game (new shuffled deck, empty discard). Used at game
+// creation and when restarting after GAME_OVER.
 function fresh(names: string[], banked: number[], rngState = makeSeed()): State {
   const rng = { rngState };
   const deck = buildDeck(rng);
@@ -120,15 +134,21 @@ function fresh(names: string[], banked: number[], rngState = makeSeed()): State 
     players, deck, discard: [], current: 0, phase: "PLAY", round: 1,
     pendingAction: null, flip3Left: 0, flip3Target: -1, flip3Stack: [], events: [], seq: 0, log: null,
   };
-  // Opening deal: one NUMBER/MOD card each (action cards reshuffled so nobody
-  // starts frozen). No drama events for the opening deal.
-  for (let i = 0; i < players.length; i++) {
-    let c = draw(s); let guard = 0;
-    while (c.kind === "act" && guard++ < 200) { s.deck.unshift(c); shuffleInPlace(s.deck, s); c = draw(s); }
-    placeCard(s, i, c);
-  }
-  s.current = firstActive(s, 0);
+  dealOpeningHands(s);
   return s;
+}
+
+// Start the NEXT round of the SAME game: keep the deck + discard pile (the
+// discard accumulates round over round and is only shuffled back into the deck
+// when the deck runs out — see draw()). Reset per-round player state and deal.
+function startNextRound(s: State) {
+  for (const p of s.players) {
+    p.nums = []; p.mods = []; p.tableau = []; p.secondChance = false;
+    p.status = "active"; p.bustCard = null; p.roundScore = 0;
+  }
+  s.current = 0; s.phase = "PLAY"; s.round += 1;
+  s.pendingAction = null; s.flip3Left = 0; s.flip3Target = -1; s.flip3Stack = [];
+  dealOpeningHands(s);
 }
 
 // Discard only reshuffles when the deck is fully empty (card-counting friendly).
@@ -326,12 +346,19 @@ export const Flip7: GameModule = {
     state.events = []; // fresh timeline for this action
     if (state.phase !== "PLAY") {
       if (msg.action === "next_round") {
-        const over = state.phase === "GAME_OVER";
-        const banked = state.players.map((p) => p.banked);
-        const ns = fresh(state.players.map((p) => p.name), over ? state.players.map(() => 0) : banked, state.rngState);
-        ns.seq = state.seq + 1;
-        if (!over) ns.round = state.round + 1;
-        Object.assign(state, ns);
+        if (state.phase === "GAME_OVER") {
+          // New game: fresh deck, empty discard, scores reset.
+          const ns = fresh(state.players.map((p) => p.name), state.players.map(() => 0), state.rngState);
+          ns.seq = state.seq + 1;
+          Object.assign(state, ns);
+        } else {
+          // Next round of the SAME game: KEEP the deck + discard pile. The round
+          // just ended already swept board cards into discard (scoreRound), so we
+          // simply deal new hands from the continuing deck.
+          state.events = [];
+          startNextRound(state);
+          state.seq += 1;
+        }
       }
       return;
     }

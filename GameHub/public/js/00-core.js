@@ -8,7 +8,7 @@
    shape as Skyjo below. The hub never needs to change.
    ==================================================================== */
 const PARTYKIT_HOST = location.host; // served by the same Worker
-const BUILD_VERSION = "v28-flight-scale-real-discard"; // bump on each change; shown on the menu
+const BUILD_VERSION = "v29-clean-flights-persistent-discard"; // bump on each change; shown on the menu
 
 const $=id=>document.getElementById(id);
 function esc(v){return String(v ?? '').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));}
@@ -423,8 +423,11 @@ const Kit=(()=>{
       el.classList.add('kit-card-moving');
       el.offsetHeight; // force reflow
 
-      // Hide the target anchor content (the overlay will cover it on arrival)
+      // Hide the destination anchor for the ENTIRE flight (default), so the only
+      // thing the viewer sees is the single flying card — exactly like a clean
+      // hand-dealt card. It is revealed (or stays covered by the overlay) on land.
       const savedTargetVis=toAnchor.style.visibility;
+      if(opts.hideTarget!==false) toAnchor.style.visibility='hidden';
 
       // Arc: fly to midpoint.
       // Rotation styles (choose at most one via opts):
@@ -481,29 +484,33 @@ const Kit=(()=>{
         el.style.transform=endRot+'scale('+endScale+')';
       },Math.floor(duration*0.5));
 
-      await sleep(duration+45);
+      await sleep(duration);
 
-      // Clean up flight state
+      // ── Clean hand-off (single snap, no flicker) ──
+      // Turn OFF the transition first, then in the same frame set the overlay to
+      // the anchor's exact box (width/height/font) with transform cleared. Because
+      // the transition is off, there is no animated "snap back" from scale(end) to
+      // the native size — the card simply settles into place.
+      el.style.transition='none';
       el.classList.remove('kit-card-moving');
       if(appliedBackClass)el.classList.remove(appliedBackClass);
-      el.style.transition='';
-      el.style.transform='';
       el.style.animation='';
-
-      // Update location
+      el.style.transform='';
       if(opts.toLocation)c.location={...opts.toLocation};
-
-      // Pin at destination (restores anchor visibility, positions overlay)
-      toAnchor.style.visibility=savedTargetVis||'';
       c.anchor=toAnchor;
-      positionOverlay(el,toAnchor);
+      positionOverlay(el,toAnchor); // exact dest box + font in one shot
       el.style.zIndex=opts.zIndex||80;
+      el.offsetHeight; // commit the settled frame before any further transitions
+      // The overlay now perfectly covers the (hidden) anchor and IS the card.
       if(opts.hideTarget!==false){
         c.hidden={el:toAnchor,visibility:savedTargetVis||''};
-        toAnchor.style.visibility='hidden';
+        // anchor already hidden for the flight; keep it hidden (overlay is the card)
+      } else {
+        toAnchor.style.visibility=savedTargetVis||'';
       }
-
-      if(opts.land!==false)await Card.bounce(toAnchor,{duration:260});
+      // A subtle settle-bounce on the OVERLAY itself (not the hidden anchor), so
+      // the landing reads cleanly like the preview.
+      if(opts.land!==false){ el.classList.remove('anim-land'); void el.offsetWidth; el.classList.add('anim-land'); }
       if(opts.onArrive)opts.onArrive(toAnchor);
     }
     async function flipCard(id,faceUp){

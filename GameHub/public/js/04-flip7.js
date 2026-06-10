@@ -73,11 +73,11 @@
       revealAt:0.5,         // swap to the face while edge-on (mid-flip)
       onReveal:()=>SFX.flip(),
       land:true,
+      hideTarget:true,      // keep the slot empty during the flight (clean arrival)
       toLocation:{zone:'grid',player:Number(seat)||0,slot},
     });
-    // Re-pin so the permanent card tracks its live anchor after the flight.
-    Kit.CardManager.pin(permId,destAnchor,{hideAnchor:false,updateContent:true});
-    Kit.CardManager.sync();
+    // moveTo() performs the clean hand-off (overlay settles onto the anchor); no
+    // extra pin/sync needed — that previously caused a double-snap flicker.
   }
   // Fly an EXISTING permanent card (by its CardManager id) from its board slot to
   // the discard pile, then remove it. We move the real card — no transient clone
@@ -594,9 +594,14 @@ class Flip7Engine{
   _buildDeck(){const d=[];let q=0;const add=(kind,v)=>d.push({id:'lf7c_'+(q++)+'_'+kind+'_'+String(v).replace(/\W/g,''),kind,v});add('num',0);for(let n=1;n<=12;n++)for(let i=0;i<n;i++)add('num',n);for(const m of['+2','+4','+6','+8','+10','x2'])add('mod',m);for(const a of['freeze','flip3','second'])for(let i=0;i<3;i++)add('act',a);this._sh(d);return d;}
   _sh(d){for(let i=d.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[d[i],d[j]]=[d[j],d[i]];}}
   _emit(s,e){const n=window.normalizeFlip7Event?window.normalizeFlip7Event(e):e;n.seq=++s.seq;s.events.push(n);}
+  // Deal opening hands from the CURRENT deck/discard (draw() reshuffles discard
+  // only when the deck runs dry → deck persists across rounds).
+  _dealOpening(s){for(let i=0;i<s.players.length;i++){let c=this._draw(s),g=0;while(c.kind==='act'&&g++<200){s.deck.unshift(c);this._sh(s.deck);c=this._draw(s);}this._place(s,i,c);}s.current=this._firstActive(s,0);}
+  // Brand-new game: new deck, empty discard. (creation / game-over restart)
   _fresh(names,banked){const s={players:names.map((n,i)=>this._newP(n,banked[i]||0)),deck:this._buildDeck(),discard:[],current:0,phase:'PLAY',round:1,pendingAction:null,flip3Left:0,flip3Target:-1,flip3Stack:[],events:[],seq:0};
-    for(let i=0;i<s.players.length;i++){let c=this._draw(s),g=0;while(c.kind==='act'&&g++<200){s.deck.unshift(c);this._sh(s.deck);c=this._draw(s);}this._place(s,i,c);}
-    s.current=this._firstActive(s,0);return s;}
+    this._dealOpening(s);return s;}
+  // Next round of the SAME game: KEEP deck + discard, reset per-round state, deal.
+  _startNextRound(s){for(const p of s.players){p.nums=[];p.mods=[];p.tableau=[];p.second=false;p.status='active';p.bustCard=null;p.roundScore=0;}s.current=0;s.phase='PLAY';s.round+=1;s.pendingAction=null;s.flip3Left=0;s.flip3Target=-1;s.flip3Stack=[];this._dealOpening(s);}
   _draw(s){if(!s.deck.length){s.deck=s.discard;s.discard=[];this._sh(s.deck);this._emit(s,{type:'reshuffle'});}return s.deck.pop();}
   _firstActive(s,from){for(let k=0;k<s.players.length;k++){const i=(from+k)%s.players.length;if(s.players[i].status==='active')return i;}return from;}
   _activeCount(s){return s.players.filter(p=>p.status==='active').length;}
@@ -625,7 +630,7 @@ class Flip7Engine{
     if(msg.action==='stay'){s.players[seat].status='stayed';this._emit(s,{type:'stay',player:seat});this._advance(s);}
     else if(msg.action==='hit'){const prob=this._bustProb(s,seat);const card=this._draw(s);this._emit(s,{type:'draw_start',player:seat,prob});const r=this._apply(s,seat,card,{});if(r==='action'){return;}this._advance(s);}
   }
-  next(){const s=this.s;const over=s.phase==='GAME_OVER';const ns=this._fresh(s.players.map(p=>p.name),over?s.players.map(()=>0):s.players.map(p=>p.banked));ns.seq=s.seq+1;if(!over)ns.round=s.round+1;this.s=ns;}
+  next(){const s=this.s;if(s.phase==='GAME_OVER'){const ns=this._fresh(s.players.map(p=>p.name),s.players.map(()=>0));ns.seq=s.seq+1;this.s=ns;}else{s.events=[];this._startNextRound(s);s.seq+=1;}}
   viewFor(seat){const s=this.s;const over=s.phase==='GAME_OVER';let summary;if(s.phase==='ROUND_END'||s.phase==='GAME_OVER'){const mx=Math.max(...s.players.map(p=>p.banked));summary={rows:s.players.map((p,i)=>({seat:i,name:p.name,score:p.banked,delta:p.roundScore})),winners:s.players.map((p,i)=>p.banked===mx?i:-1).filter(i=>i>=0)};}
     const live=p=>{if(p.status==='busted')return 0;let b=p.nums.reduce((a,c)=>a+c,0);if(p.mods.includes('x2'))b*=2;for(const m of p.mods)if(m[0]==='+')b+=parseInt(m.slice(1));if(new Set(p.nums).size>=7)b+=15;return b;};
     const dtop=s.discard.length?s.discard[s.discard.length-1]:null;
