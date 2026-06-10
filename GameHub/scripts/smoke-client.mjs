@@ -399,9 +399,32 @@ async function smokeBotFlows(window, document) {
   window.quitLocal();
   await sleep(50);
 
+  // Schotten bot turn smoke: after the human places + ends, the bot must take its
+  // turn (place a card, hand still 6 after it draws) — drives the shared engine + bot.
+  setLocalConfig(window, 'schotten', [
+    { name: 'Human', bot: false },
+    { name: 'Bot', bot: true, difficulty: 'medium' },
+  ]);
+  window.startLocalGame();
+  await sleep(120);
+  view = localView(window, 0);
+  const hSeat = view.yourSeat;
+  // human plays first hand card on stone 0, then ends turn
+  window.GameClients['schotten'].act('place', { index: 0, target: 0 });
+  await sleep(120);
+  window.GameClients['schotten'].act('end');
+  await sleep(3200); // human draw anim + bot think (place → end)
+  view = localView(window, 0);
+  const botSeat = 1 - hSeat;
+  const botPlaced = view.schotten.stones.some((st) => st.sides[botSeat].length > 0);
+  assert(botPlaced, 'Schotten bot did not place a card on its turn');
+  window.quitLocal();
+  await sleep(50);
+
   assert(!document.getElementById('f7Controls'), 'Cleanup: Flip7 controls leaked after quitting');
   assert(!document.getElementById('f7DealerWrap'), 'Cleanup: Flip7 dealer leaked after quitting');
   assert(!document.querySelector('.qwixx-dice-zone'), 'Cleanup: Qwixx UI leaked after quitting');
+  assert(!document.getElementById('stControls'), 'Cleanup: Schotten controls leaked after quitting');
   assert(document.getElementById('overlay').classList.contains('hidden'), 'Cleanup: overlay should be hidden after quitting');
 }
 

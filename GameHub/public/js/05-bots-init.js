@@ -114,22 +114,20 @@ function scheduleBot(view, bot, seat) {
 
   _botTimer = setTimeout(() => {
     _botTimer = null;
-    const v = window._renderView || view;
+    let v = window._renderView || view;
     const gid = v.game;
-    const gv = v[gid];
 
-    // Build an observation-correct view for the bot
-    let vv = v;
-    if (gid === 'skyjo') {
-      const sg = { ...gv, currentPlayer: seat };
-      if (sg.myDrawnCard == null && sg.turnAction === 'deck' && sg.publicDrawn != null) sg.myDrawnCard = sg.publicDrawn;
-      if (sg.myDrawnCard == null && sg.turnAction === 'discard' && sg.lastAction && sg.lastAction.type === 'take_discard' && sg.lastAction.player === seat) sg.myDrawnCard = sg.lastAction.value;
-      vv = { ...v, skyjo: sg };
+    // In LOCAL play the engine holds full state, so build the bot's OWN private
+    // view (viewFor(seat)) — this is the correct, game-agnostic observation: the
+    // bot sees exactly its own hand/drawn card and nothing hidden. (Online bots run
+    // on the host and use the wire view + the strategy's observe() patch.)
+    if (mode === 'local' && typeof localEngine !== 'undefined' && localEngine && typeof localEngine.viewFor === 'function') {
+      try { v = localEngine.viewFor(seat) || v; } catch (e) { /* fall back to render view */ }
     }
 
     const msg = (typeof BotDriver !== 'undefined')
-      ? BotDriver.choose(vv, seat, bot.difficulty)
-      : Bots.choose(gid, vv, bot.difficulty, seat);
+      ? BotDriver.choose(v, seat, bot.difficulty)
+      : Bots.choose(gid, v, bot.difficulty, seat);
     _botBusy = false;
     if (!msg) return;
     if (mode === 'local') { localAct(seat, msg); }
