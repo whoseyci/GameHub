@@ -12,10 +12,11 @@
   function skyjoCardId(s,pi,ci){return `skyjo:table:r${s.round}:p${pi}:c${ci}`;}
   // The discard pile is a PERMANENT card (id 'skyjo:discard') pinned to #uiDiscard.
   // A card that goes to the discard is the REAL moving card — we fly it onto the
-  // pile and rename it AS the discard's top (no transient throwaway; the previous
-  // top is replaced by rename()).
-  // Fly an existing managed card (by id) onto the discard pile, where it BECOMES
-  // the permanent discard top. The old discard card is replaced. No clones.
+  // pile; on landing the overlay is destroyed and #uiDiscard (rendered+made
+  // clickable by drawPiles) becomes the resting discard top. A permanent overlay
+  // over #uiDiscard would intercept clicks and hide the clickable anchor.
+  // Fly an existing managed card (by id) onto the discard pile (no clones), then
+  // hand off to the #uiDiscard DOM slot.
   // Clear a column triplet by flying the THREE real board cards to the discard
   // pile (the last one becomes the discard top). No transient clones.
   async function clearTripletToDiscard(s,player,indices,value){
@@ -48,17 +49,22 @@
       const c=Kit.CardManager.get(id);if(c)c.renderer=()=>skyjoVisual({revealed:true,cleared:false,value});
       return Kit.CardManager.moveTo(id,disc,{duration:480,spin:true,land:false,hideTarget:true,toLocation:{zone:'discard'}});
     }));
-    // Keep the top card as the permanent discard; remove the under-cards.
-    moveIds.forEach((id,k)=>{ if(k===moveIds.length-1) Kit.CardManager.rename(id,'skyjo:discard',{zone:'discard'}); else if(Kit.CardManager.has(id)) Kit.CardManager.destroy(id); });
+    // All cards have landed on the pile. Destroy every moving overlay and restore
+    // the #uiDiscard slot's visibility so drawPiles renders a clickable discard top.
+    moveIds.forEach((id)=>{ if(Kit.CardManager.has(id)) Kit.CardManager.destroy(id); });
+    disc.style.visibility='';
   }
   async function flyCardToDiscard(movingId,value,opts={}){
     const disc=$('uiDiscard');
     const c=Kit.CardManager.get(movingId);
     if(c)c.renderer=()=>skyjoVisual({revealed:true,cleared:false,value});
     await Kit.CardManager.moveTo(movingId,disc,{duration:opts.duration??520,spin:!!opts.spin,startFaceDown:!!opts.startFaceDown,revealMidway:!!opts.revealMidway,land:false,hideTarget:true,toLocation:{zone:'discard'}});
-    // The landed card BECOMES the permanent discard top (rename — keeps the same
-    // overlay, no destroy/recreate gap). Any previous top is replaced by rename().
-    Kit.CardManager.rename(movingId,'skyjo:discard',{zone:'discard'});
+    // The card has landed on the pile. Destroy the moving overlay and RESTORE the
+    // #uiDiscard slot's visibility — drawPiles() renders the discard top there and
+    // (crucially) keeps it clickable. A permanent overlay over #uiDiscard would
+    // sit on top and the hidden anchor underneath could not receive clicks.
+    Kit.CardManager.destroy(movingId);
+    disc.style.visibility='';
   }
   async function revealSkyjoRegistryCard(id,value){
     const c=Kit.CardManager.get(id);
@@ -284,9 +290,13 @@
         const heldCard=Kit.CardManager.get('skyjo:held');
         if(heldCard)heldCard.renderer=()=>skyjoVisual({revealed:true,cleared:false,value:a.newVal});
         await Kit.CardManager.moveTo('skyjo:held',target,{duration:360,hideTarget:true,land:false,toLocation:{zone:'grid',player:a.player,slot:a.index}});
-        // The held card BECOMES the slot's permanent card (rename, don't destroy) so
-        // the new card stays visible immediately — not only after the discard flies.
-        Kit.CardManager.rename('skyjo:held',slotId,{zone:'grid',player:a.player,slot:a.index});
+        // The held card has landed in the slot. Hand off to the REAL board card:
+        // destroy the held overlay and immediately (re)create + pin the slot's
+        // permanent card from engine state, so the new value (number included) is
+        // visible the instant it lands — not only after the discard flies.
+        Kit.CardManager.destroy('skyjo:held');
+        target.style.visibility='';
+        syncSkyjoCards(s);
       }
       if(Kit.CardManager.has(oldMovingId)) await flyCardToDiscard(oldMovingId,a.oldVal,{startFaceDown:!a.wasRevealed,revealMidway:!a.wasRevealed,spin:a.wasRevealed,duration:520});
       if(a.diff!=null&&a.diff!==0){const sg=a.diff>0?'+':'';Kit.floatText(boardEl(a.player),sg+a.diff,a.diff>0?'#10b981':'#ef4444');(a.diff>0?SFX.good:SFX.bad)();}
