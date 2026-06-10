@@ -1,4 +1,5 @@
 import type { GameModule, GameView, GameViewState } from "../types";
+import { mapPhase } from "../types";
 import { makeSeed, randomInt, type RngStateHolder } from "../../rng";
 
 export interface QwixxRow {
@@ -101,15 +102,6 @@ function maybeEndOrNextTurn(s: QwixxState) {
   s.round++;
 }
 
-/** Map internal Qwixx phase to the canonical GameLifecyclePhase. */
-function lifecyclePhase(internalPhase: string): string {
-  switch (internalPhase) {
-    case "WHITE_PHASE":  return "PLAYING";
-    case "COLOR_PHASE":  return "PLAYING";
-    case "GAME_OVER":    return "GAME_OVER";
-    default:             return internalPhase;
-  }
-}
 
 /** Build a standardized GameViewState so the hub stays game-agnostic. */
 function buildQwixxViewState(s: QwixxState): GameViewState {
@@ -270,7 +262,7 @@ export const Qwixx: GameModule = {
 
     return {
       game: "qwixx",
-      phase: lifecyclePhase(s.phase),
+      phase: mapPhase(s.phase),
       over: s.phase === "GAME_OVER",
       yourSeat: seat,
       summary,

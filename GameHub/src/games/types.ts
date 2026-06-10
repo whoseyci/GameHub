@@ -38,6 +38,35 @@ export interface GameFeatures {
   maxDurationSec: number;     // estimated maximum game duration
 }
 
+/**
+ * Map a game's INTERNAL phase string to the canonical GameLifecyclePhase the hub
+ * understands. Previously every game copied a slightly different lifecyclePhase()
+ * with inconsistent return types (some returned a raw string). This is the single,
+ * typed mapper. Games pass per-game overrides for phases unique to them; anything
+ * unmapped falls back to "PLAYING" (a safe, active default).
+ */
+const CANONICAL_PHASES: Record<string, GameLifecyclePhase> = {
+  SETUP: "SETUP",
+  DRAFT: "DRAFT",
+  REVEAL: "DRAFT",
+  PLAY: "PLAYING",
+  PLAYING: "PLAYING",
+  WHITE_PHASE: "PLAYING",
+  COLOR_PHASE: "PLAYING",
+  FINAL_TURNS: "PLAYING",
+  RESOLVING: "RESOLVING",
+  ROUND_END: "ROUND_END",
+  GAME_OVER: "GAME_OVER",
+  SPECTATING: "SPECTATING",
+};
+
+export function mapPhase(
+  internalPhase: string,
+  overrides: Record<string, GameLifecyclePhase> = {}
+): GameLifecyclePhase {
+  return overrides[internalPhase] ?? CANONICAL_PHASES[internalPhase] ?? "PLAYING";
+}
+
 export interface GameMeta {
   id: string;            // stable id, e.g. "skyjo"
   name: string;          // display name

@@ -207,6 +207,21 @@ const SkyjoBots = (() => {
   
   // ---- BotDriver Strategy Registration ----
   BotDriver.register('skyjo', {
+    // Observation model lives WITH the game (was hardcoded in the driver). The host
+    // receives publicDrawn for deck draws and lastAction for discard takes; patch
+    // the view so this bot seat sees exactly what it can legitimately observe.
+    observe(view, botSeat) {
+      const gv = view.skyjo;
+      if (!gv) return view;
+      const sg = { ...gv, currentPlayer: botSeat };
+      if (sg.myDrawnCard == null && sg.turnAction === 'deck' && sg.publicDrawn != null) {
+        sg.myDrawnCard = sg.publicDrawn;
+      }
+      if (sg.myDrawnCard == null && sg.turnAction === 'discard' && sg.lastAction && sg.lastAction.type === 'take_discard' && sg.lastAction.player === botSeat) {
+        sg.myDrawnCard = sg.lastAction.value;
+      }
+      return { ...view, skyjo: sg };
+    },
     choose(view, seat, difficulty) {
       if (difficulty === 'easy') return easyChoose(view);
       if (difficulty === 'hard') return hardChoose(view);

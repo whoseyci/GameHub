@@ -7,6 +7,25 @@
   var __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
   var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "symbol" ? key + "" : key, value);
 
+  // src/games/types.ts
+  var CANONICAL_PHASES = {
+    SETUP: "SETUP",
+    DRAFT: "DRAFT",
+    REVEAL: "DRAFT",
+    PLAY: "PLAYING",
+    PLAYING: "PLAYING",
+    WHITE_PHASE: "PLAYING",
+    COLOR_PHASE: "PLAYING",
+    FINAL_TURNS: "PLAYING",
+    RESOLVING: "RESOLVING",
+    ROUND_END: "ROUND_END",
+    GAME_OVER: "GAME_OVER",
+    SPECTATING: "SPECTATING"
+  };
+  function mapPhase(internalPhase, overrides = {}) {
+    return overrides[internalPhase] ?? CANONICAL_PHASES[internalPhase] ?? "PLAYING";
+  }
+
   // src/rng.ts
   function makeSeed(seedText = `${Date.now()}:${Math.random()}`) {
     let h = 2166136261;
@@ -388,21 +407,6 @@
   function load(state) {
     return GameEngine.fromJSON(state);
   }
-  function lifecyclePhase(phase) {
-    switch (phase) {
-      case "REVEAL":
-        return "DRAFT";
-      case "PLAY":
-      case "FINAL_TURNS":
-        return "PLAYING";
-      case "ROUND_END":
-        return "ROUND_END";
-      case "GAME_OVER":
-        return "GAME_OVER";
-      default:
-        return "PLAYING";
-    }
-  }
   function buildViewState(g, seat) {
     const isReveal = g.phase === "REVEAL";
     return {
@@ -528,7 +532,7 @@
       }
       return {
         game: "skyjo",
-        phase: lifecyclePhase(g.phase),
+        phase: mapPhase(g.phase),
         over,
         yourSeat: seat,
         summary,
@@ -539,18 +543,6 @@
   };
 
   // src/games/flip7/server.ts
-  function lifecyclePhase2(internalPhase) {
-    switch (internalPhase) {
-      case "PLAY":
-        return "PLAYING";
-      case "ROUND_END":
-        return "ROUND_END";
-      case "GAME_OVER":
-        return "GAME_OVER";
-      default:
-        return internalPhase;
-    }
-  }
   function buildViewState2(s) {
     const currentPlayer = s.phase === "PLAY" ? s.current : -1;
     return {
@@ -1028,7 +1020,7 @@
       }
       return {
         game: "flip7",
-        phase: lifecyclePhase2(state.phase),
+        phase: mapPhase(state.phase),
         over,
         yourSeat: seat,
         summary,
@@ -1133,18 +1125,6 @@
     s.activeWhiteRow = void 0;
     s.activeWhiteIndex = void 0;
     s.round++;
-  }
-  function lifecyclePhase3(internalPhase) {
-    switch (internalPhase) {
-      case "WHITE_PHASE":
-        return "PLAYING";
-      case "COLOR_PHASE":
-        return "PLAYING";
-      case "GAME_OVER":
-        return "GAME_OVER";
-      default:
-        return internalPhase;
-    }
   }
   function buildQwixxViewState(s) {
     const isWhitePhase = s.phase === "WHITE_PHASE";
@@ -1286,7 +1266,7 @@
       }
       return {
         game: "qwixx",
-        phase: lifecyclePhase3(s.phase),
+        phase: mapPhase(s.phase),
         over: s.phase === "GAME_OVER",
         yourSeat: seat,
         summary,
@@ -1533,7 +1513,7 @@
       }
       return {
         game: "schotten",
-        phase: lifecyclePhase4(state.phase),
+        phase: mapPhase(state.phase),
         over,
         yourSeat: seat,
         summary,
@@ -1574,16 +1554,6 @@
   };
   function pub(c) {
     return { id: c.id, v: c.v, c: c.c };
-  }
-  function lifecyclePhase4(internalPhase) {
-    switch (internalPhase) {
-      case "PLAY":
-        return "PLAYING";
-      case "GAME_OVER":
-        return "GAME_OVER";
-      default:
-        return "PLAYING";
-    }
   }
   function buildViewState3(state) {
     return {

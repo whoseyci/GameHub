@@ -582,7 +582,7 @@
     }
     playEvents(view, token);
   }
-  function act(seat,msg){ GameActions.send(msg.action, Object.fromEntries(Object.entries(msg).filter(([k])=>k!=='action')), seat); }
+  function act(seat,msg){ GameActions.act(seat,msg); } // delegates to shared helper (L4)
   function clientAct(action, extra={}){
     const seat = window._renderView?.yourSeat ?? 0;
     GameActions.send(action, extra, seat);

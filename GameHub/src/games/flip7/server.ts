@@ -5,17 +5,9 @@
 // Each action produces `state.events` — an ordered list the client replays. The
 // final `state` is authoritative; `events` describe how we got there.
 import type { GameModule, GameView, GameViewState } from "../types";
+import { mapPhase } from "../types";
 import { makeSeed, shuffleInPlace, type RngStateHolder } from "../../rng";
 
-/** Map internal Flip7 phase to the canonical GameLifecyclePhase. */
-function lifecyclePhase(internalPhase: string): string {
-  switch (internalPhase) {
-    case "PLAY":        return "PLAYING";
-    case "ROUND_END":   return "ROUND_END";
-    case "GAME_OVER":   return "GAME_OVER";
-    default:            return internalPhase;
-  }
-}
 
 /** Build a standardized GameViewState so the hub stays game-agnostic. */
 function buildViewState(s: State): GameViewState {
@@ -451,7 +443,7 @@ export const Flip7: GameModule = {
     }
     return {
       game: "flip7",
-      phase: lifecyclePhase(state.phase),
+      phase: mapPhase(state.phase),
       over,
       yourSeat: seat,
       summary,

@@ -82,29 +82,25 @@ const BotDriver = (() => {
   }
 
   /**
-   * Build a view containing only the information a bot can observe.
-   * For online bots, this is the view the host receives (with publicDrawn patched).
+   * Build a view containing only the information a bot can observe. The hub is
+   * game-AGNOSTIC: each game's strategy owns its observation model and may expose
+   * an optional `observe(view, botSeat) -> view` that patches in the publicly
+   * observable info (e.g. Skyjo's publicly drawn card) for that seat. If a strategy
+   * provides no observe(), the raw view is passed through unchanged.
    * @param {GameView} view
    * @param {number} botSeat
    * @returns {GameView}
    */
   function buildBotObservation(view, botSeat) {
-    const gv = view[view.game] || view.state || {};
-
-    if (view.game === 'skyjo') {
-      // Skyjo: host receives publicDrawn for deck draws, and lastAction for discard takes.
-      // We need to patch the view so the bot sees what it can actually observe.
-      const sg = { ...gv, currentPlayer: botSeat };
-      if (sg.myDrawnCard == null && sg.turnAction === 'deck' && sg.publicDrawn != null) {
-        sg.myDrawnCard = sg.publicDrawn;
+    const strategy = strategies[view.game];
+    if (strategy && typeof strategy.observe === 'function') {
+      try {
+        return strategy.observe(view, botSeat) || view;
+      } catch (e) {
+        console.warn(`BotDriver.observe error for ${view.game} seat ${botSeat}:`, e);
+        return view;
       }
-      if (sg.myDrawnCard == null && sg.turnAction === 'discard' && sg.lastAction && sg.lastAction.type === 'take_discard' && sg.lastAction.player === botSeat) {
-        sg.myDrawnCard = sg.lastAction.value;
-      }
-      return { ...view, skyjo: sg };
     }
-
-    // For other games, return the view as-is (game-specific strategies handle their own observation encoding).
     return view;
   }
 

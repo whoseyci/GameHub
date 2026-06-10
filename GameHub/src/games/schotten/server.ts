@@ -5,6 +5,7 @@
 // total or 3 adjacent stones.
 import type { GameModule, GameView, GameViewState, GameLifecyclePhase } from "../types";
 import { makeSeed, shuffleInPlace, type RngStateHolder } from "../../rng";
+import { mapPhase } from "../types";
 import { SchottenMeta } from "./meta";
 
 const COLORS = ["red", "orange", "yellow", "green", "blue", "purple"] as const;
@@ -254,7 +255,7 @@ export const Schotten: GameModule = {
     }
     return {
       game: "schotten",
-      phase: lifecyclePhase(state.phase),
+      phase: mapPhase(state.phase),
       over,
       yourSeat: seat,
       summary,
@@ -293,14 +294,6 @@ export const Schotten: GameModule = {
 
 function pub(c: Card) { return { id: c.id, v: c.v, c: c.c }; }
 
-/** Map internal phase to the canonical GameLifecyclePhase. */
-function lifecyclePhase(internalPhase: string): GameLifecyclePhase {
-  switch (internalPhase) {
-    case "PLAY": return "PLAYING";
-    case "GAME_OVER": return "GAME_OVER";
-    default: return "PLAYING";
-  }
-}
 
 /** Build a standardized GameViewState so the hub stays game-agnostic. */
 function buildViewState(state: SchottenState): GameViewState {

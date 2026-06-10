@@ -8,7 +8,7 @@
    shape as Skyjo below. The hub never needs to change.
    ==================================================================== */
 const PARTYKIT_HOST = location.host; // served by the same Worker
-const BUILD_VERSION = "v38-single-catalogue-bot-scaffold"; // bump on each change; shown on the menu
+const BUILD_VERSION = "v39-shared-apis-cleanup"; // bump on each change; shown on the menu
 
 const $=id=>document.getElementById(id);
 function esc(v){return String(v ?? '').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));}
@@ -29,7 +29,11 @@ const GameActions={
     const msg={action,...extra};
     if(mode==='local'){ if(typeof localAct==='function') localAct(resolvedSeat,msg); }
     else if(typeof net!=='undefined'){ net.send({type:'action',seat:resolvedSeat,...msg}); }
-  }
+  },
+  // Convenience used by game clients' internal animation code, which carries a
+  // whole {action,...} message + an explicit seat. Was reimplemented per-game
+  // (split out the action key, re-send) — now shared (L4 de-dup).
+  act(seat,msg={}){ const {action,...extra}=msg; this.send(action,extra,seat); }
 };
 
 /* ====================== CARD KIT (shared) ====================== */

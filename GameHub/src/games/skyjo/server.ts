@@ -8,6 +8,7 @@ import type {
   GameLifecyclePhase,
   GameFeatures,
 } from "../types";
+import { mapPhase } from "../types";
 import { GameEngine } from "../../engine";
 
 // Rehydrate the engine from plain stored state. This is cheap (an Object.assign);
@@ -18,22 +19,6 @@ function load(state: any): GameEngine {
   return GameEngine.fromJSON(state);
 }
 
-/** Map internal Skyjo phase to the canonical GameLifecyclePhase. */
-function lifecyclePhase(phase: string): GameLifecyclePhase {
-  switch (phase) {
-    case "REVEAL":
-      return "DRAFT";
-    case "PLAY":
-    case "FINAL_TURNS":
-      return "PLAYING";
-    case "ROUND_END":
-      return "ROUND_END";
-    case "GAME_OVER":
-      return "GAME_OVER";
-    default:
-      return "PLAYING";
-  }
-}
 
 /** Build a standardized GameViewState so the hub stays game-agnostic. */
 function buildViewState(g: GameEngine, seat: number): GameViewState {
@@ -186,7 +171,7 @@ export const Skyjo: GameModule = {
     }
     return {
       game: "skyjo",
-      phase: lifecyclePhase(g.phase),
+      phase: mapPhase(g.phase),
       over,
       yourSeat: seat,
       summary,

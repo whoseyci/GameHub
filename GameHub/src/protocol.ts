@@ -30,6 +30,42 @@ export function cleanInt(value: unknown, min: number, max: number): number | nul
   return n;
 }
 
+// Generic, bounded action payload. Lets a NEW game send its own action fields
+// without editing this file's per-field whitelist (the old approach). We still
+// hard-bound the shape so a malformed/hostile browser payload can't blow up the
+// Durable Object: only a shallow object of primitives, capped keys, bounded
+// strings/numbers, no nested objects/arrays/functions. The game's applyAction()
+// remains the final authority on whether the fields are meaningful.
+export const MAX_PAYLOAD_KEYS = 12;
+export const MAX_PAYLOAD_STRING = 64;
+const SAFE_KEY = /^[A-Za-z_][A-Za-z0-9_]{0,31}$/;
+// Reserved keys the hub itself interprets — never let the payload override them.
+const RESERVED_KEYS = new Set(["type", "action", "seat", "botSeat", "pid", "name"]);
+
+export function cleanPayload(value: unknown): Record<string, string | number | boolean> {
+  const out: Record<string, string | number | boolean> = {};
+  if (!value || typeof value !== "object" || Array.isArray(value)) return out;
+  let keys = 0;
+  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+    if (keys >= MAX_PAYLOAD_KEYS) break;
+    if (!SAFE_KEY.test(k) || RESERVED_KEYS.has(k)) continue;
+    if (typeof v === "string") {
+      if (v.length > MAX_PAYLOAD_STRING) continue;
+      // strip control characters
+      out[k] = v.replace(/[\u0000-\u001f\u007f]/g, "");
+    } else if (typeof v === "number") {
+      if (!Number.isFinite(v)) continue;
+      out[k] = v;
+    } else if (typeof v === "boolean") {
+      out[k] = v;
+    } else {
+      continue; // drop nested objects/arrays/null/functions
+    }
+    keys++;
+  }
+  return out;
+}
+
 
 export function cleanSeats(value: unknown, fallbackPid: string, fallbackName: string): Array<{ pid: string; name: string }> {
   if (!Array.isArray(value)) return [{ pid: fallbackPid, name: fallbackName }];
@@ -76,14 +112,13 @@ export function parseClientMessage(raw: string): any | null {
     }
     case "action": {
       if (typeof msg.action !== "string" || msg.action.length > 40) return null;
-      const out: any = { type: "action", action: msg.action };
-      if (Number.isInteger(msg.index)) out.index = msg.index;
-      if (Number.isInteger(msg.target)) out.target = msg.target;
-      if (Number.isInteger(msg.botSeat)) out.botSeat = msg.botSeat;
-      if (Number.isInteger(msg.seat)) out.seat = msg.seat;
-      if (msg.use === "white" || msg.use === "color") out.use = msg.use;
-      if (typeof msg.c === "string" && msg.c.length <= 16) out.c = msg.c;
-      if (Number.isInteger(msg.i)) out.i = msg.i;
+      // Generic, bounded payload first — a new game can add fields without touching
+      // this parser (API-1). Then layer the hub-interpreted meta fields (seat/
+      // botSeat) on top so they always have the precise integer validation the
+      // server relies on for seat-control / bot-driving authorization.
+      const out: any = { type: "action", action: msg.action, ...cleanPayload(msg) };
+      if (Number.isInteger(msg.botSeat)) out.botSeat = msg.botSeat; else delete out.botSeat;
+      if (Number.isInteger(msg.seat)) out.seat = msg.seat; else delete out.seat;
       return out;
     }
     default:
