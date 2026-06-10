@@ -79,17 +79,24 @@
     Kit.CardManager.pin(permId,destAnchor,{hideAnchor:false,updateContent:true});
     Kit.CardManager.sync();
   }
-  // Fly a transient card from a source element (a board card overlay, or the
-  // deck) to the discard pile via the animation API, then destroy it. Used when
-  // a card leaves the board (second-chance consume, etc.).
-  async function flyToDiscard(sourceEl, face){
+  // Fly an EXISTING permanent card (by its CardManager id) from its board slot to
+  // the discard pile, then remove it. We move the real card — no transient clone
+  // — so there is never a duplicate left behind on the board during the flight.
+  // The caller must remove the card from liveView.cards (so the board slot
+  // collapses) BEFORE calling this; reconcile() then won't recreate it.
+  async function flyPermToDiscard(permId, face){
     const discard=$('f7Discard');
-    if(!discard||!sourceEl)return;
-    const tmpId='flip7:discard:'+Date.now()+':'+Math.random().toString(36).slice(2,6);
-    Kit.CardManager.create({kind:face.kind,value:face.v},{zone:'transit'},{id:tmpId,faceUp:true,renderer:()=>cardEl(face.kind,face.v)});
-    Kit.CardManager.pin(tmpId,sourceEl,{hideAnchor:false,updateContent:true});
-    await Kit.CardManager.moveTo(tmpId,discard,{duration:480,arc:34,spin:true,land:true,toLocation:{zone:'discard'},hideTarget:false});
-    Kit.CardManager.destroy(tmpId);
+    const c=Kit.CardManager.get(permId);
+    if(!discard||!c)return;
+    // Keep the underlying board anchor hidden for the whole trip so no empty/dupe
+    // slot flashes when the overlay leaves it.
+    const anchor=document.querySelector(`[data-card-reg="${permId}"]`);
+    const prevVis=anchor?anchor.style.visibility:null;
+    if(anchor)anchor.style.visibility='hidden';
+    if(face){c.face={kind:face.kind,value:face.v};c.faceUp=true;}
+    await Kit.CardManager.moveTo(permId,discard,{duration:480,arc:34,spin:true,land:true,toLocation:{zone:'discard'},hideTarget:false});
+    Kit.CardManager.destroy(permId); // it's now in the (logical) discard pile
+    if(anchor)anchor.style.visibility=prevVis||'';
     discard.classList.remove('land');void discard.offsetWidth;discard.classList.add('land');
   }
   function captureF7Layout(){ const m=new Map(); document.querySelectorAll('.f7-focus-board [data-card-reg]').forEach(el=>m.set(el.dataset.cardReg,el.getBoundingClientRect())); return m; }
@@ -519,18 +526,20 @@
         await flyDealCard(dupPerm,e.actor,cmCardSlot(dupPerm)); if(!tokenAlive(token)) return;
         SFX.good(); Kit.turnBanner('Second Chance!',true);
         await sleep(SPEED.beat*0.5);
-        // 2) locate the on-board Second Chance card + the duplicate, fly both to discard
+        // 2) Find the on-board Second Chance card's permanent id while it still
+        //    exists, then fly the REAL duplicate + Second Chance overlays to the
+        //    discard pile (no transient clones → no leftover dupe on the board).
+        //    We hide their board anchors first so no empty slot shows mid-flight,
+        //    and only remove them from the model AFTER they land (so reconcile()
+        //    doesn't destroy the in-flight overlays).
         const secAnchor=document.querySelector(`[data-card-reg^="flip7:table:p${e.actor}:"][data-value="second"]`);
-        const secEl=Kit.CardManager.get(dupPerm)&&secAnchor?(Kit.CardManager.get(secAnchor.dataset.cardReg)?.overlayEl||secAnchor):secAnchor;
-        const dupEl=Kit.CardManager.get(dupPerm)?.overlayEl||document.querySelector(`[data-card-reg="${dupPerm}"]`);
-        await flyToDiscard(dupEl,{kind:'num',v:e.value});
-        if(secEl) await flyToDiscard(secEl,{kind:'act',v:'second'});
-        // 3) now apply state: remove the duplicate temp card + clear second
-        // chance. The temp table card is removed from cards, so the next draw's
-        // reconcile('flip7:table:') cleans up its permanent anchor (no direct
-        // destroy of a table card).
-        sp.cards=sp.cards.filter(c=>c.id!==dupId);
+        const secPerm=secAnchor?secAnchor.dataset.cardReg:null;
+        await flyPermToDiscard(dupPerm,{kind:'num',v:e.value}); if(!tokenAlive(token)) return;
+        if(secPerm) await flyPermToDiscard(secPerm,{kind:'act',v:'second'}); if(!tokenAlive(token)) return;
+        // 3) now remove both from the live model + apply authoritative state.
+        sp.cards=(sp.cards||[]).filter(c=>c.id!==dupId && c.v!=='second');
         advanceLiveView(liveView,e); // sets p.second=false
+        recalcAll(liveView);
         draw(liveView);
         await sleep(SPEED.beat*0.4); break;
       }

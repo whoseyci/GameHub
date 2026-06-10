@@ -308,6 +308,10 @@ async function smokeFlip7(window, document) {
   })()`));
   assert(scResult.second === false, 'Flip7: second chance was not consumed');
   assert(scResult.discardLen === 2, 'Flip7: second-chance should discard the duplicate + the 2nd-chance card (got ' + JSON.stringify(scResult.discardKinds) + ')');
+  // The discard must MOVE the real permanent cards (no transient clone), so no
+  // duplicate lingers on the board during the flight.
+  assert(f7src.includes('flyPermToDiscard'), 'Flip7: discard should move the real permanent card to the pile');
+  assert(!f7src.includes('function flyToDiscard'), 'Flip7: the transient-clone discard helper should be gone (caused a dupe on the board)');
 
   window.quitLocal();
   await sleep(50);

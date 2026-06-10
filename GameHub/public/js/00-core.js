@@ -8,7 +8,7 @@
    shape as Skyjo below. The hub never needs to change.
    ==================================================================== */
 const PARTYKIT_HOST = location.host; // served by the same Worker
-const BUILD_VERSION = "v27-flip7-bust-discard-pausable-f3"; // bump on each change; shown on the menu
+const BUILD_VERSION = "v28-flight-scale-real-discard"; // bump on each change; shown on the menu
 
 const $=id=>document.getElementById(id);
 function esc(v){return String(v ?? '').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));}
@@ -415,7 +415,11 @@ const Kit=(()=>{
 
       // Raise z-index during flight so card flies above everything
       el.style.zIndex=opts.zIndex??1000;
-      el.style.transition=`top ${duration}ms var(--spring-soft),left ${duration}ms var(--spring-soft),width ${duration}ms var(--spring-soft),height ${duration}ms var(--spring-soft),transform ${duration}ms var(--spring-soft)`;
+      // Animate the SIZE change with transform:scale (not raw width/height) so the
+      // whole card — including its font/content — scales UNIFORMLY in flight. The
+      // overlay keeps its source box size during the flight and we scale toward
+      // the destination; positionOverlay() snaps to the exact dest size on land.
+      el.style.transition=`top ${duration}ms var(--spring-soft),left ${duration}ms var(--spring-soft),transform ${duration}ms var(--spring-soft)`;
       el.classList.add('kit-card-moving');
       el.offsetHeight; // force reflow
 
@@ -433,11 +437,21 @@ const Kit=(()=>{
       const midRot=opts.flip?'rotateY(90deg) ':(opts.spin?'rotateZ(180deg) ':'');
       const endRot=opts.flip?'rotateY(0deg) ':(opts.spin?'rotateZ(360deg) ':'');
       const toRect=stableRect(toAnchor)||toAnchor.getBoundingClientRect();
-      const midX=(fromRect.left+toRect.left)/2,midY=Math.min(fromRect.top,toRect.top)-(opts.arc??46);
+      // Uniform end-scale so the card (and its text) shrinks/grows proportionally
+      // toward the destination size. The overlay keeps its source box during the
+      // flight; we position by CENTER so scaling stays anchored correctly.
+      const endScale=fromRect.width>0?(toRect.width/fromRect.width):1;
+      const srcCx=fromRect.left+fromRect.width/2, srcCy=fromRect.top+fromRect.height/2;
+      const dstCx=toRect.left+toRect.width/2, dstCy=toRect.top+toRect.height/2;
+      // Reposition via centers (translate from the source top-left baseline).
+      const cx2lx=(cx)=>cx-fromRect.width/2; // center-x → left for a source-sized box
+      const cy2ty=(cy)=>cy-fromRect.height/2;
+      const midX=(srcCx+dstCx)/2, midY=Math.min(srcCy,dstCy)-(opts.arc??46);
+      const midScale=((opts.midScale??1.12))*((1+endScale)/2); // ease size through the arc
       requestAnimationFrame(()=>{
-        el.style.top=midY+'px';
-        el.style.left=midX+'px';
-        el.style.transform=midRot+'scale('+(opts.midScale??1.12)+')';
+        el.style.left=cx2lx(midX)+'px';
+        el.style.top=cy2ty(midY)+'px';
+        el.style.transform=midRot+'scale('+midScale+')';
       });
 
       // Reveal face at midpoint
@@ -459,13 +473,12 @@ const Kit=(()=>{
         },Math.floor(duration*(opts.revealAt??0.42)));
       }
 
-      // Fly to destination (rotation resolves to upright/face-up)
+      // Fly to destination: position by center, scale uniformly to the dest size
+      // (width/height stay at source values; transform does the sizing).
       setTimeout(()=>{
-        el.style.top=toRect.top+'px';
-        el.style.left=toRect.left+'px';
-        el.style.width=toRect.width+'px';
-        el.style.height=toRect.height+'px';
-        el.style.transform=endRot+'scale(1)';
+        el.style.left=cx2lx(dstCx)+'px';
+        el.style.top=cy2ty(dstCy)+'px';
+        el.style.transform=endRot+'scale('+endScale+')';
       },Math.floor(duration*0.5));
 
       await sleep(duration+45);
