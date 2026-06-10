@@ -19,7 +19,7 @@ const QwixxBots = (() => {
   }
 
   function validMarks(view, seat) {
-    const s = view.state || view.qwixx;
+    const s = view.qwixx || view.state;
     const p = s.allPlayers[seat];
     if (!p) return [];
     const valids = [];
@@ -74,7 +74,7 @@ const QwixxBots = (() => {
   }
 
   function easyChoose(view, seat) {
-    const s = view.state || view.qwixx;
+    const s = view.qwixx || view.state;
     const valids = validMarks(view, seat);
     if (valids.length > 0) {
       const best = valids[Math.floor(Math.random() * valids.length)];
@@ -90,7 +90,7 @@ const QwixxBots = (() => {
       const best = valids.reduce((a, b) => (b.i < a.i ? b : a), valids[0]);
       return { action: "mark", c: best.c, i: best.i, use: best.use };
     }
-    const s = view.state || view.qwixx;
+    const s = view.qwixx || view.state;
     return s.phase === "WHITE_PHASE" ? { action: "skip" } : { action: "finishTurn" };
   }
 
@@ -98,7 +98,7 @@ const QwixxBots = (() => {
     const valids = validMarks(view, seat);
     if (valids.length > 0) {
       // Lookahead: prefer marks with higher marginal score gain
-      const s = view.state || view.qwixx;
+      const s = view.qwixx || view.state;
       const p = s.allPlayers[seat];
       const best = valids.reduce((a, b) => {
         const gainA = marginalGain(p.rows[a.c], a.i);
@@ -107,14 +107,14 @@ const QwixxBots = (() => {
       }, valids[0]);
       return { action: "mark", c: best.c, i: best.i, use: best.use };
     }
-    const s = view.state || view.qwixx;
+    const s = view.qwixx || view.state;
     return s.phase === "WHITE_PHASE" ? { action: "skip" } : { action: "finishTurn" };
   }
 
   // ---- BotDriver Registration ----
   BotDriver.register("qwixx", {
     choose(view, seat, difficulty) {
-      const s = view.state || view.qwixx;
+      const s = view.qwixx || view.state;
       if (!s || !diceRevealed(s)) return null;
 
       // White phase: all active players decide simultaneously
@@ -137,7 +137,7 @@ const QwixxBots = (() => {
     },
 
     needsBot(view) {
-      const s = view.state || view.qwixx;
+      const s = view.qwixx || view.state;
       if (!s || !diceRevealed(s)) return false;
       if (s.phase === "WHITE_PHASE" && s.pendingWhiteDecisions.length > 0) return true;
       if (s.phase === "COLOR_PHASE" && s.activeSeat >= 0) return true;
@@ -145,7 +145,7 @@ const QwixxBots = (() => {
     },
 
     getActingSeat(view) {
-      const s = view.state || view.qwixx;
+      const s = view.qwixx || view.state;
       if (!s || !diceRevealed(s)) return -1;
       if (s.phase === "WHITE_PHASE") {
         // Return first bot that still needs to decide

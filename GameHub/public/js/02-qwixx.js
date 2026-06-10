@@ -191,7 +191,10 @@ window.GameClients = window.GameClients || {};
   }
 
   function render(view,ctx={}){
-    const s = view.state;
+    // Rich game state lives under the namespaced key view.qwixx (the same shape the
+    // server and the shared local engine emit). Older local engines stashed it on
+    // view.state; keep that as a fallback so nothing breaks mid-migration.
+    const s = view.qwixx || view.state;
     const dice = s.dice || { w:[0,0], r:0, y:0, g:0, b:0 };
     const isAct = s.activeSeat === view.yourSeat;
     const isWhite = s.phase === 'WHITE_PHASE';
@@ -260,7 +263,7 @@ window.GameClients = window.GameClients || {};
 
   function inspect(seat){
     const view=window._renderView;if(!view||view.game!=='qwixx')return;
-    const s=view.state;const player=s.allPlayers.find(p=>p.seat===seat);if(!player)return;
+    const s=view.qwixx||view.state;const player=s.allPlayers.find(p=>p.seat===seat);if(!player)return;
     const seats=s.allPlayers.filter(p=>p.seat!==view.yourSeat).map(p=>p.seat);
     const idx=seats.indexOf(seat),prev=seats[(idx-1+seats.length)%seats.length],next=seats[(idx+1)%seats.length];
     const box=$('investigateBox');
@@ -276,140 +279,4 @@ window.GameClients = window.GameClients || {};
   function unmount(){removeQwixxUi();}
   window.GameClients['qwixx'] = { render, act, inspect, unmount };
 
-  class QwixxEngine {
-    constructor(names){
-      this.COLORS = COLORS;
-      this.players = names.map(name => ({ name: name || 'Player', rows: {}, penalties: 0 }));
-      this.players.forEach(p => COLORS.forEach(c => { p.rows[c] = this.makeRow(c); }));
-      this.activeSeat = 0;
-      this.phase = 'WHITE_PHASE';
-      this.expansion = 'standard';
-      this.locked = [];
-      this.pendingLocks = [];
-      this.pendingWhiteDecisions = this.players.map((_, i) => i);
-      this.activeMarkedThisTurn = false;
-      this.activeColorUsed = false;
-      this.activeColorRow = null;
-      this.activeWhiteRow = null;
-      this.activeWhiteIndex = null;
-      this.round = 1;
-      this.dice = this.getDice();
-    }
-    makeRow(color){
-      const nums = [];
-      if(color === 'red' || color === 'yellow') for(let i=2;i<=12;i++) nums.push(i);
-      else for(let i=12;i>=2;i--) nums.push(i);
-      return { nums, cellColors: nums.map(()=>color), doubles: [], marks: [] };
-    }
-    getDice(){
-      const rnd = () => Math.floor(Math.random()*6)+1;
-      const d = { w:[rnd(),rnd()], r:rnd(), y:rnd(), g:rnd(), b:rnd() };
-      this.locked.forEach(c => d[COLOR_KEY[c]] = 0);
-      return d;
-    }
-    applyLocks(){ this.pendingLocks.forEach(c => { if(!this.locked.includes(c)) this.locked.push(c); }); this.pendingLocks = []; this.locked.forEach(c => this.dice[COLOR_KEY[c]] = 0); }
-    mark(c,row,i){ row.marks.push(i); row.marks.sort((a,b)=>a-b); if(i === row.nums.length-1 && !this.locked.includes(c) && !this.pendingLocks.includes(c)) this.pendingLocks.push(c); }
-    can(c,row,i){ return canMarkIndex(this, c, row, i); }
-    nextTurn(){
-      this.applyLocks();
-      if(this.locked.length >= 2 || this.players.some(p => p.penalties >= 4)){ this.phase = 'GAME_OVER'; return; }
-      this.activeSeat = (this.activeSeat + 1) % this.players.length;
-      this.phase = 'WHITE_PHASE';
-      this.dice = this.getDice();
-      this.pendingWhiteDecisions = this.players.map((_, i) => i).filter(i => this.players[i].penalties < 4);
-      this.activeMarkedThisTurn = false;
-      this.activeColorUsed = false;
-      this.activeColorRow = null;
-      this.activeWhiteRow = null;
-      this.activeWhiteIndex = null;
-      this.round++;
-    }
-    applyAction(seat,msg){
-      if(this.phase === 'GAME_OVER') return;
-      if(msg.action === 'mark'){
-        const c = msg.c, i = msg.i, requestedUse = msg.use;
-        const p = this.players[seat], row = p && p.rows[c];
-        if(!COLORS.includes(c) || !p || !row || !this.can(c,row,i)) return;
-        const isAct = seat === this.activeSeat;
-        const whiteSum = this.dice.w[0] + this.dice.w[1];
-        const whiteLegal = this.pendingWhiteDecisions.includes(seat) && row.nums[i] === whiteSum && !(isAct && this.activeColorUsed && this.activeColorRow === c);
-        const die = this.dice[COLOR_KEY[c]];
-        const colorLegal = isAct && !this.activeColorUsed && die && (row.nums[i] === this.dice.w[0]+die || row.nums[i] === this.dice.w[1]+die) && !(this.activeWhiteRow === c && this.activeWhiteIndex != null && i <= this.activeWhiteIndex);
-        let use = null;
-        if(requestedUse === 'color') use = colorLegal ? 'color' : null;
-        else if(requestedUse === 'white') use = whiteLegal ? 'white' : null;
-        else if(colorLegal) use = 'color';
-        else if(whiteLegal) use = 'white';
-        if(!use) return;
-        this.mark(c,row,i);
-        if(use === 'white'){
-          this.pendingWhiteDecisions = this.pendingWhiteDecisions.filter(x=>x!==seat);
-          if(isAct){ this.activeWhiteRow = c; this.activeWhiteIndex = i; }
-        } else {
-          this.activeColorUsed = true;
-          this.activeColorRow = c;
-        }
-        if(isAct) this.activeMarkedThisTurn = true;
-        if(this.pendingWhiteDecisions.length === 0){
-          this.applyLocks();
-          if(this.activeColorUsed) this.nextTurn();
-          else this.phase = 'COLOR_PHASE';
-        }
-      } else if(msg.action === 'skip'){
-        if(this.phase === 'WHITE_PHASE'){
-          this.pendingWhiteDecisions = this.pendingWhiteDecisions.filter(x=>x!==seat);
-          if(this.pendingWhiteDecisions.length === 0){
-            this.applyLocks();
-            if(this.activeColorUsed) this.nextTurn();
-            else this.phase = 'COLOR_PHASE';
-          }
-        }
-      } else if(msg.action === 'finishTurn'){
-        if(seat !== this.activeSeat) return;
-        if(this.phase === 'WHITE_PHASE'){
-          if(this.pendingWhiteDecisions.includes(seat)) return;
-          this.activeColorUsed = true;
-          if(this.pendingWhiteDecisions.length === 0) this.nextTurn();
-          return;
-        }
-        if(this.phase !== 'COLOR_PHASE') return;
-        if(!this.activeMarkedThisTurn) this.players[this.activeSeat].penalties++;
-        this.nextTurn();
-      }
-    }
-
-    stateFor(seat){
-      return { dice:this.dice, activeSeat:this.activeSeat, expansion:this.expansion, locked:this.locked, pendingLocks:this.pendingLocks,
-        yourRows:this.players[seat]?.rows || {}, yourPenalties:this.players[seat]?.penalties || 0,
-        allPlayers:this.players.map((pl,i)=>({ seat:i, name:pl.name, penalties:pl.penalties, score:scoreRows(pl.rows,pl.penalties), rows:pl.rows, waiting:this.phase==='WHITE_PHASE'?this.pendingWhiteDecisions.includes(i):false, active:i===this.activeSeat })),
-        phase:this.phase, round:this.round, pendingWhiteDecisions:this.pendingWhiteDecisions, activeMarkedThisTurn:this.activeMarkedThisTurn,
-        activeColorUsed:this.activeColorUsed, activeColorRow:this.activeColorRow, activeWhiteRow:this.activeWhiteRow, activeWhiteIndex:this.activeWhiteIndex };
-    }
-  }
-
-  window.LocalEngines = window.LocalEngines || {};
-  window.LocalEngines['qwixx'] = function(names){
-    const E = new QwixxEngine(names);
-    return {
-      apply(seat,msg){ E.applyAction(seat,msg); },
-      next(){ const fresh = new QwixxEngine(E.players.map(p=>p.name)); Object.assign(E, fresh); },
-      actor(){
-      if(E.phase === 'WHITE_PHASE'){
-        if(E.pendingWhiteDecisions.includes(E.activeSeat) || !E.activeColorUsed) return E.activeSeat;
-        return E.pendingWhiteDecisions.find(i => i !== E.activeSeat) ?? E.activeSeat;
-      }
-      return E.activeSeat;
-    },
-      viewFor(seat){
-        const s = E.stateFor(seat);
-        let summary;
-        if(E.phase === 'GAME_OVER'){
-          const rows = E.players.map((pl,i)=>({ seat:i, name:pl.name, score:scoreRows(pl.rows,pl.penalties), delta:0 }));
-          const max = Math.max(...rows.map(r=>r.score));
-          summary = { rows, winners: rows.filter(r=>r.score===max).map(r=>r.seat) };
-        }
-        return { game:'qwixx', phase:E.phase, over:E.phase==='GAME_OVER', yourSeat:seat, summary, state:s };
-      }
-    };
-  };
 })();

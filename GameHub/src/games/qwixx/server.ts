@@ -179,6 +179,16 @@ export const Qwixx: GameModule = {
 
   applyAction(state: any, seat: number, msg: any) {
     const s = state as QwixxState;
+    // "Play again": Qwixx is single-game, so a fresh game is dealt in place using
+    // the same players. The hub gates next_round to the host; offline play routes
+    // it through the shared local-engine adapter.
+    if (msg.action === "next_round") {
+      if (s.phase !== "GAME_OVER") return;
+      const fresh = Qwixx.create(s.players.map((p) => p.name)) as QwixxState;
+      fresh.round = (s.round ?? 1) + 1;
+      Object.assign(s, fresh);
+      return;
+    }
     if (s.phase === "GAME_OVER" || !s.dice) return;
 
     if (msg.action === "mark") {

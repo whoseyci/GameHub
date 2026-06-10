@@ -8,21 +8,24 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.client.json",
     "test": "vitest",
     "deploy:dry-run": "wrangler deploy --dry-run",
     "check:client": "node scripts/check-client-js.mjs",
     "smoke:client": "node scripts/smoke-client.mjs",
     "smoke:browser": "node scripts/e2e-client.mjs",
-    "validate": "npm run typecheck && npm run check:client && npm test -- --run && npm run deploy:dry-run",
-    "validate:ci": "npm run typecheck && npm run check:client && npm test -- --run && npm run smoke:client && npm run deploy:dry-run",
-    "scaffold:game": "node scripts/scaffold-game.mjs"
+    "validate": "npm run typecheck && npm run check:client-games && npm run check:client && npm test -- --run && npm run deploy:dry-run",
+    "validate:ci": "npm run typecheck && npm run check:client-games && npm run check:client && npm test -- --run && npm run smoke:client && npm run deploy:dry-run",
+    "scaffold:game": "node scripts/scaffold-game.mjs",
+    "build:client-games": "node scripts/build-client-games.mjs",
+    "check:client-games": "node scripts/build-client-games.mjs --check"
   },
   "dependencies": {
     "partyserver": "^0.0.71"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260609.1",
+    "esbuild": "^0.24.2",
     "jsdom": "^26.1.0",
     "playwright": "^1.53.0",
     "typescript": "^5.4.0",

@@ -184,6 +184,15 @@ export const Schotten: GameModule = {
   },
 
   applyAction(state: SchottenState, seat: number, msg: any): void {
+    // "Play again": Schotten Totten is single-game (no rounds), so a fresh game is
+    // dealt in place using the same players. The hub gates next_round to the host;
+    // offline play routes it through the shared local-engine adapter.
+    if (msg.action === "next_round") {
+      if (state.phase !== "GAME_OVER") return;
+      const fresh = Schotten.create(state.players.map((p) => p.name)) as SchottenState;
+      Object.assign(state, fresh);
+      return;
+    }
     if (state.phase !== "PLAY") return;
     if (seat !== state.current) return;
 

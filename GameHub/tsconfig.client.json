@@ -1,0 +1,18 @@
+{
+  // Typecheck for the browser bundle entry (src/client-games.ts), which runs in a
+  // DOM context (not the Cloudflare Worker runtime), so it needs the DOM lib and
+  // must NOT pull in @cloudflare/workers-types (whose globals would conflict).
+  "compilerOptions": {
+    "target": "es2020",
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "lib": ["es2020", "dom", "dom.iterable"],
+    "types": [],
+    "strict": false,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true
+  },
+  "include": ["src/client-games.ts", "src/games/**/*.ts", "src/rng.ts"]
+}

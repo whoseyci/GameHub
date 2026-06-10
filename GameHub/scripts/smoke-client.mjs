@@ -212,10 +212,10 @@ async function smokeQwixx(window, document) {
   assert(throwBtn.classList.contains('hidden'), 'Qwixx: throw button should hide after roll');
   assert(document.querySelector('#qwixxDiceKit .kit-die-static, #qwixxDiceKit .kit-die-phys'), 'Qwixx: dice did not render');
 
-  const before = localView(window, 0).state.pendingWhiteDecisions.length;
+  const before = localView(window, 0).qwixx.pendingWhiteDecisions.length;
   window.GameClients['qwixx'].act('skip');
   await sleep(50);
-  const after = localView(window, 0).state.pendingWhiteDecisions.length;
+  const after = localView(window, 0).qwixx.pendingWhiteDecisions.length;
   assert(after < before, 'Qwixx: skip action did not advance white-phase decisions');
 
   window.quitLocal();
@@ -271,15 +271,18 @@ async function smokeFlip7(window, document) {
   // Flip7Engine and confirm its bust card animates via moveTo.
   const bustResult = JSON.parse(window.eval(`(function(){
     window.__f7mv.length=0;
-    const E=new Flip7Engine(['P1','P2']);
-    E.s.players[0].nums=[5];E.s.players[0].tableau=[{id:'x5',kind:'num',v:5}];
-    E.s.current=0;E.s.players[0].status='active';
-    E.s.deck.push({id:'dup5',kind:'num',v:5}); // next draw duplicates the 5 → bust
-    E.apply(0,{action:'hit'});
+    // Drive the rigged scenario through the SHARED rules engine (window.GameModules),
+    // the same module the server runs — there is no separate client engine anymore.
+    const M=window.GameModules.flip7;
+    const st=M.create(['P1','P2']);
+    st.players[0].nums=[5];st.players[0].tableau=[{id:'x5',kind:'num',v:5}];
+    st.current=0;st.players[0].status='active';
+    st.deck.push({id:'dup5',kind:'num',v:5}); // next draw duplicates the 5 → bust
+    M.applyAction(st,0,{action:'hit'});
     window._flip7ResetSeq && window._flip7ResetSeq();
-    const v=E.viewFor(0);window._renderView=v;
+    const v=M.viewFor(st,0);window._renderView=v;
     GameShell.render(v, window.GameClients['flip7']);
-    return JSON.stringify({status:E.s.players[0].status});
+    return JSON.stringify({status:st.players[0].status});
   })()`));
   assert(bustResult.status === 'busted', 'Flip7: rigged bust scenario did not bust as expected');
   await sleep(2400); // let the bust card fly + bust reaction play
@@ -298,13 +301,14 @@ async function smokeFlip7(window, document) {
   // ── Second Chance: duplicate flies in, then it + the 2nd-chance card go to the
   //    discard pile; the engine discard grows by 2. ──
   const scResult = JSON.parse(window.eval(`(function(){
-    const E=new Flip7Engine(['P1','P2']);
-    E.s.players[0].nums=[5];E.s.players[0].second=true;
-    E.s.players[0].tableau=[{id:'x5',kind:'num',v:5},{id:'sc',kind:'act',v:'second'}];
-    E.s.current=0;E.s.discard=[];
-    E.s.deck.push({id:'dup5b',kind:'num',v:5});
-    E.apply(0,{action:'hit'});
-    return JSON.stringify({second:E.s.players[0].second, discardLen:E.s.discard.length, discardKinds:E.s.discard.map(c=>c.kind+':'+c.v)});
+    const M=window.GameModules.flip7;
+    const st=M.create(['P1','P2']);
+    st.players[0].nums=[5];st.players[0].secondChance=true;
+    st.players[0].tableau=[{id:'x5',kind:'num',v:5},{id:'sc',kind:'act',v:'second'}];
+    st.current=0;st.discard=[];
+    st.deck.push({id:'dup5b',kind:'num',v:5});
+    M.applyAction(st,0,{action:'hit'});
+    return JSON.stringify({second:st.players[0].secondChance, discardLen:st.discard.length, discardKinds:st.discard.map(c=>c.kind+':'+c.v)});
   })()`));
   assert(scResult.second === false, 'Flip7: second chance was not consumed');
   assert(scResult.discardLen === 2, 'Flip7: second-chance should discard the duplicate + the 2nd-chance card (got ' + JSON.stringify(scResult.discardKinds) + ')');
@@ -316,7 +320,10 @@ async function smokeFlip7(window, document) {
   // does not change when it lands on the pile.
   assert(f7src.includes("cardEl(kind,top.v);el.classList.add('f7-discard-card')"), 'Flip7: discard top should render via cardEl (real card), not a bare span');
   // Flip 7 force-ends the round for everyone (active players force-stay & bank).
-  assert(f7src.includes('_forceEndRoundOnFlip7'), 'Flip7: a Flip 7 must force-end the round for all active players (client engine)');
+  // This rule now lives ONCE, in the shared rules engine (server GameModule that
+  // is bundled into the browser), not in a duplicated client engine.
+  const gameModulesSrc = readFileSync(new URL('../public/js/00-game-modules.js', import.meta.url), 'utf8');
+  assert(gameModulesSrc.includes('forceEndRoundOnFlip7'), 'Flip7: a Flip 7 must force-end the round for all active players (shared rules engine)');
 
   // There is now ONE card system: CardManager. The legacy layers (flyCard,
   // CardMotion, Card, CardEffects) have been removed — assert they are gone and
@@ -370,11 +377,11 @@ async function smokeBotFlows(window, document) {
   window.startLocalGame();
   await sleep(1200);
   view = localView(window, 0);
-  assert(view.state.pendingWhiteDecisions.includes(1), 'Qwixx bot acted before the dice were revealed');
+  assert(view.qwixx.pendingWhiteDecisions.includes(1), 'Qwixx bot acted before the dice were revealed');
   document.getElementById('qwixxThrowBtn').onclick();
   await sleep(1600);
   view = localView(window, 0);
-  assert(!view.state.pendingWhiteDecisions.includes(1), 'Qwixx bot did not resolve its white-phase choice after the throw');
+  assert(!view.qwixx.pendingWhiteDecisions.includes(1), 'Qwixx bot did not resolve its white-phase choice after the throw');
   window.quitLocal();
   await sleep(50);
 
