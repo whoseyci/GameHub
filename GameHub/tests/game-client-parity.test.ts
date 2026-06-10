@@ -15,7 +15,9 @@ const indexHtml = pub("js/../index.html");
 const topJs = readdirSync(new URL("../public/js", import.meta.url)).filter((f) => f.endsWith(".js")).map((f) => `js/${f}`);
 let gamesJs: string[] = [];
 try { gamesJs = readdirSync(new URL("../public/js/games", import.meta.url)).filter((f) => f.endsWith(".js")).map((f) => `js/games/${f}`); } catch { /* none */ }
-const clientJs = [...topJs, ...gamesJs]
+let botsJs: string[] = [];
+try { botsJs = readdirSync(new URL("../public/js/bots", import.meta.url)).filter((f) => f.endsWith(".js")).map((f) => `js/bots/${f}`); } catch { /* none */ }
+const clientJs = [...topJs, ...gamesJs, ...botsJs]
   .map((rel) => pub(rel))
   .join("\n");
 
@@ -38,9 +40,29 @@ describe("server game ↔ client parity", () => {
       it("registers rule text (GameRules)", () => {
         expect(registersWith("GameRules")).toBe(true);
       });
-      it("is present in the hardcoded fallback catalogue", () => {
+      it("is present in the client catalogue bundle (single source of truth)", () => {
+        // The catalogue is no longer hand-maintained in 00-core.js; it is derived
+        // from the SAME registry the server uses, bundled into the browser. So a
+        // registered game must appear in the generated bundle, and 00-core must
+        // build `catalogue` from window.GameCatalogue (not a hardcoded array).
+        const bundle = pub("js/00-game-modules.js");
         const re = new RegExp(`id\\s*:\\s*['"]${id}['"]`);
-        expect(re.test(core)).toBe(true);
+        expect(re.test(bundle)).toBe(true);
+        expect(core.includes("window.GameCatalogue")).toBe(true);
+      });
+      it("if it advertises hasBots, a BotDriver strategy is registered + its bot script is loaded", () => {
+        const hasBots = GAMES[id].meta.features?.hasBots === true;
+        if (!hasBots) return; // games without bots need no strategy
+        // A strategy registration: BotDriver.register('<id>', …) somewhere in client JS.
+        const registered = new RegExp(`BotDriver\\.register\\(\\s*['"]${id}['"]`).test(clientJs);
+        expect(registered, `hasBots=true for "${id}" but no BotDriver.register('${id}') found`).toBe(true);
+        // And the bot script must actually be loaded by the page.
+        const loadedScripts = [...indexHtml.matchAll(/<script\s+src="\/js\/([^"]+)"/g)].map((m) => m[1]);
+        const botLoaded = loadedScripts.some((rel) => {
+          try { return new RegExp(`BotDriver\\.register\\(\\s*['"]${id}['"]`).test(pub(`js/${rel}`)); }
+          catch { return false; }
+        });
+        expect(botLoaded, `bot strategy for "${id}" exists but its script is not loaded by index.html`).toBe(true);
       });
       it("its client script is loaded by index.html (or via js/games/)", () => {
         // Built-ins are 02/03/04-*.js; scaffolded games load /js/games/<id>.js.

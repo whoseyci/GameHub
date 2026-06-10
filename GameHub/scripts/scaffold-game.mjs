@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
+import { execSync } from 'node:child_process';
 
 const args = Object.fromEntries(process.argv.slice(2).map((arg) => {
   const m = arg.match(/^--([^=]+)=(.*)$/);
@@ -26,9 +27,10 @@ const serverPath = `${gameDir}/server.ts`;
 const indexPath = `${gameDir}/index.ts`;
 const compatPath = `src/games/${id}.ts`;
 const clientPath = `public/js/games/${id}.js`;
+const botPath = `public/js/bots/${id}.js`;
 const testPath = `tests/${id}.test.ts`;
 const sampleNames = Array.from({ length: Math.max(min, 2) }, (_, i) => JSON.stringify(`P${i + 1}`)).join(', ');
-for (const path of [metaPath, serverPath, indexPath, compatPath, clientPath, testPath]) {
+for (const path of [metaPath, serverPath, indexPath, compatPath, clientPath, botPath, testPath]) {
   if (existsSync(path)) throw new Error(`${path} already exists`);
   mkdirSync(dirname(path), { recursive: true });
 }
@@ -243,6 +245,47 @@ describe("${name}", () => {
 });
 `);
 
+// Bot strategy stub (registered with BotDriver). hasBots ⇒ a strategy MUST exist
+// (enforced by the parity test). This stub plays the first legal-looking action and
+// reads the namespaced game view (view.${id}); flesh out chooseFor() for real play.
+writeFileSync(botPath, `/**
+ * ${name} bot strategies — registered with BotDriver.
+ * The driver calls choose() for the acting seat; reads the namespaced view.${id}.
+ * TODO: implement real easy/medium/hard logic. This stub just ends the turn / passes.
+ */
+const ${pascal}Bots = (() => {
+  function chooseFor(view, seat, difficulty) {
+    const s = view['${id}'];
+    if (!s || view.over) return null;
+    // TODO: return a valid action object, e.g. { action: 'play', index: 0, target: 0 }.
+    // Returning null means "no move" — replace this with the game's first legal action.
+    return null;
+  }
+
+  BotDriver.register('${id}', {
+    choose(view, seat, difficulty) { return chooseFor(view, seat, difficulty); },
+    needsBot(view) {
+      const st = view.state; return !!st && !view.over && st.currentSeat === seat;
+    },
+    getActingSeat(view) {
+      const st = view.state; return (st && !view.over) ? st.currentSeat : -1;
+    },
+  });
+
+  return { chooseFor };
+})();
+`);
+
+// Load the bot script from index.html (after the driver, before bots-init).
+{
+  let html2 = readFileSync('public/index.html', 'utf8');
+  const botTag = `<script src="/js/bots/${id}.js"></script>\n`;
+  if (!html2.includes(botTag)) {
+    html2 = html2.replace('<script src="/js/05-bots-init.js"></script>', `${botTag}<script src="/js/05-bots-init.js"></script>`);
+    writeFileSync('public/index.html', html2);
+  }
+}
+
 // Register in the game registry
 let registry = readFileSync('src/games/registry.ts', 'utf8');
 registry = registry.replace('import { Qwixx } from "./qwixx/server";\n', `import { Qwixx } from "./qwixx/server";\nimport { ${pascal} } from "./${id}/server";\n`);
@@ -257,8 +300,18 @@ if (!html.includes(scriptTag)) {
   writeFileSync('public/index.html', html);
 }
 
+// Rebuild the shared rules bundle so the new game is immediately available to the
+// browser (catalogue entry + generic LocalEngine for offline play). The catalogue
+// and local engine are derived from the registry — no hand-maintained list to edit.
+try {
+  execSync("node scripts/build-client-games.mjs", { stdio: "inherit" });
+} catch {
+  console.warn("⚠️  Could not rebuild the client-games bundle; run `npm run build:client-games` manually.");
+}
+
 console.log(`✅ Scaffolded ${name} (${id}). Next:`);
 console.log(`  1. Implement server/meta in ${serverPath} and ${metaPath}`);
 console.log(`  2. Implement UI + rules in ${clientPath}`);
-console.log(`  3. Expand tests in ${testPath}`);
-console.log(`  4. Run npm run validate`);
+console.log(`  3. Add a bot strategy in ${botPath} (already wired into index.html)`);
+console.log(`  4. Expand tests in ${testPath}`);
+console.log(`  5. Run npm run build:client-games && npm run validate`);

@@ -8,7 +8,7 @@
    shape as Skyjo below. The hub never needs to change.
    ==================================================================== */
 const PARTYKIT_HOST = location.host; // served by the same Worker
-const BUILD_VERSION = "v37-shared-rules-engine"; // bump on each change; shown on the menu
+const BUILD_VERSION = "v38-single-catalogue-bot-scaffold"; // bump on each change; shown on the menu
 
 const $=id=>document.getElementById(id);
 function esc(v){return String(v ?? '').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));}
@@ -615,13 +615,15 @@ const GameShell=(()=>{
   return {render,unmount,clearGlobal,renderTable,focus:(opts)=>SeatModel.resolve(opts)};
 })();
 
-/* ====================== CATALOGUE (defaults; server confirms) ====================== */
-catalogue=[
-  {id:'skyjo',name:'Skyjo',minPlayers:2,maxPlayers:8,description:'Lowest score wins.',emoji:'🃏'},
-  {id:'flip7',name:'Flip 7',minPlayers:2,maxPlayers:8,description:'Push your luck to 200.',emoji:'🎴'},
-  {id:'qwixx',name:'Qwixx',minPlayers:2,maxPlayers:8,description:'Dice rolling strategy game.',emoji:'🎲'},
-  {id:'schotten',name:'Schotten Totten',minPlayers:2,maxPlayers:2,description:'Win border stones with the best formations.',emoji:'🪨'},
-];
+/* ====================== CATALOGUE (single source of truth) ======================
+   The catalogue comes from the SAME registry the server uses, bundled into the
+   browser by 00-game-modules.js (loaded before this file). No hand-maintained
+   fallback list to drift — adding a game to src/games/registry.ts is enough. The
+   server still re-confirms its catalogue over the wire when you join a room. */
+catalogue = (window.GameCatalogue || []).map(g => ({
+  id: g.id, name: g.name, minPlayers: g.minPlayers, maxPlayers: g.maxPlayers,
+  description: g.description, emoji: g.emoji, features: g.features,
+}));
 
 /* ---- Rulebooks (accessible from menu, pickers, and inside a game) ---- */
 function openRules(gameId){
