@@ -8,7 +8,7 @@
    shape as Skyjo below. The hub never needs to change.
    ==================================================================== */
 const PARTYKIT_HOST = location.host; // served by the same Worker
-const BUILD_VERSION = "v33-permanent-discard-no-transient"; // bump on each change; shown on the menu
+const BUILD_VERSION = "v34-skyjo-anim-fixes"; // bump on each change; shown on the menu
 
 const $=id=>document.getElementById(id);
 function esc(v){return String(v ?? '').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));}
@@ -50,7 +50,15 @@ const Kit=(()=>{
   //   • flip(id, faceUp) / pin / unpin / sync / reconcile / clear / etc.
   // ─────────────────────────────────────────────────────────────────────────
   function cardColor(v){if(v<0)return'#4338ca';if(v===0)return'#0ea5e9';if(v<=4)return'#22c55e';if(v<=8)return'#eab308';return'#ef4444';}
-  function floatText(boardEl,text,color){if(!boardEl)return;const f=document.createElement('div');f.className='floating-text';f.style.color=color;f.textContent=text;boardEl.appendChild(f);setTimeout(()=>f.remove(),1500);}
+  function floatText(boardEl,text,color){
+    // Card overlays are position:fixed at the body level (z-index up to 1000), so
+    // popup text must also be fixed at the body level ABOVE them to never render
+    // behind a card. Position it over the given board element's center.
+    const f=document.createElement('div');f.className='floating-text floating-text-fixed';f.style.color=color;f.textContent=text;
+    const r=boardEl?boardEl.getBoundingClientRect():{left:innerWidth/2-60,top:innerHeight*0.4,width:120,height:0};
+    f.style.left=(r.left+r.width/2)+'px';f.style.top=(r.top+Math.max(0,r.height*0.35))+'px';
+    document.body.appendChild(f);setTimeout(()=>f.remove(),1500);
+  }
   function turnBanner(text,mine){const b=document.createElement('div');b.className='turn-banner';b.textContent=text;b.style.color=mine?'#10b981':'#60a5fa';document.body.appendChild(b);setTimeout(()=>b.remove(),1700);}
   function dealCascade(){
     const cards=document.querySelectorAll('#mainBoardsContainer .board-card, #miniBoardsContainer .board-card');
@@ -403,6 +411,19 @@ const Kit=(()=>{
         await sleep(210);
       }
     }
+    // Rename a card's id in place (keeps the SAME overlay element, anchor, and
+    // hidden state). Lets a moving card "become" a permanent slot/pile card after
+    // it lands — no destroy/recreate, so it stays visible with no gap. If newId is
+    // already taken, that card is destroyed first.
+    function rename(oldId,newId,location){
+      const c=cards.get(oldId);if(!c||oldId===newId)return;
+      if(cards.has(newId))destroy(newId);
+      cards.delete(oldId);
+      c.id=newId;
+      if(c.overlayEl)c.overlayEl.dataset.cmId=newId;
+      if(location)c.location={...location};
+      cards.set(newId,c);
+    }
     function clear(prefix=''){for(const id of [...cards.keys()])if(!prefix||id.startsWith(prefix))destroy(id);}
     function reconcile(prefix,activeIds){const keep=new Set(activeIds||[]);for(const id of [...cards.keys()])if(id.startsWith(prefix)&&!keep.has(id))destroy(id);}
     function verifyInvariants(){
@@ -457,7 +478,7 @@ const Kit=(()=>{
       for(let i=0;i<cards.length;i++){const el=cards[i];if(!el||!discardEl)continue;await flyTransient(el,discardEl,{render:render?()=>render():null,value,color,spin:true,duration:560,land:false,hideSource:true});await sleep(60);}
       for(const el of cards){if(el){el.style.transition='transform 180ms var(--spring-soft)';el.style.transform='';}}
     }
-    return {create,get,has,ids,inZone,destroy,pin,unpin,sync,moveTo,flyTransient,flip:flipCard,revealEl,triplet,clear,reconcile,renderCard,verifyInvariants};
+    return {create,get,has,ids,inZone,destroy,pin,unpin,sync,moveTo,flyTransient,flip:flipCard,revealEl,triplet,rename,clear,reconcile,renderCard,verifyInvariants};
   })();
 
   // Dev-mode invariant guard. Off by default; enable in the console with

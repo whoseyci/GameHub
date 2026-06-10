@@ -371,14 +371,15 @@ describe("Animation Pipeline Invariants", () => {
     }
   });
 
-  it("skyjo:held cleanup — destroy is called after swap and discard_drawn in source", () => {
+  it("skyjo:held becomes a permanent card on landing (rename, not destroy)", () => {
     const skyjoSource = readFileSync(new URL("../public/js/03-skyjo.js", import.meta.url), "utf8");
 
-    // Verify swap path calls destroy('skyjo:held') via CardManager
-    expect(skyjoSource).toContain("Kit.CardManager.destroy('skyjo:held')");
-    // Verify draw paths call pin() to position card
+    // The held card is RENAMED into its destination (slot or discard) so the new
+    // card stays visible immediately — it is no longer destroyed-and-left-hidden.
+    expect(skyjoSource).toContain("Kit.CardManager.rename('skyjo:held'");
+    expect(skyjoSource).not.toContain("Kit.CardManager.destroy('skyjo:held')");
+    // Draw paths still pin() to position the card.
     expect(skyjoSource).toContain("Kit.CardManager.pin('skyjo:held'");
-    // Verify wrapper visibility is conditional on manager state
     expect(skyjoSource).toContain("Kit.CardManager.has('skyjo:held')");
   });
 });
@@ -453,7 +454,7 @@ describe("CardManager: permanent card system invariants", () => {
     expect(flip7Source).not.toContain("function dealTravel");
   });
 
-  it("Skyjo held card uses CardManager lifecycle: create → moveTo → pin → destroy", () => {
+  it("Skyjo held card uses CardManager lifecycle: create → moveTo → pin → rename", () => {
     const skyjoSource = readFileSync(new URL("../public/js/03-skyjo.js", import.meta.url), "utf8");
     // Create held card
     expect(skyjoSource).toContain("Kit.CardManager.create({kind:'skyjo'");
@@ -461,8 +462,8 @@ describe("CardManager: permanent card system invariants", () => {
     expect(skyjoSource).toContain("Kit.CardManager.moveTo('skyjo:held'");
     // Pin at held card position
     expect(skyjoSource).toContain("Kit.CardManager.pin('skyjo:held'");
-    // Destroy after swap/discard
-    expect(skyjoSource).toContain("Kit.CardManager.destroy('skyjo:held')");
+    // After landing, the held card is RENAMED into its slot/discard (kept, not destroyed)
+    expect(skyjoSource).toContain("Kit.CardManager.rename('skyjo:held'");
     // Board cards pinned via syncSkyjoCards
     expect(skyjoSource).toContain("Kit.CardManager.pin(id,anchor");
     expect(skyjoSource).toContain("Kit.CardManager.reconcile('skyjo:table:'");

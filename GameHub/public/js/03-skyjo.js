@@ -11,14 +11,9 @@
   function skyjoVisual(c){const el=document.createElement('div');if(c.cleared)el.className='board-card cleared';else if(c.revealed){el.className='board-card revealed svg-card';el.innerHTML=skyjoSvg('front',c.value,C(c.value));el.style.color=C(c.value);}else{el.className='board-card face-down svg-card';el.innerHTML=skyjoSvg('back');}return el;}
   function skyjoCardId(s,pi,ci){return `skyjo:table:r${s.round}:p${pi}:c${ci}`;}
   // The discard pile is a PERMANENT card (id 'skyjo:discard') pinned to #uiDiscard.
-  // Any card that goes to the discard is the REAL moving card — we fly it onto the
-  // pile and adopt it AS the discard's top (no transient throwaway). The previous
-  // discard top is destroyed as the new one lands on it.
-  function setDiscardRenderer(value){
-    if(!Kit.CardManager.has('skyjo:discard')){
-      Kit.CardManager.create({kind:'skyjo',value},{zone:'discard'},{id:'skyjo:discard',renderer:()=>skyjoVisual({revealed:true,cleared:false,value}),faceUp:true});
-    }else{const c=Kit.CardManager.get('skyjo:discard');if(c)c.renderer=()=>skyjoVisual({revealed:true,cleared:false,value});}
-  }
+  // A card that goes to the discard is the REAL moving card — we fly it onto the
+  // pile and rename it AS the discard's top (no transient throwaway; the previous
+  // top is replaced by rename()).
   // Fly an existing managed card (by id) onto the discard pile, where it BECOMES
   // the permanent discard top. The old discard card is replaced. No clones.
   // Clear a column triplet by flying the THREE real board cards to the discard
@@ -26,29 +21,44 @@
   async function clearTripletToDiscard(s,player,indices,value){
     if(boardEl(player))Kit.floatText(boardEl(player),'Triplet!','#eab308');
     SFX.triplet();
-    for(let k=0;k<indices.length;k++){
-      const ci=indices[k];
+    const t=Date.now();
+    // Adopt all three real board cards under moving ids, pinned at their slots.
+    const moveIds=indices.map((ci,k)=>{
       const slotId=skyjoCardId(s,player,ci);
-      const moveId='skyjo:trip:'+player+':'+ci+':'+Date.now();
+      const moveId='skyjo:trip'+k+':'+player+':'+ci+':'+t;
       const old=Kit.CardManager.get(slotId);
       Kit.CardManager.create({kind:'skyjo',value},{zone:'transit'},{id:moveId,renderer:()=>skyjoVisual({revealed:true,cleared:false,value}),faceUp:true});
       if(old&&old.anchor)Kit.CardManager.pin(moveId,old.anchor,{hideAnchor:false,updateContent:true});
       if(Kit.CardManager.has(slotId))Kit.CardManager.destroy(slotId);
-      await flyCardToDiscard(moveId,value,{spin:true,duration:520});
-      await sleep(60);
+      return moveId;
+    });
+    // 1) Shove them together into a tilted stack at the first card's anchor.
+    const stackAnchor=document.querySelector(`[data-card-reg="${skyjoCardId(s,player,indices[0])}"]`)||cardAt(player,indices[0]);
+    if(stackAnchor){
+      await Promise.all(moveIds.map((id,k)=>k===0
+        ? Promise.resolve()
+        : Kit.CardManager.moveTo(id,stackAnchor,{duration:240,arc:18,land:false,hideTarget:false,toLocation:{zone:'transit'}})));
+      // tilt the stacked overlays for a "gathered pile" look
+      moveIds.forEach((id,k)=>{const c=Kit.CardManager.get(id);if(c&&c.overlayEl){c.overlayEl.style.zIndex=String(1000+k);c.overlayEl.style.transition='transform .15s var(--spring-soft)';c.overlayEl.style.transform=`rotate(${(k-1)*7}deg)`;}});
+      await sleep(170);
     }
+    // 2) Fly the whole stack to the discard together; the last becomes the top.
+    const disc=$('uiDiscard');
+    await Promise.all(moveIds.map((id,k)=>{
+      const c=Kit.CardManager.get(id);if(c)c.renderer=()=>skyjoVisual({revealed:true,cleared:false,value});
+      return Kit.CardManager.moveTo(id,disc,{duration:480,spin:true,land:false,hideTarget:true,toLocation:{zone:'discard'}});
+    }));
+    // Keep the top card as the permanent discard; remove the under-cards.
+    moveIds.forEach((id,k)=>{ if(k===moveIds.length-1) Kit.CardManager.rename(id,'skyjo:discard',{zone:'discard'}); else if(Kit.CardManager.has(id)) Kit.CardManager.destroy(id); });
   }
   async function flyCardToDiscard(movingId,value,opts={}){
     const disc=$('uiDiscard');
-    // Retire the old discard top so the incoming card becomes the single top.
-    if(Kit.CardManager.has('skyjo:discard'))Kit.CardManager.destroy('skyjo:discard');
     const c=Kit.CardManager.get(movingId);
     if(c)c.renderer=()=>skyjoVisual({revealed:true,cleared:false,value});
     await Kit.CardManager.moveTo(movingId,disc,{duration:opts.duration??520,spin:!!opts.spin,startFaceDown:!!opts.startFaceDown,revealMidway:!!opts.revealMidway,land:false,hideTarget:true,toLocation:{zone:'discard'}});
-    // Adopt the landed card AS the permanent discard top (rename id by re-creating).
-    Kit.CardManager.destroy(movingId);
-    setDiscardRenderer(value);
-    Kit.CardManager.pin('skyjo:discard',disc,{hideAnchor:false,updateContent:true});
+    // The landed card BECOMES the permanent discard top (rename — keeps the same
+    // overlay, no destroy/recreate gap). Any previous top is replaced by rename().
+    Kit.CardManager.rename(movingId,'skyjo:discard',{zone:'discard'});
   }
   async function revealSkyjoRegistryCard(id,value){
     const c=Kit.CardManager.get(id);
@@ -274,7 +284,9 @@
         const heldCard=Kit.CardManager.get('skyjo:held');
         if(heldCard)heldCard.renderer=()=>skyjoVisual({revealed:true,cleared:false,value:a.newVal});
         await Kit.CardManager.moveTo('skyjo:held',target,{duration:360,hideTarget:true,land:false,toLocation:{zone:'grid',player:a.player,slot:a.index}});
-        Kit.CardManager.destroy('skyjo:held');
+        // The held card BECOMES the slot's permanent card (rename, don't destroy) so
+        // the new card stays visible immediately — not only after the discard flies.
+        Kit.CardManager.rename('skyjo:held',slotId,{zone:'grid',player:a.player,slot:a.index});
       }
       if(Kit.CardManager.has(oldMovingId)) await flyCardToDiscard(oldMovingId,a.oldVal,{startFaceDown:!a.wasRevealed,revealMidway:!a.wasRevealed,spin:a.wasRevealed,duration:520});
       if(a.diff!=null&&a.diff!==0){const sg=a.diff>0?'+':'';Kit.floatText(boardEl(a.player),sg+a.diff,a.diff>0?'#10b981':'#ef4444');(a.diff>0?SFX.good:SFX.bad)();}
