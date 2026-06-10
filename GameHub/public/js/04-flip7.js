@@ -183,7 +183,10 @@
       mainFrag.appendChild(wrap);
     });
     const top=s.discardTop;
-    const discFace=top?(top.kind==='num'?`<span style="color:${numFace(top.v)}">${esc(top.v)}</span>`:top.kind==='mod'?`<span style="color:#7c4a03">${esc(modText(top.v))}</span>`:`<span>${top.v==='freeze'?'❄':top.v==='flip3'?'F3':'♥'}</span>`):'';
+    // Render the discard's top card as a REAL card (same cardEl component as on
+    // the board / in flight), so a card's design does NOT change when it lands on
+    // the pile. kindFor maps the stored {kind,v} to cardEl's kind argument.
+    const discFace=top?(()=>{const kind=top.kind==='num'?'num':top.kind==='mod'?'mod':'act';const el=cardEl(kind,top.v);el.classList.add('f7-discard-card');return el.outerHTML;})():'';
     const center=s.phase==='PLAY'?`<div id="f7DealerWrap" class="f7-dealer"><div class="pile-label">Dealer</div><div class="f7-piles"><div class="f7-pile-col"><div id="f7Deck" class="f7-deck"><span class="cnt">deck ${esc(s.deckCount)}</span></div></div><div class="f7-pile-col"><div id="f7Discard" class="f7-discard${top?'':' empty'}">${discFace}<span class="cnt">discard ${esc(s.discardCount)}</span></div></div></div></div>`:'';
     GameShell.renderTable({game:'flip7',opponents:miniFrag,center,focus:mainFrag,status:'',topMode:s.phase==='PLAY'?'custom':'hidden',opponentClass:'f7-mini-strip'});
     syncF7Cards();
@@ -620,15 +623,18 @@ class Flip7Engine{
   // Pausable Flip-Three (mirrors server): a nested action card drawn during a
   // flip3 leaves a pendingAction set and we RETURN, keeping the frame on the
   // stack so the flip3 TARGET chooses; _resumeFlip3() continues afterward.
-  _runFlip3(s){const stack=(s.flip3Stack=s.flip3Stack||[]);while(stack.length){const frame=stack[stack.length-1];const t=frame.target,tp=s.players[t];if(!tp||tp.status!=='active'||frame.left<=0){stack.pop();continue;}frame.left--;const r=this._apply(s,t,this._draw(s),{flip3:true});if(r==='bust'||r==='flip7'){this._emit(s,{type:'flip3_abandon',target:t});stack.pop();continue;}if(r==='action'){return;}}s.flip3Left=0;s.flip3Target=-1;}
+  _runFlip3(s){const stack=(s.flip3Stack=s.flip3Stack||[]);while(stack.length){const frame=stack[stack.length-1];const t=frame.target,tp=s.players[t];if(!tp||tp.status!=='active'||frame.left<=0){stack.pop();continue;}frame.left--;const r=this._apply(s,t,this._draw(s),{flip3:true});if(r==='flip7'){this._emit(s,{type:'flip3_abandon',target:t});this._forceEndRoundOnFlip7(s,t);return;}if(r==='bust'){this._emit(s,{type:'flip3_abandon',target:t});stack.pop();continue;}if(r==='action'){return;}}s.flip3Left=0;s.flip3Target=-1;}
   _resumeFlip3(s){if(s.flip3Stack&&s.flip3Stack.length)this._runFlip3(s);}
   _advance(s){if(this._activeCount(s)===0){this._score(s);return;}s.current=this._firstActive(s,(s.current+1)%s.players.length);}
+  // Flip 7! Round ends immediately for everyone: force-stay all other active
+  // players (they bank current points), drop pending/flip3, then score.
+  _forceEndRoundOnFlip7(s,flip7Seat){for(let i=0;i<s.players.length;i++){if(i!==flip7Seat&&s.players[i].status==='active'){s.players[i].status='stayed';this._emit(s,{type:'stay',player:i,forced:true});}}s.pendingAction=null;s.flip3Left=0;s.flip3Target=-1;s.flip3Stack=[];this._score(s);}
   _score(s){let f7=-1;for(const p of s.players){if(p.status==='busted'){p.roundScore=0;continue;}const u=new Set(p.nums).size;let base=p.nums.reduce((a,b)=>a+b,0);if(p.mods.includes('x2'))base*=2;for(const m of p.mods)if(m[0]==='+')base+=parseInt(m.slice(1));if(u>=7){base+=15;f7=1;}p.roundScore=base;p.banked+=base;}for(const p of s.players){if(p.tableau&&p.tableau.length)for(const c of p.tableau)s.discard.push(c);p.tableau=[];}s.pendingAction=null;s.flip3Left=0;s.flip3Target=-1;s.flip3Stack=[];s.phase=s.players.some(p=>p.banked>=200)?'GAME_OVER':'ROUND_END';const mx=Math.max(...s.players.map(p=>p.banked));this._emit(s,{type:s.phase==='GAME_OVER'?'game_over':'round_end',winners:s.players.map((p,i)=>p.banked===mx?i:-1).filter(i=>i>=0),flip7:f7});}
   apply(seat,msg){const s=this.s;s.events=[];if(s.phase!=='PLAY')return;
     if(s.pendingAction){const pa=s.pendingAction;if(msg.action==='target'&&pa.from===seat){const t=msg.target|0;if(!s.players[t]||s.players[t].status!=='active')return;const midFlip3=!!(s.flip3Stack&&s.flip3Stack.length);if(pa.kind==='give_second'){if(t===seat)return;s.pendingAction=null;s.players[t].second=true;if(pa.card)s.players[t].tableau.push(pa.card);this._emit(s,{type:'second_pass',from:seat,to:t,card:pa.card,auto:false});if(midFlip3)this._resumeFlip3(s);if(!s.pendingAction&&!(s.flip3Stack&&s.flip3Stack.length)&&midFlip3)this._advance(s);}else{this._resolve(s,seat,pa.kind,t);if(midFlip3)this._resumeFlip3(s);if(!s.pendingAction&&!(s.flip3Stack&&s.flip3Stack.length))this._advance(s);}}return;}
     if(seat!==s.current||s.players[seat].status!=='active')return;
     if(msg.action==='stay'){s.players[seat].status='stayed';this._emit(s,{type:'stay',player:seat});this._advance(s);}
-    else if(msg.action==='hit'){const prob=this._bustProb(s,seat);const card=this._draw(s);this._emit(s,{type:'draw_start',player:seat,prob});const r=this._apply(s,seat,card,{});if(r==='action'){return;}this._advance(s);}
+    else if(msg.action==='hit'){const prob=this._bustProb(s,seat);const card=this._draw(s);this._emit(s,{type:'draw_start',player:seat,prob});const r=this._apply(s,seat,card,{});if(r==='action'){return;}if(r==='flip7'){this._forceEndRoundOnFlip7(s,seat);return;}this._advance(s);}
   }
   next(){const s=this.s;if(s.phase==='GAME_OVER'){const ns=this._fresh(s.players.map(p=>p.name),s.players.map(()=>0));ns.seq=s.seq+1;this.s=ns;}else{s.events=[];this._startNextRound(s);s.seq+=1;}}
   viewFor(seat){const s=this.s;const over=s.phase==='GAME_OVER';let summary;if(s.phase==='ROUND_END'||s.phase==='GAME_OVER'){const mx=Math.max(...s.players.map(p=>p.banked));summary={rows:s.players.map((p,i)=>({seat:i,name:p.name,score:p.banked,delta:p.roundScore})),winners:s.players.map((p,i)=>p.banked===mx?i:-1).filter(i=>i>=0)};}

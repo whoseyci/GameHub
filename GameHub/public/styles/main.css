@@ -241,7 +241,10 @@
     box-shadow:inset 0 -6px 0 rgba(0,0,0,.18);display:flex;align-items:center;justify-content:center;
     position:relative;font-weight:1000;font-size:2.1rem}
   .f7-discard.empty{opacity:.55}
-  .f7-discard:not(.empty){background:#fff;border-style:solid;border-color:#cbd5e1}
+  /* When holding a card, the pile is just a frame; the real card fills it so its
+     design matches the card that flew in (no visual change on landing). */
+  .f7-discard:not(.empty){background:transparent;border:none;box-shadow:none;padding:0}
+  .f7-discard-card{width:100%;height:100%;font-size:clamp(1.1rem,5vw,1.9rem)}
   .f7-discard .cnt{position:absolute;bottom:-20px;left:50%;transform:translateX(-50%);font-size:.7rem;color:var(--text-dim);font-weight:800;white-space:nowrap}
   .f7-discard.land{animation:landBounce .4s var(--spring)}
   @media(max-width:600px){.overlay-box{padding:22px}.score-table th,.score-table td{padding:8px 6px;font-size:.95rem}}

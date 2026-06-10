@@ -312,6 +312,11 @@ async function smokeFlip7(window, document) {
   // duplicate lingers on the board during the flight.
   assert(f7src.includes('flyPermToDiscard'), 'Flip7: discard should move the real permanent card to the pile');
   assert(!f7src.includes('function flyToDiscard'), 'Flip7: the transient-clone discard helper should be gone (caused a dupe on the board)');
+  // The discard pile's top renders as a REAL card (cardEl), so a card's design
+  // does not change when it lands on the pile.
+  assert(f7src.includes("cardEl(kind,top.v);el.classList.add('f7-discard-card')"), 'Flip7: discard top should render via cardEl (real card), not a bare span');
+  // Flip 7 force-ends the round for everyone (active players force-stay & bank).
+  assert(f7src.includes('_forceEndRoundOnFlip7'), 'Flip7: a Flip 7 must force-end the round for all active players (client engine)');
 
   // Every card-flight path in the animation API must scale UNIFORMLY via
   // transform:scale, never animate raw width/height (which left text oversized

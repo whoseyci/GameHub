@@ -8,7 +8,7 @@
    shape as Skyjo below. The hub never needs to change.
    ==================================================================== */
 const PARTYKIT_HOST = location.host; // served by the same Worker
-const BUILD_VERSION = "v30-uniform-scale-all-flights"; // bump on each change; shown on the menu
+const BUILD_VERSION = "v31-discard-card-flip7-end"; // bump on each change; shown on the menu
 
 const $=id=>document.getElementById(id);
 function esc(v){return String(v ?? '').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));}
@@ -34,6 +34,25 @@ const GameActions={
 
 /* ====================== CARD KIT (shared) ====================== */
 const Kit=(()=>{
+  // ── Card-movement API: which one to use ──────────────────────────────────
+  // Games should use ONLY these two entry points (both now share the same
+  // uniform transform:scale flight, so animations look identical everywhere):
+  //   • Kit.CardManager.moveTo(id, toAnchor, opts)
+  //       The PERMANENT-card system. The overlay IS the card; it has a stable id
+  //       and one location. Use for cards that persist on the table and move
+  //       between real slots (Skyjo held↔board↔discard, Flip 7 deck→slot).
+  //   • Kit.Card.move(id, {from, to, render, ...})
+  //       A TRANSIENT one-off fly of an ad-hoc element between two DOM points
+  //       (e.g. Flip 7 action-card transfers between boards). No permanent
+  //       identity/location bookkeeping.
+  // The rest below are internal plumbing that these two are built on, kept
+  // separate only by layering — NOT meant to be called by games directly:
+  //   flyCard()      → low-level arc tween used by CardMotion.
+  //   CardMotion     → id-tracked wrapper around flyCard (Card.move's simple path).
+  //   Card.move      → public transient API; simple path → CardMotion, custom
+  //                    (render/card) path → its own tween.
+  //   flyToHeld()    → legacy helper, currently unused.
+  // ─────────────────────────────────────────────────────────────────────────
   function cardColor(v){if(v<0)return'#4338ca';if(v===0)return'#0ea5e9';if(v<=4)return'#22c55e';if(v<=8)return'#eab308';return'#ef4444';}
   function floatText(boardEl,text,color){if(!boardEl)return;const f=document.createElement('div');f.className='floating-text';f.style.color=color;f.textContent=text;boardEl.appendChild(f);setTimeout(()=>f.remove(),1500);}
   function turnBanner(text,mine){const b=document.createElement('div');b.className='turn-banner';b.textContent=text;b.style.color=mine?'#10b981':'#60a5fa';document.body.appendChild(b);setTimeout(()=>b.remove(),1700);}

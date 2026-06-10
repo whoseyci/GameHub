@@ -152,6 +152,30 @@ describe("Flip7 rule regressions", () => {
     }
   });
 
+  it("Flip 7 ends the round for EVERYONE (all active players force-stay & bank)", () => {
+    const state: any = Flip7.create(["A", "B", "C"]);
+    state.current = 0;
+    state.players.forEach((p: any) => { p.nums = []; p.mods = []; p.tableau = []; p.secondChance = false; p.status = "active"; });
+    // P0 already has 6 unique; B and C are mid-round and still active.
+    state.players[0].nums = [1, 2, 3, 4, 5, 6];
+    state.players[1].nums = [8]; state.players[1].tableau = [{ id: "b8", kind: "num", v: 8 }];
+    state.players[2].nums = [9]; state.players[2].tableau = [{ id: "c9", kind: "num", v: 9 }];
+    // P0 draws a 7 → 7 unique → Flip 7.
+    state.deck = [{ id: "n7", kind: "num", v: 7 }];
+    Flip7.applyAction(state, 0, { action: "hit" });
+    // Round is over for everyone.
+    expect(state.phase === "ROUND_END" || state.phase === "GAME_OVER").toBe(true);
+    // No one is left active — B and C were force-stayed (not busted).
+    expect(state.players.every((p: any) => p.status !== "active")).toBe(true);
+    expect(state.players[1].status).toBe("stayed");
+    expect(state.players[2].status).toBe("stayed");
+    // B and C banked their current points (8 and 9); they did not lose them.
+    expect(state.players[1].banked).toBe(8);
+    expect(state.players[2].banked).toBe(9);
+    // P0 got the +15 Flip 7 bonus on top of 1..7 = 28 → 43.
+    expect(state.players[0].banked).toBe(28 + 15);
+  });
+
   it("round-end sweeps all board cards into the discard pile", () => {
     const state: any = Flip7.create(["A", "B"]);
     state.current = 0;

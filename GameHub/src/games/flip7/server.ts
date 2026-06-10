@@ -278,7 +278,14 @@ function runFlip3(s: State) {
     if (!tp || tp.status !== "active" || frame.left <= 0) { stack.pop(); continue; }
     frame.left--;
     const r = applyDrawnCard(s, t, draw(s), { flip3: true });
-    if (r === "bust" || r === "flip7") { emit(s, { type: "flip3_abandon", target: t }); stack.pop(); continue; }
+    if (r === "flip7") {
+      // Flip 7 reached during a flip3: abandon the flip3 and END THE ROUND for
+      // everyone (the flip3 target already banks via scoreRound).
+      emit(s, { type: "flip3_abandon", target: t });
+      forceEndRoundOnFlip7(s, t);
+      return;
+    }
+    if (r === "bust") { emit(s, { type: "flip3_abandon", target: t }); stack.pop(); continue; }
     if (r === "action") {
       // A nested freeze / flip3 / give-second was drawn. The pendingAction.from
       // is the flip3 target (t), so THAT player chooses. Pause here — the frame
@@ -299,6 +306,22 @@ function resumeFlip3(s: State) {
 function endTurnAdvance(s: State) {
   if (activeCount(s) === 0) { scoreRound(s); return; }
   s.current = firstActive(s, (s.current + 1) % s.players.length);
+}
+
+// Flip 7! When a player completes 7 unique numbers, the round ends IMMEDIATELY
+// for everyone: all still-active players are force-stayed (they bank their
+// current points), then the round is scored. Any pending action / flip3 is
+// dropped. Returns true so callers know the round is over (don't advance turn).
+function forceEndRoundOnFlip7(s: State, flip7Seat: number): boolean {
+  for (let i = 0; i < s.players.length; i++) {
+    if (i !== flip7Seat && s.players[i].status === "active") {
+      s.players[i].status = "stayed";
+      emit(s, { type: "stay", player: i, forced: true });
+    }
+  }
+  s.pendingAction = null; s.flip3Left = 0; s.flip3Target = -1; s.flip3Stack = [];
+  scoreRound(s);
+  return true;
 }
 
 function scoreRound(s: State) {
@@ -404,6 +427,7 @@ export const Flip7: GameModule = {
       emit(state, { type: "draw_start", player: seat, prob });
       const r = applyDrawnCard(state, seat, card);
       if (r === "action") return;       // wait for target / give choice
+      if (r === "flip7") { forceEndRoundOnFlip7(state, seat); return; } // round ends for all
       endTurnAdvance(state);
     }
   },
