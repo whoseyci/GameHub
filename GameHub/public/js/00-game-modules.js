@@ -1429,6 +1429,14 @@
       }
     }
   }
+  function redactLastAction(la, seat) {
+    if (!la) return la;
+    if (la.type === "end" && la.player !== seat) {
+      const { drew, ...rest } = la;
+      return { ...rest, drew: null };
+    }
+    return la;
+  }
   var Schotten = {
     meta: SchottenMeta,
     create(names) {
@@ -1476,7 +1484,7 @@
         if (st.sides[seat].length === 3) st.fullAt[seat] = ++state.seq;
         else state.seq++;
         state.placedThisTurn = true;
-        state.lastAction = { type: "place", player: seat, stone: stoneIdx, card };
+        state.lastAction = { type: "place", player: seat, stone: stoneIdx, card, seq: state.seq };
         return;
       }
       if (msg.action === "claim") {
@@ -1484,7 +1492,7 @@
         if (!state.stones[stoneIdx]) return;
         if (!canClaim(state, stoneIdx, seat)) return;
         state.stones[stoneIdx].claimedBy = seat;
-        state.lastAction = { type: "claim", player: seat, stone: stoneIdx };
+        state.lastAction = { type: "claim", player: seat, stone: stoneIdx, seq: ++state.seq };
         checkWin(state);
         return;
       }
@@ -1493,7 +1501,7 @@
         if (c) state.players[seat].hand.push(c);
         state.placedThisTurn = false;
         state.current = (state.current + 1) % 2;
-        state.lastAction = { type: "end", player: seat };
+        state.lastAction = { type: "end", player: seat, drew: c ?? null, seq: ++state.seq };
         checkStall(state);
         return;
       }
@@ -1524,7 +1532,9 @@
           deckCount: state.deck.length,
           winner: state.winner,
           viewerSeat: seat,
-          lastAction: state.lastAction,
+          // Per-seat lastAction: the drawn card (`drew`) is private — only the player
+          // who drew it sees its face; everyone else just learns that a draw happened.
+          lastAction: redactLastAction(state.lastAction, seat),
           // Stones: both sides' cards are public (face-up on the table).
           stones: state.stones.map((st) => ({
             claimedBy: st.claimedBy,

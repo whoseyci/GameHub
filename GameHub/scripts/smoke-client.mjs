@@ -485,14 +485,25 @@ async function smokeSchotten(window, document) {
   await sleep(60);
   assert(document.querySelectorAll('.st-side-me.kit-drop').length > 0, 'Schotten: selecting a card should reveal stone drop zones');
   window.eval('document.querySelectorAll(".st-side-me.kit-drop")[0].click()');
-  await sleep(700);
+  // The placed card must actually ANIMATE hand→stone (a moving CardManager overlay
+  // appears mid-flight). This guard has teeth: it fails if the flight is skipped
+  // (e.g. the old bug where lastAction carried no seq so runAnimation always bailed).
+  await sleep(150);
+  assert(document.querySelectorAll('.kit-card-moving').length > 0, 'Schotten: placing a card must animate (no moving overlay = flight skipped)');
+  await sleep(650);
   const afterPlace = localView(window, me).schotten;
   assert(afterPlace.placedThisTurn === true, 'Schotten: placing a card should set placedThisTurn');
   assert(afterPlace.stones[0].sides[me].length === 1, 'Schotten: the card should land on stone 0');
   assert(!!document.querySelector('#stControls .btn'), 'Schotten: End-turn control should appear after placing');
 
-  // End turn → draws a replacement (hand back to 6) and passes.
+  // End turn → draws a replacement; the draw must fly from the visible deck pile
+  // (deck pulses + a moving/transient overlay appears).
   window.GameClients['schotten'].act('end');
+  await sleep(150);
+  assert(
+    !!document.querySelector('#stDeck.deal') || document.querySelectorAll('.kit-card-moving, [data-cm-id^="cm:transit"]').length > 0,
+    'Schotten: drawing on end-turn must animate from the deck'
+  );
   await sleep(700);
   assert(localView(window, me).schotten.players[me].hand.length === 6, 'Schotten: hand should refill to 6 after drawing on end-turn');
 

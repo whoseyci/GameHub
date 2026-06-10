@@ -160,6 +160,18 @@ function checkWin(s: SchottenState): void {
   }
 }
 
+// Personalize lastAction for one viewer: the freshly drawn card on an "end" action
+// is hidden info, so non-drawers receive `drew: null` (they still get the seq/type
+// so their client can react). The drawer keeps the real card to fly deck→hand.
+function redactLastAction(la: any, seat: number): any {
+  if (!la) return la;
+  if (la.type === "end" && la.player !== seat) {
+    const { drew, ...rest } = la;
+    return { ...rest, drew: null };
+  }
+  return la;
+}
+
 export const Schotten: GameModule = {
   meta: SchottenMeta,
 
@@ -210,7 +222,7 @@ export const Schotten: GameModule = {
       st.sides[seat].push(card);
       if (st.sides[seat].length === 3) st.fullAt[seat] = ++state.seq; else state.seq++;
       state.placedThisTurn = true;
-      state.lastAction = { type: "place", player: seat, stone: stoneIdx, card };
+      state.lastAction = { type: "place", player: seat, stone: stoneIdx, card, seq: state.seq };
       return;
     }
 
@@ -220,7 +232,7 @@ export const Schotten: GameModule = {
       if (!state.stones[stoneIdx]) return;
       if (!canClaim(state, stoneIdx, seat)) return;
       state.stones[stoneIdx].claimedBy = seat;
-      state.lastAction = { type: "claim", player: seat, stone: stoneIdx };
+      state.lastAction = { type: "claim", player: seat, stone: stoneIdx, seq: ++state.seq };
       checkWin(state);
       return;
     }
@@ -233,7 +245,9 @@ export const Schotten: GameModule = {
       if (c) state.players[seat].hand.push(c);
       state.placedThisTurn = false;
       state.current = (state.current + 1) % 2;
-      state.lastAction = { type: "end", player: seat };
+      // Expose the drawn card so the client can fly it deck→hand for the player who
+      // drew it (only that player's view should reveal its face — see viewFor).
+      state.lastAction = { type: "end", player: seat, drew: c ?? null, seq: ++state.seq };
       checkStall(state); // deck empty + nobody can place → end by stone count
       return;
     }
@@ -266,7 +280,9 @@ export const Schotten: GameModule = {
         deckCount: state.deck.length,
         winner: state.winner,
         viewerSeat: seat,
-        lastAction: state.lastAction,
+        // Per-seat lastAction: the drawn card (`drew`) is private — only the player
+        // who drew it sees its face; everyone else just learns that a draw happened.
+        lastAction: redactLastAction(state.lastAction, seat),
         // Stones: both sides' cards are public (face-up on the table).
         stones: state.stones.map((st) => ({
           claimedBy: st.claimedBy,

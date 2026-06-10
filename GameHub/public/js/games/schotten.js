@@ -256,15 +256,15 @@
     }
 
     if (a.type === 'end') {
-      // The player drew a card (their hand grew). Fly the NEW card from the deck.
+      // A draw happened. The drawer sees the real card (a.drew, present only in
+      // their own view) and gets a deck→hand flight with a mid-flip reveal. For the
+      // opponent we fly a FACE-DOWN card into the drawer's hand area — truthful
+      // (the value is hidden) and keeps the table feeling alive on every turn.
       const deck = document.getElementById('stDeck');
       if (!deck) return;
-      // The drawn card is the one in my current hand not present before.
-      const myHand = s.players[me]?.hand || [];
-      const before = new Set(prevHandIds || []);
-      const drawn = myHand.find(c => !before.has(c.id));
-      if (drawn) {
-        const id = cmId(drawn);
+      const iDrew = a.player === me && a.drew;
+      if (iDrew) {
+        const id = cmId(a.drew);
         const dest = document.querySelector(`[data-card-reg="${id}"]`);
         if (Kit.CardManager.has(id) && dest) {
           deck.classList.remove('deal'); void deck.offsetWidth; deck.classList.add('deal');
@@ -277,6 +277,16 @@
           });
           if (typeof SFX !== 'undefined' && SFX.flip) SFX.flip();
         }
+      } else {
+        // Opponent drew: a face-down card flies from the deck toward the opponent's
+        // side of the table (we don't render their hand, so aim at the board).
+        const target = document.querySelector('.st-side-opp') || document.querySelector('.st-border') || deck;
+        deck.classList.remove('deal'); void deck.offsetWidth; deck.classList.add('deal');
+        await Kit.CardManager.flyTransient(deck, target, {
+          className: 'kit-card kit-face-down', startFaceDown: true,
+          duration: 480, arc: 40, land: false,
+        });
+        if (typeof SFX !== 'undefined' && SFX.flip) SFX.flip();
       }
       return;
     }
