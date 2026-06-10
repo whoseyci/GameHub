@@ -69,6 +69,58 @@ describe("Flip7 rule regressions", () => {
     expect(state.players[0].secondChance).toBe(false);
     expect(state.events.some((e: any) => e.type === "effect.second_used" && e.actor === 0)).toBe(true);
   });
+
+  it("pausable Flip-Three: a freeze drawn during a flip3 waits for the TARGET to choose (not auto-applied)", () => {
+    const state: any = Flip7.create(["A", "B", "C"]);
+    state.current = 0;
+    state.players.forEach((p: any) => { p.nums = []; p.mods = []; p.tableau = []; p.secondChance = false; p.status = "active"; });
+    // P0 draws a flip3 (→ must target). Then we target P1; P1's first flip3 draw
+    // is a freeze, which must PAUSE for P1 to choose a target, not auto-resolve.
+    state.deck = [
+      // remaining flip3 draws after the freeze (drawn last = popped last)
+      { id: "n2", kind: "num", v: 2 },
+      { id: "n3", kind: "num", v: 3 },
+      { id: "fz", kind: "act", v: "freeze" }, // P1's first flip3 draw (popped first)
+      { id: "f3", kind: "act", v: "flip3" },  // P0's hit (popped first of all)
+    ];
+    state.discard = [];
+
+    // P0 hits → draws flip3 → pending target choice for P0
+    Flip7.applyAction(state, 0, { action: "hit" });
+    expect(state.pendingAction).toBeTruthy();
+    expect(state.pendingAction.kind).toBe("flip3");
+    expect(state.pendingAction.from).toBe(0);
+
+    // P0 targets P1 → flip3 runs on P1; first draw is a freeze → must PAUSE
+    Flip7.applyAction(state, 0, { action: "target", target: 1 });
+    expect(state.pendingAction).toBeTruthy();
+    expect(state.pendingAction.kind).toBe("freeze");
+    expect(state.pendingAction.from).toBe(1); // the FLIP3 TARGET chooses, not P0
+    // The flip3 is suspended mid-sequence (a frame is still on the stack).
+    expect(Array.isArray(state.flip3Stack) && state.flip3Stack.length).toBeTruthy();
+    // Nobody has been frozen yet (freeze not auto-applied).
+    expect(state.players.every((p: any) => p.status === "active")).toBe(true);
+
+    // P1 chooses to freeze P2 → freeze resolves, then the flip3 resumes its
+    // remaining draws (the 3 and 2 land on P1).
+    Flip7.applyAction(state, 1, { action: "target", target: 2 });
+    expect(state.players[2].status).toBe("stayed"); // P2 frozen by P1's choice
+    expect(state.players[1].nums.sort()).toEqual([2, 3]); // flip3 finished its draws
+  });
+
+  it("round-end sweeps all board cards into the discard pile", () => {
+    const state: any = Flip7.create(["A", "B"]);
+    state.current = 0;
+    state.players[0].nums = [1, 2]; state.players[0].tableau = [{ id: "a", kind: "num", v: 1 }, { id: "b", kind: "num", v: 2 }];
+    state.players[1].nums = [3]; state.players[1].tableau = [{ id: "c", kind: "num", v: 3 }];
+    const before = state.discard.length;
+    // Both players stay → round ends → boards swept to discard.
+    Flip7.applyAction(state, 0, { action: "stay" });
+    Flip7.applyAction(state, 1, { action: "stay" });
+    expect(state.phase === "ROUND_END" || state.phase === "GAME_OVER").toBe(true);
+    expect(state.discard.length).toBeGreaterThan(before);
+    expect(state.players.every((p: any) => p.tableau.length === 0)).toBe(true);
+  });
 });
 
 describe("Qwixx rule regressions", () => {

@@ -207,7 +207,7 @@
   /* number cards: white inner number on a coloured face (set inline per value) */
   .f7-card.num{text-shadow:0 1px 2px rgba(0,0,0,.35)}
   /* modifiers: dark card, gold text */
-  .f7-card.mod{background:#1f2937;border-color:#fbbf24;color:#fbbf24;font-size:1.05rem}
+  .f7-card.mod{background:linear-gradient(160deg,#fef3c7,#fcd34d);border-color:#d97706;color:#7c4a03;font-size:1.05rem;text-shadow:0 1px 0 rgba(255,255,255,.5)}
   .f7-card.modx2{background:#1f2937;border-color:#f472b6;color:#f472b6}
   /* Second Chance: full red card, pink heart */
   .f7-card.second{background:#dc2626;border-color:#ef4444;color:#fbcfe8;font-size:1.7rem}
@@ -233,6 +233,17 @@
   .f7-deck .cnt{position:absolute;bottom:-20px;left:50%;transform:translateX(-50%);font-size:.7rem;color:var(--text-dim);font-weight:800;white-space:nowrap}
   .f7-deck.deal{animation:deckNudge .25s var(--spring)}
   @keyframes deckNudge{0%{transform:translateY(0)}50%{transform:translateY(-6px) scale(1.04)}100%{transform:translateY(0)}}
+  /* discard pile beside the deck — cards swept here on bust/second-chance/round-end */
+  .f7-piles{display:flex;align-items:flex-start;gap:clamp(12px,4vw,28px)}
+  .f7-pile-col{display:flex;flex-direction:column;align-items:center}
+  .f7-discard{width:clamp(60px,16vw,84px);height:clamp(85px,22vw,118px);border-radius:14px;
+    background:rgba(255,255,255,.06);border:3px dashed rgba(255,255,255,.22);
+    box-shadow:inset 0 -6px 0 rgba(0,0,0,.18);display:flex;align-items:center;justify-content:center;
+    position:relative;font-weight:1000;font-size:2.1rem}
+  .f7-discard.empty{opacity:.55}
+  .f7-discard:not(.empty){background:#fff;border-style:solid;border-color:#cbd5e1}
+  .f7-discard .cnt{position:absolute;bottom:-20px;left:50%;transform:translateX(-50%);font-size:.7rem;color:var(--text-dim);font-weight:800;white-space:nowrap}
+  .f7-discard.land{animation:landBounce .4s var(--spring)}
   @media(max-width:600px){.overlay-box{padding:22px}.score-table th,.score-table td{padding:8px 6px;font-size:.95rem}}
   @media(min-width:760px){:root{--slot-w:84px;--bcard-w:74px}.top-area{margin-top:18px}}
 

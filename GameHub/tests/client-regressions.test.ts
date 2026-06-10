@@ -80,8 +80,11 @@ describe("shared game shell", () => {
     expect(flip7).toContain("Kit.CardManager.get(permId)");
     expect(flip7).toContain("Kit.CardManager.pin");
     expect(flip7).toContain("Kit.CardManager.sync");
-    // Permanent cards: NO create/destroy in flip7 — syncF7Cards creates via reconcile
-    expect(flip7).not.toContain("Kit.CardManager.destroy(");
+    // Permanent TABLE cards are created/reconciled by syncF7Cards, never
+    // destroyed directly. (Transient discard cards use a separate temp id and
+    // may be destroyed — that's expected.)
+    expect(flip7).not.toContain("Kit.CardManager.destroy('flip7:table:");
+    expect(flip7).not.toContain('Kit.CardManager.destroy(`flip7:table:');
   });
 
   it("migrates built-in games to GameShell.renderTable", () => {

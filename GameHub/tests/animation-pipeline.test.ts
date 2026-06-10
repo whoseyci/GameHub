@@ -445,8 +445,10 @@ describe("CardManager: permanent card system invariants", () => {
     // syncF7Cards pins all cards to real anchors
     expect(flip7Source).toContain("Kit.CardManager.pin(id,anchor,{hideAnchor:false");
     expect(flip7Source).toContain("Kit.CardManager.reconcile('flip7:table:'");
-    // NO destroy in the deal path
-    expect(flip7Source).not.toContain("Kit.CardManager.destroy(");
+    // Permanent TABLE cards are reconciled, never destroyed directly. (Transient
+    // discard/bust cards may be destroyed — that's a different, temporary id.)
+    expect(flip7Source).not.toContain("Kit.CardManager.destroy('flip7:table:");
+    expect(flip7Source).not.toContain('Kit.CardManager.destroy(`flip7:table:');
     // NO ghost, NO dealTravel
     expect(flip7Source).not.toContain("function dealTravel");
   });

@@ -279,12 +279,35 @@ async function smokeFlip7(window, document) {
     window._flip7ResetSeq && window._flip7ResetSeq();
     const v=E.viewFor(0);window._renderView=v;
     GameShell.render(v, window.GameClients['flip7']);
-    return JSON.stringify({status:E.s.players[0].status, bustCard:E.s.players[0].bustCard});
+    return JSON.stringify({status:E.s.players[0].status});
   })()`));
   assert(bustResult.status === 'busted', 'Flip7: rigged bust scenario did not bust as expected');
   await sleep(2400); // let the bust card fly + bust reaction play
   const bustMoves = JSON.parse(window.eval('JSON.stringify(window.__f7mv)')).filter((m) => m.id.indexOf(':bust-') >= 0);
   assert(bustMoves.length > 0, 'Flip7: busting card did not fly to the board before the bust (it must arrive first)');
+  // The card flight must happen BEFORE the busted state is applied. Verified at
+  // the SOURCE level (robust): in the effect.bust handler the flyDealCard() call
+  // precedes the advanceLiveView() that applies the busted state.
+  const f7src = readFileSync(new URL('../public/js/04-flip7.js', import.meta.url), 'utf8');
+  const bustCase = f7src.slice(f7src.indexOf("case 'effect.bust':"), f7src.indexOf("case 'effect.freeze_done':"));
+  const flyIdx = bustCase.indexOf('flyDealCard(bustPermId');
+  const bustApplyIdx = bustCase.indexOf('advanceLiveView(liveView,e)');
+  assert(flyIdx >= 0 && bustApplyIdx >= 0 && flyIdx < bustApplyIdx,
+    'Flip7: bust card must fly (flyDealCard) BEFORE the bust is applied (advanceLiveView) in the handler');
+
+  // ── Second Chance: duplicate flies in, then it + the 2nd-chance card go to the
+  //    discard pile; the engine discard grows by 2. ──
+  const scResult = JSON.parse(window.eval(`(function(){
+    const E=new Flip7Engine(['P1','P2']);
+    E.s.players[0].nums=[5];E.s.players[0].second=true;
+    E.s.players[0].tableau=[{id:'x5',kind:'num',v:5},{id:'sc',kind:'act',v:'second'}];
+    E.s.current=0;E.s.discard=[];
+    E.s.deck.push({id:'dup5b',kind:'num',v:5});
+    E.apply(0,{action:'hit'});
+    return JSON.stringify({second:E.s.players[0].second, discardLen:E.s.discard.length, discardKinds:E.s.discard.map(c=>c.kind+':'+c.v)});
+  })()`));
+  assert(scResult.second === false, 'Flip7: second chance was not consumed');
+  assert(scResult.discardLen === 2, 'Flip7: second-chance should discard the duplicate + the 2nd-chance card (got ' + JSON.stringify(scResult.discardKinds) + ')');
 
   window.quitLocal();
   await sleep(50);

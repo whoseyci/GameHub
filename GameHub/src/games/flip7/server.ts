@@ -63,6 +63,10 @@ interface State extends RngStateHolder {
   round: number;
   pendingAction: null | { kind: "freeze" | "flip3" | "give_second"; from: number; card?: Card };
   flip3Left: number; flip3Target: number;
+  // Stack of suspended Flip-Three frames so nested action cards (freeze / 2nd /
+  // another flip3) drawn DURING a flip3 can PAUSE for the target's choice and
+  // then resume the remaining draws. Each frame = { left, target }.
+  flip3Stack?: Array<{ left: number; target: number }>;
   events: any[];       // replay timeline for the client (cleared each applyAction)
   seq: number;         // monotonically increasing so the client can dedupe
   log: any;            // last event (back-compat / quick checks)
@@ -114,7 +118,7 @@ function fresh(names: string[], banked: number[], rngState = makeSeed()): State 
     schemaVersion: 1,
     rngState: rng.rngState,
     players, deck, discard: [], current: 0, phase: "PLAY", round: 1,
-    pendingAction: null, flip3Left: 0, flip3Target: -1, events: [], seq: 0, log: null,
+    pendingAction: null, flip3Left: 0, flip3Target: -1, flip3Stack: [], events: [], seq: 0, log: null,
   };
   // Opening deal: one NUMBER/MOD card each (action cards reshuffled so nobody
   // starts frozen). No drama events for the opening deal.
@@ -231,38 +235,45 @@ function resolveAction(s: State, from: number, kind: "freeze" | "flip3", target:
     return "ok";
   }
   emit(s, { type: "play_action", kind: "flip3", from, target, card: actionCard, auto });
-  s.flip3Left = 3; s.flip3Target = target;
+  // Push a new Flip-Three frame. Nested flip3s stack so the outer one resumes
+  // after the inner finishes; the runner processes the top frame.
+  (s.flip3Stack ??= []).push({ left: 3, target });
   runFlip3(s);
   return "ok";
 }
 
 // Flip Three: reveal up to 3, ABANDON immediately on bust/flip7. Each draw is its
 // own event so the client can reveal them one slow card at a time.
+//
+// PAUSABLE: if an action card (freeze / flip3 / give-second) is drawn during a
+// flip3, applyDrawnCard leaves a pendingAction set and we RETURN, keeping the
+// current frame on flip3Stack. The flip3 target then chooses (apply() handler),
+// and resumeFlip3() is called to continue the remaining draws. Nested flip3s are
+// handled by stacking frames; the inner finishes before the outer resumes.
 function runFlip3(s: State) {
-  while (s.flip3Left > 0) {
-    const t = s.flip3Target; const tp = s.players[t];
-    if (!tp || tp.status !== "active") break;
-    s.flip3Left--;
+  const stack = (s.flip3Stack ??= []);
+  while (stack.length) {
+    const frame = stack[stack.length - 1];
+    const t = frame.target; const tp = s.players[t];
+    if (!tp || tp.status !== "active" || frame.left <= 0) { stack.pop(); continue; }
+    frame.left--;
     const r = applyDrawnCard(s, t, draw(s), { flip3: true });
-    if (r === "bust" || r === "flip7") { emit(s, { type: "flip3_abandon", target: t }); break; }
+    if (r === "bust" || r === "flip7") { emit(s, { type: "flip3_abandon", target: t }); stack.pop(); continue; }
     if (r === "action") {
-      // nested freeze/flip3/second drawn during the flip-three:
-      const pa = s.pendingAction;
-      if (pa) {
-        if (pa.kind === "give_second") {
-          // can't pause a flip3 for a choice — auto-give or discard.
-          const others = activeOthers(s, pa.from).filter((i) => !s.players[i].secondChance);
-          s.pendingAction = null;
-          if (others.length) { s.players[others[0]].secondChance = true; if (pa.card) s.players[others[0]].tableau.push(pa.card); emit(s, { type: "second_pass", from: pa.from, to: others[0], card: pa.card, auto: true }); }
-          else emit(s, { type: "second_discard", player: pa.from });
-        } else {
-          // freeze/flip3 drawn within flip3 -> apply to self (rules: resolve in order)
-          resolveAction(s, pa.from, pa.kind, pa.from, true);
-        }
-      }
+      // A nested freeze / flip3 / give-second was drawn. The pendingAction.from
+      // is the flip3 target (t), so THAT player chooses. Pause here — the frame
+      // stays on the stack and resumeFlip3() continues after the choice.
+      // (A nested flip3, once chosen, pushes its own frame and runs first.)
+      return;
     }
   }
+  // Mirror legacy fields for any external readers (kept for compatibility).
   s.flip3Left = 0; s.flip3Target = -1;
+}
+
+// Called after a flip3-nested action's target is chosen, to continue the draws.
+function resumeFlip3(s: State) {
+  if (s.flip3Stack && s.flip3Stack.length) runFlip3(s);
 }
 
 function endTurnAdvance(s: State) {
@@ -282,7 +293,13 @@ function scoreRound(s: State) {
     if (u >= 7) { base += 15; flip7Bonus = i; }
     p.roundScore = base; p.banked += base;
   }
-  s.pendingAction = null; s.flip3Left = 0; s.flip3Target = -1;
+  // Round over: sweep every card off the boards into the discard pile. The
+  // discard is only shuffled back into the deck when the deck runs dry (draw()).
+  for (const p of s.players) {
+    if (p.tableau && p.tableau.length) { for (const c of p.tableau) s.discard.push(c); }
+    p.tableau = [];
+  }
+  s.pendingAction = null; s.flip3Left = 0; s.flip3Target = -1; s.flip3Stack = [];
   s.phase = s.players.some((p) => p.banked >= 200) ? "GAME_OVER" : "ROUND_END";
   const max = Math.max(...s.players.map((p) => p.banked));
   emit(s, { type: s.phase === "GAME_OVER" ? "game_over" : "round_end",
@@ -323,16 +340,27 @@ export const Flip7: GameModule = {
       if (msg.action === "target" && pa.from === seat) {
         const t = Math.max(0, Math.min(state.players.length - 1, msg.target | 0));
         if (state.players[t].status !== "active") return; // only active targets
+        // Are we resolving an action that was drawn DURING a flip3? If so, after
+        // the choice we resume the remaining flip3 draws instead of ending the turn.
+        const midFlip3 = !!(state.flip3Stack && state.flip3Stack.length);
         if (pa.kind === "give_second") {
           if (t === seat) return;
           state.pendingAction = null;
           state.players[t].secondChance = true;
           const passCard = pa.card; if (passCard) state.players[t].tableau.push(passCard);
           emit(state, { type: "second_pass", from: seat, to: t, card: passCard, auto: false });
-          // giving a second chance does NOT end your turn — you keep playing
+          if (midFlip3) {
+            resumeFlip3(state);
+            // If the flip3 fully finished (and isn't paused on another choice),
+            // the turn that started it can now advance.
+            if (!state.pendingAction && !(state.flip3Stack && state.flip3Stack.length)) endTurnAdvance(state);
+          }
+          // (outside flip3, giving a second chance does NOT end your turn)
         } else {
           resolveAction(state, seat, pa.kind, t);
-          endTurnAdvance(state);
+          if (midFlip3) resumeFlip3(state);
+          // Advance only when the whole flip3 chain is done and nothing is pending.
+          if (!state.pendingAction && !(state.flip3Stack && state.flip3Stack.length)) endTurnAdvance(state);
         }
       }
       return;
@@ -381,6 +409,7 @@ export const Flip7: GameModule = {
         round: state.round, current: state.current, phase: state.phase,
         pendingAction: state.pendingAction, viewerSeat: seat,
         deckCount: state.deck.length, discardCount: state.discard.length,
+        discardTop: state.discard.length ? { kind: state.discard[state.discard.length - 1].kind, v: state.discard[state.discard.length - 1].v } : null,
         seq: state.seq, events: state.events,
         players: state.players.map((p) => ({
           name: p.name, nums: p.nums, mods: p.mods, second: p.secondChance, cards: orderedTableau(p).map((c) => ({ id: c.id, kind: c.kind, v: c.v })),

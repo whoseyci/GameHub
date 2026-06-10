@@ -79,6 +79,19 @@
     Kit.CardManager.pin(permId,destAnchor,{hideAnchor:false,updateContent:true});
     Kit.CardManager.sync();
   }
+  // Fly a transient card from a source element (a board card overlay, or the
+  // deck) to the discard pile via the animation API, then destroy it. Used when
+  // a card leaves the board (second-chance consume, etc.).
+  async function flyToDiscard(sourceEl, face){
+    const discard=$('f7Discard');
+    if(!discard||!sourceEl)return;
+    const tmpId='flip7:discard:'+Date.now()+':'+Math.random().toString(36).slice(2,6);
+    Kit.CardManager.create({kind:face.kind,value:face.v},{zone:'transit'},{id:tmpId,faceUp:true,renderer:()=>cardEl(face.kind,face.v)});
+    Kit.CardManager.pin(tmpId,sourceEl,{hideAnchor:false,updateContent:true});
+    await Kit.CardManager.moveTo(tmpId,discard,{duration:480,arc:34,spin:true,land:true,toLocation:{zone:'discard'},hideTarget:false});
+    Kit.CardManager.destroy(tmpId);
+    discard.classList.remove('land');void discard.offsetWidth;discard.classList.add('land');
+  }
   function captureF7Layout(){ const m=new Map(); document.querySelectorAll('.f7-focus-board [data-card-reg]').forEach(el=>m.set(el.dataset.cardReg,el.getBoundingClientRect())); return m; }
   function animateF7Layout(before){ document.querySelectorAll('.f7-focus-board [data-card-reg]').forEach(anchor=>{ const a=before.get(anchor.dataset.cardReg); if(!a)return; const b=anchor.getBoundingClientRect(); const dx=a.left-b.left,dy=a.top-b.top; if(Math.abs(dx)+Math.abs(dy)<3)return; const card=Kit.CardManager.get(anchor.dataset.cardReg)?.overlayEl; if(!card)return; card.style.transition='none'; card.style.transform=`translate(${dx}px,${dy}px)`; card.offsetHeight; card.style.transition='transform .34s var(--spring-soft)'; requestAnimationFrame(()=>{card.style.transform='';}); setTimeout(()=>{card.style.transition='';card.style.transform='';},390); }); }
 
@@ -162,7 +175,9 @@
       if(canTarget){wrap.style.cursor='pointer';wrap.style.outline='2px dashed #f59e0b';wrap.onclick=()=>net.spectating?null:act(viewer,{action:'target',target:i});}
       mainFrag.appendChild(wrap);
     });
-    const center=s.phase==='PLAY'?`<div id="f7DealerWrap" class="f7-dealer"><div class="pile-label">Dealer</div><div id="f7Deck" class="f7-deck"><span class="cnt">deck ${esc(s.deckCount)} · out ${esc(s.discardCount)}</span></div></div>`:'';
+    const top=s.discardTop;
+    const discFace=top?(top.kind==='num'?`<span style="color:${numFace(top.v)}">${esc(top.v)}</span>`:top.kind==='mod'?`<span style="color:#7c4a03">${esc(modText(top.v))}</span>`:`<span>${top.v==='freeze'?'❄':top.v==='flip3'?'F3':'♥'}</span>`):'';
+    const center=s.phase==='PLAY'?`<div id="f7DealerWrap" class="f7-dealer"><div class="pile-label">Dealer</div><div class="f7-piles"><div class="f7-pile-col"><div id="f7Deck" class="f7-deck"><span class="cnt">deck ${esc(s.deckCount)}</span></div></div><div class="f7-pile-col"><div id="f7Discard" class="f7-discard${top?'':' empty'}">${discFace}<span class="cnt">discard ${esc(s.discardCount)}</span></div></div></div></div>`:'';
     GameShell.renderTable({game:'flip7',opponents:miniFrag,center,focus:mainFrag,status:'',topMode:s.phase==='PLAY'?'custom':'hidden',opponentClass:'f7-mini-strip'});
     syncF7Cards();
     drawControls(view);
@@ -456,17 +471,29 @@
         await sleep(SPEED.beat*0.45); break;
       }
       case 'effect.bust':{
-        // The engine emits `bust` WITHOUT a preceding `card` event, so the
-        // duplicate card that causes the bust must be dealt here — otherwise the
-        // player appears to bust before the offending card arrives. Apply the
-        // busted state (which renders the bust-cause card anchor), fly that card
-        // in from the deck, THEN play the bust reaction.
+        // The engine emits `bust` WITHOUT a preceding `card` event. Deal the
+        // offending duplicate FIRST (player still shown active) so it visibly
+        // LANDS on the board, and only THEN apply the busted state + reaction.
         if(mode==='local')eventFocus=e.actor;
-        advanceLiveView(liveView,e);
+        const bp=liveView.flip7.players[e.actor];
+        // Temporarily add the duplicate as a normal card so it gets a real anchor
+        // and flies in like any deal. We tag it bust-{value} for a stable id.
+        const dupId=`bust-${e.value}`;
+        const lp=bp; lp.cards=Array.isArray(lp.cards)?lp.cards:[];
+        if(!lp.cards.some(c=>c.id===dupId)) lp.cards=orderCards([...lp.cards,{id:dupId,kind:'num',v:e.value}]);
+        recalcAll(liveView);
         draw(liveView);
-        const bustPermId=`flip7:table:p${e.actor}:bust-${e.value}`;
+        const bustPermId=`flip7:table:p${e.actor}:${dupId}`;
         await flyDealCard(bustPermId,e.actor,cmCardSlot(bustPermId));
         if(!tokenAlive(token)) return;
+        // Remove the temp card from cards before busting: the busted render adds
+        // the same card via its own bust-cause branch (same id), so leaving it in
+        // `cards` would create a duplicate anchor. reconcile keeps the overlay.
+        lp.cards=lp.cards.filter(c=>c.id!==dupId);
+        // NOW apply the bust: mark busted, render busted visuals + the bust-cause
+        // highlight, shake, banner.
+        advanceLiveView(liveView,e);
+        draw(liveView);
         SFX.bad();
         const b=boardOf(e.actor); if(b){b.style.animation='shakeX .5s ease';setTimeout(()=>b&&(b.style.animation=''),520);}
         Kit.turnBanner((liveView.flip7.players[e.actor]?.name||'')+' BUST!',false);
@@ -476,7 +503,37 @@
         advanceLiveView(liveView,e); draw(liveView);
         const b=boardOf(e.target); if(b){b.style.transition='filter .3s';b.style.filter='brightness(1.4) saturate(1.4)';setTimeout(()=>b&&(b.style.filter=''),350);} await sleep(SPEED.beat*0.4); break;
       }
-      case 'effect.second_used':{ advanceLiveView(liveView,e); draw(liveView); SFX.good(); Kit.turnBanner('Second Chance!',true); await sleep(SPEED.beat); break; }
+      case 'effect.second_used':{
+        // The engine emits second_used with NO preceding card event. Deal the
+        // duplicate IN first (so the player sees which card triggered it), then
+        // move BOTH the duplicate and the consumed Second Chance to the discard
+        // pile — so it's clear what happened and why.
+        if(mode==='local')eventFocus=e.actor;
+        const sp=liveView.flip7.players[e.actor];
+        // 1) fly the duplicate in as a temporary card on the board
+        const dupId='second-dup-'+e.seq;
+        sp.cards=Array.isArray(sp.cards)?sp.cards:[];
+        if(!sp.cards.some(c=>c.id===dupId)) sp.cards=orderCards([...sp.cards,{id:dupId,kind:'num',v:e.value}]);
+        recalcAll(liveView); draw(liveView);
+        const dupPerm=`flip7:table:p${e.actor}:${dupId}`;
+        await flyDealCard(dupPerm,e.actor,cmCardSlot(dupPerm)); if(!tokenAlive(token)) return;
+        SFX.good(); Kit.turnBanner('Second Chance!',true);
+        await sleep(SPEED.beat*0.5);
+        // 2) locate the on-board Second Chance card + the duplicate, fly both to discard
+        const secAnchor=document.querySelector(`[data-card-reg^="flip7:table:p${e.actor}:"][data-value="second"]`);
+        const secEl=Kit.CardManager.get(dupPerm)&&secAnchor?(Kit.CardManager.get(secAnchor.dataset.cardReg)?.overlayEl||secAnchor):secAnchor;
+        const dupEl=Kit.CardManager.get(dupPerm)?.overlayEl||document.querySelector(`[data-card-reg="${dupPerm}"]`);
+        await flyToDiscard(dupEl,{kind:'num',v:e.value});
+        if(secEl) await flyToDiscard(secEl,{kind:'act',v:'second'});
+        // 3) now apply state: remove the duplicate temp card + clear second
+        // chance. The temp table card is removed from cards, so the next draw's
+        // reconcile('flip7:table:') cleans up its permanent anchor (no direct
+        // destroy of a table card).
+        sp.cards=sp.cards.filter(c=>c.id!==dupId);
+        advanceLiveView(liveView,e); // sets p.second=false
+        draw(liveView);
+        await sleep(SPEED.beat*0.4); break;
+      }
       case 'effect.flip7':{ advanceLiveView(liveView,e); draw(liveView); SFX.win(); Kit.confetti(); Kit.turnBanner('FLIP 7! +15',true); await sleep(SPEED.beat); break; }
       case 'effect.stay':{ advanceLiveView(liveView,e); draw(liveView); SFX.good(); break; }
       case 'effect.flip3_abandon':{ Kit.turnBanner('Flip 3 abandoned',false); await sleep(SPEED.beat*0.6); break; }
@@ -528,7 +585,7 @@ class Flip7Engine{
   _buildDeck(){const d=[];let q=0;const add=(kind,v)=>d.push({id:'lf7c_'+(q++)+'_'+kind+'_'+String(v).replace(/\W/g,''),kind,v});add('num',0);for(let n=1;n<=12;n++)for(let i=0;i<n;i++)add('num',n);for(const m of['+2','+4','+6','+8','+10','x2'])add('mod',m);for(const a of['freeze','flip3','second'])for(let i=0;i<3;i++)add('act',a);this._sh(d);return d;}
   _sh(d){for(let i=d.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[d[i],d[j]]=[d[j],d[i]];}}
   _emit(s,e){const n=window.normalizeFlip7Event?window.normalizeFlip7Event(e):e;n.seq=++s.seq;s.events.push(n);}
-  _fresh(names,banked){const s={players:names.map((n,i)=>this._newP(n,banked[i]||0)),deck:this._buildDeck(),discard:[],current:0,phase:'PLAY',round:1,pendingAction:null,flip3Left:0,flip3Target:-1,events:[],seq:0};
+  _fresh(names,banked){const s={players:names.map((n,i)=>this._newP(n,banked[i]||0)),deck:this._buildDeck(),discard:[],current:0,phase:'PLAY',round:1,pendingAction:null,flip3Left:0,flip3Target:-1,flip3Stack:[],events:[],seq:0};
     for(let i=0;i<s.players.length;i++){let c=this._draw(s),g=0;while(c.kind==='act'&&g++<200){s.deck.unshift(c);this._sh(s.deck);c=this._draw(s);}this._place(s,i,c);}
     s.current=this._firstActive(s,0);return s;}
   _draw(s){if(!s.deck.length){s.deck=s.discard;s.discard=[];this._sh(s.deck);this._emit(s,{type:'reshuffle'});}return s.deck.pop();}
@@ -545,12 +602,16 @@ class Flip7Engine{
     if(card.kind==='mod'){p.mods.push(card.v);p.tableau.push(card);this._emit(s,{type:'card',player:pi,card,flip3:!!opts.flip3});return'ok';}
     const a=card.v;if(a==='second'){if(!p.second){p.second=true;p.tableau.push(card);this._emit(s,{type:'card',player:pi,card});return'ok';}const others=this._activeOthers(s,pi).filter(i=>!s.players[i].second);if(others.length===0){s.discard.push(card);this._emit(s,{type:'second_discard',player:pi});return'ok';}if(others.length===1){s.players[others[0]].second=true;s.players[others[0]].tableau.push(card);this._emit(s,{type:'second_pass',from:pi,to:others[0],card,auto:true});return'ok';}s.pendingAction={kind:'give_second',from:pi,card};this._emit(s,{type:'await_target',kind:'give_second',from:pi});return'action';}
     p.tableau.push(card);this._emit(s,{type:'action_card',player:pi,kind:a,card});const others=this._activeOthers(s,pi);if(others.length===0){this._resolve(s,pi,a,pi,true);return'ok';}s.pendingAction={kind:a,from:pi,card};this._emit(s,{type:'await_target',kind:a,from:pi});return'action';}
-  _resolve(s,from,kind,target,auto){const tp=s.players[target];const actionCard=(s.pendingAction&&s.pendingAction.card)||this._remTab(s.players[from],c=>c.kind==='act'&&c.v===kind);s.pendingAction=null;if(kind==='freeze'){this._emit(s,{type:'play_action',kind:'freeze',from,target,card:actionCard,auto:!!auto});if(tp.status==='active'){tp.status='stayed';this._emit(s,{type:'freeze_done',target});}return'ok';}this._emit(s,{type:'play_action',kind:'flip3',from,target,card:actionCard,auto:!!auto});s.flip3Left=3;s.flip3Target=target;this._runFlip3(s);return'ok';}
-  _runFlip3(s){while(s.flip3Left>0){const t=s.flip3Target,tp=s.players[t];if(!tp||tp.status!=='active')break;s.flip3Left--;const r=this._apply(s,t,this._draw(s),{flip3:true});if(r==='bust'||r==='flip7'){this._emit(s,{type:'flip3_abandon',target:t});break;}if(r==='action'){const pa=s.pendingAction;if(pa){if(pa.kind==='give_second'){const o=this._activeOthers(s,pa.from).filter(i=>!s.players[i].second);s.pendingAction=null;if(o.length){s.players[o[0]].second=true;if(pa.card)s.players[o[0]].tableau.push(pa.card);this._emit(s,{type:'second_pass',from:pa.from,to:o[0],card:pa.card,auto:true});}else this._emit(s,{type:'second_discard',player:pa.from});}else this._resolve(s,pa.from,pa.kind,pa.from,true);}}}s.flip3Left=0;s.flip3Target=-1;}
+  _resolve(s,from,kind,target,auto){const tp=s.players[target];const actionCard=(s.pendingAction&&s.pendingAction.card)||this._remTab(s.players[from],c=>c.kind==='act'&&c.v===kind);s.pendingAction=null;if(kind==='freeze'){this._emit(s,{type:'play_action',kind:'freeze',from,target,card:actionCard,auto:!!auto});if(tp.status==='active'){tp.status='stayed';this._emit(s,{type:'freeze_done',target});}return'ok';}this._emit(s,{type:'play_action',kind:'flip3',from,target,card:actionCard,auto:!!auto});(s.flip3Stack=s.flip3Stack||[]).push({left:3,target});this._runFlip3(s);return'ok';}
+  // Pausable Flip-Three (mirrors server): a nested action card drawn during a
+  // flip3 leaves a pendingAction set and we RETURN, keeping the frame on the
+  // stack so the flip3 TARGET chooses; _resumeFlip3() continues afterward.
+  _runFlip3(s){const stack=(s.flip3Stack=s.flip3Stack||[]);while(stack.length){const frame=stack[stack.length-1];const t=frame.target,tp=s.players[t];if(!tp||tp.status!=='active'||frame.left<=0){stack.pop();continue;}frame.left--;const r=this._apply(s,t,this._draw(s),{flip3:true});if(r==='bust'||r==='flip7'){this._emit(s,{type:'flip3_abandon',target:t});stack.pop();continue;}if(r==='action'){return;}}s.flip3Left=0;s.flip3Target=-1;}
+  _resumeFlip3(s){if(s.flip3Stack&&s.flip3Stack.length)this._runFlip3(s);}
   _advance(s){if(this._activeCount(s)===0){this._score(s);return;}s.current=this._firstActive(s,(s.current+1)%s.players.length);}
-  _score(s){let f7=-1;for(const p of s.players){if(p.status==='busted'){p.roundScore=0;continue;}const u=new Set(p.nums).size;let base=p.nums.reduce((a,b)=>a+b,0);if(p.mods.includes('x2'))base*=2;for(const m of p.mods)if(m[0]==='+')base+=parseInt(m.slice(1));if(u>=7){base+=15;f7=1;}p.roundScore=base;p.banked+=base;}s.pendingAction=null;s.flip3Left=0;s.flip3Target=-1;s.phase=s.players.some(p=>p.banked>=200)?'GAME_OVER':'ROUND_END';const mx=Math.max(...s.players.map(p=>p.banked));this._emit(s,{type:s.phase==='GAME_OVER'?'game_over':'round_end',winners:s.players.map((p,i)=>p.banked===mx?i:-1).filter(i=>i>=0),flip7:f7});}
+  _score(s){let f7=-1;for(const p of s.players){if(p.status==='busted'){p.roundScore=0;continue;}const u=new Set(p.nums).size;let base=p.nums.reduce((a,b)=>a+b,0);if(p.mods.includes('x2'))base*=2;for(const m of p.mods)if(m[0]==='+')base+=parseInt(m.slice(1));if(u>=7){base+=15;f7=1;}p.roundScore=base;p.banked+=base;}for(const p of s.players){if(p.tableau&&p.tableau.length)for(const c of p.tableau)s.discard.push(c);p.tableau=[];}s.pendingAction=null;s.flip3Left=0;s.flip3Target=-1;s.flip3Stack=[];s.phase=s.players.some(p=>p.banked>=200)?'GAME_OVER':'ROUND_END';const mx=Math.max(...s.players.map(p=>p.banked));this._emit(s,{type:s.phase==='GAME_OVER'?'game_over':'round_end',winners:s.players.map((p,i)=>p.banked===mx?i:-1).filter(i=>i>=0),flip7:f7});}
   apply(seat,msg){const s=this.s;s.events=[];if(s.phase!=='PLAY')return;
-    if(s.pendingAction){const pa=s.pendingAction;if(msg.action==='target'&&pa.from===seat){const t=msg.target|0;if(!s.players[t]||s.players[t].status!=='active')return;if(pa.kind==='give_second'){if(t===seat)return;s.pendingAction=null;s.players[t].second=true;if(pa.card)s.players[t].tableau.push(pa.card);this._emit(s,{type:'second_pass',from:seat,to:t,card:pa.card,auto:false});}else{this._resolve(s,seat,pa.kind,t);this._advance(s);}}return;}
+    if(s.pendingAction){const pa=s.pendingAction;if(msg.action==='target'&&pa.from===seat){const t=msg.target|0;if(!s.players[t]||s.players[t].status!=='active')return;const midFlip3=!!(s.flip3Stack&&s.flip3Stack.length);if(pa.kind==='give_second'){if(t===seat)return;s.pendingAction=null;s.players[t].second=true;if(pa.card)s.players[t].tableau.push(pa.card);this._emit(s,{type:'second_pass',from:seat,to:t,card:pa.card,auto:false});if(midFlip3)this._resumeFlip3(s);if(!s.pendingAction&&!(s.flip3Stack&&s.flip3Stack.length)&&midFlip3)this._advance(s);}else{this._resolve(s,seat,pa.kind,t);if(midFlip3)this._resumeFlip3(s);if(!s.pendingAction&&!(s.flip3Stack&&s.flip3Stack.length))this._advance(s);}}return;}
     if(seat!==s.current||s.players[seat].status!=='active')return;
     if(msg.action==='stay'){s.players[seat].status='stayed';this._emit(s,{type:'stay',player:seat});this._advance(s);}
     else if(msg.action==='hit'){const prob=this._bustProb(s,seat);const card=this._draw(s);this._emit(s,{type:'draw_start',player:seat,prob});const r=this._apply(s,seat,card,{});if(r==='action'){return;}this._advance(s);}
@@ -558,5 +619,6 @@ class Flip7Engine{
   next(){const s=this.s;const over=s.phase==='GAME_OVER';const ns=this._fresh(s.players.map(p=>p.name),over?s.players.map(()=>0):s.players.map(p=>p.banked));ns.seq=s.seq+1;if(!over)ns.round=s.round+1;this.s=ns;}
   viewFor(seat){const s=this.s;const over=s.phase==='GAME_OVER';let summary;if(s.phase==='ROUND_END'||s.phase==='GAME_OVER'){const mx=Math.max(...s.players.map(p=>p.banked));summary={rows:s.players.map((p,i)=>({seat:i,name:p.name,score:p.banked,delta:p.roundScore})),winners:s.players.map((p,i)=>p.banked===mx?i:-1).filter(i=>i>=0)};}
     const live=p=>{if(p.status==='busted')return 0;let b=p.nums.reduce((a,c)=>a+c,0);if(p.mods.includes('x2'))b*=2;for(const m of p.mods)if(m[0]==='+')b+=parseInt(m.slice(1));if(new Set(p.nums).size>=7)b+=15;return b;};
-    return{game:'flip7',phase:s.phase,over,yourSeat:seat,summary,flip7:{round:s.round,current:s.current,phase:s.phase,pendingAction:s.pendingAction,viewerSeat:seat,deckCount:s.deck.length,discardCount:s.discard.length,seq:s.seq,events:s.events,players:s.players.map(p=>({name:p.name,nums:[...p.nums],mods:[...p.mods],second:p.second,cards:this._ordered(p).map(c=>({id:c.id,kind:c.kind,v:c.v})),status:p.status,bustCard:p.bustCard,banked:p.banked,unique:new Set(p.nums).size,live:live(p)}))}};}
+    const dtop=s.discard.length?s.discard[s.discard.length-1]:null;
+    return{game:'flip7',phase:s.phase,over,yourSeat:seat,summary,flip7:{round:s.round,current:s.current,phase:s.phase,pendingAction:s.pendingAction,viewerSeat:seat,deckCount:s.deck.length,discardCount:s.discard.length,discardTop:dtop?{kind:dtop.kind,v:dtop.v}:null,seq:s.seq,events:s.events,players:s.players.map(p=>({name:p.name,nums:[...p.nums],mods:[...p.mods],second:p.second,cards:this._ordered(p).map(c=>({id:c.id,kind:c.kind,v:c.v})),status:p.status,bustCard:p.bustCard,banked:p.banked,unique:new Set(p.nums).size,live:live(p)}))}};}
 }
