@@ -49,6 +49,36 @@
     Kit.CardManager.reconcile('flip7:table:',active);
     requestAnimationFrame(()=>Kit.CardManager.sync());
   }
+  function cmCardSlot(permId){ const c=Kit.CardManager.get(permId); return c&&c.location?c.location.slot:undefined; }
+  // Animate a permanent card flying from the deck to its board slot via the
+  // CardManager animation API: face-down on the deck, a Y-axis FLIP (so it lands
+  // face-up & upright — no upside-down text), revealing its face edge-on midway.
+  async function flyDealCard(permId,seat,slot){
+    const cmCard=Kit.CardManager.get(permId);
+    const deck=$('f7Deck');
+    const destAnchor=document.querySelector(`[data-card-reg="${permId}"]`);
+    if(!cmCard||!deck||!destAnchor)return;
+    // Deck visual pulse as the card leaves the pile.
+    deck.classList.remove('deal');void deck.offsetWidth;deck.classList.add('deal');
+    // Start the card on the deck so the flight originates there.
+    Kit.CardManager.pin(permId,deck,{hideAnchor:false,updateContent:false});
+    await Kit.CardManager.moveTo(permId,destAnchor,{
+      duration:620,
+      arc:46,
+      flip:true,            // rotateY card-flip → always lands face-up & upright
+      startFaceDown:true,
+      backHTML:'<div class="f7-card f7-card-back"><span style="color:#c7d2fe;font-size:1.5rem">\u2726</span></div>',
+      backClass:'f7-card-back',
+      revealMidway:true,
+      revealAt:0.5,         // swap to the face while edge-on (mid-flip)
+      onReveal:()=>SFX.flip(),
+      land:true,
+      toLocation:{zone:'grid',player:Number(seat)||0,slot},
+    });
+    // Re-pin so the permanent card tracks its live anchor after the flight.
+    Kit.CardManager.pin(permId,destAnchor,{hideAnchor:false,updateContent:true});
+    Kit.CardManager.sync();
+  }
   function captureF7Layout(){ const m=new Map(); document.querySelectorAll('.f7-focus-board [data-card-reg]').forEach(el=>m.set(el.dataset.cardReg,el.getBoundingClientRect())); return m; }
   function animateF7Layout(before){ document.querySelectorAll('.f7-focus-board [data-card-reg]').forEach(anchor=>{ const a=before.get(anchor.dataset.cardReg); if(!a)return; const b=anchor.getBoundingClientRect(); const dx=a.left-b.left,dy=a.top-b.top; if(Math.abs(dx)+Math.abs(dy)<3)return; const card=Kit.CardManager.get(anchor.dataset.cardReg)?.overlayEl; if(!card)return; card.style.transition='none'; card.style.transform=`translate(${dx}px,${dy}px)`; card.offsetHeight; card.style.transition='transform .34s var(--spring-soft)'; requestAnimationFrame(()=>{card.style.transform='';}); setTimeout(()=>{card.style.transition='';card.style.transform='';},390); }); }
 
@@ -405,32 +435,8 @@
         const seat=row?.dataset?.f7Seat||e.actor;
         const cardKey=e.card?.id||('card-'+e.seq+'-'+(e.card?.kind||'num')+'-'+(e.card?.v??'?'));
         const permId=`flip7:table:p${seat}:${cardKey}`;
-        const cmCard=Kit.CardManager.get(permId);
-        const deck=$('f7Deck');
-        const destAnchor=document.querySelector(`[data-card-reg="${permId}"]`);
-        if(cmCard&&deck&&destAnchor){
-          // Deck visual pulse as the card leaves the pile.
-          deck.classList.remove('deal');void deck.offsetWidth;deck.classList.add('deal');
-          // Start the card on the deck so the flight originates there.
-          Kit.CardManager.pin(permId,deck,{hideAnchor:false,updateContent:false});
-          await Kit.CardManager.moveTo(permId,destAnchor,{
-            duration:620,
-            arc:46,
-            spin:true,
-            startFaceDown:true,
-            backHTML:'<div class="f7-card f7-card-back"><span style="color:#c7d2fe;font-size:1.5rem">\u2726</span></div>',
-            backClass:'f7-card-back',
-            revealMidway:true,
-            revealAt:0.42,
-            onReveal:()=>SFX.flip(),
-            land:true,
-            toLocation:{zone:'grid',player:Number(seat)||0,slot:cmCard.location?.slot},
-          });
-          if(!tokenAlive(token)) return;
-          // Re-pin so the permanent card tracks its live anchor after the flight.
-          Kit.CardManager.pin(permId,destAnchor,{hideAnchor:false,updateContent:true});
-          Kit.CardManager.sync();
-        }
+        await flyDealCard(permId,seat,cmCardSlot(permId));
+        if(!tokenAlive(token)) return;
         await sleep(SPEED.beat*0.18);
         break;
       }
@@ -450,9 +456,18 @@
         await sleep(SPEED.beat*0.45); break;
       }
       case 'effect.bust':{
-        advanceLiveView(liveView,e);
+        // The engine emits `bust` WITHOUT a preceding `card` event, so the
+        // duplicate card that causes the bust must be dealt here — otherwise the
+        // player appears to bust before the offending card arrives. Apply the
+        // busted state (which renders the bust-cause card anchor), fly that card
+        // in from the deck, THEN play the bust reaction.
         if(mode==='local')eventFocus=e.actor;
-        draw(liveView); SFX.bad();
+        advanceLiveView(liveView,e);
+        draw(liveView);
+        const bustPermId=`flip7:table:p${e.actor}:bust-${e.value}`;
+        await flyDealCard(bustPermId,e.actor,cmCardSlot(bustPermId));
+        if(!tokenAlive(token)) return;
+        SFX.bad();
         const b=boardOf(e.actor); if(b){b.style.animation='shakeX .5s ease';setTimeout(()=>b&&(b.style.animation=''),520);}
         Kit.turnBanner((liveView.flip7.players[e.actor]?.name||'')+' BUST!',false);
         await sleep(SPEED.beat); break;

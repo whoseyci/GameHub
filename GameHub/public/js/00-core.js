@@ -8,7 +8,7 @@
    shape as Skyjo below. The hub never needs to change.
    ==================================================================== */
 const PARTYKIT_HOST = location.host; // served by the same Worker
-const BUILD_VERSION = "v25-flip7-deal-anim-fix"; // bump on each change; shown on the menu
+const BUILD_VERSION = "v26-flip7-deal-polish"; // bump on each change; shown on the menu
 
 const $=id=>document.getElementById(id);
 function esc(v){return String(v ?? '').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));}
@@ -422,13 +422,22 @@ const Kit=(()=>{
       // Hide the target anchor content (the overlay will cover it on arrival)
       const savedTargetVis=toAnchor.style.visibility;
 
-      // Arc: fly to midpoint
+      // Arc: fly to midpoint.
+      // Rotation styles (choose at most one via opts):
+      //   • flip  → rotateY: reads as the card flipping over (back→front) and
+      //             always lands face-UP/upright. Pairs with revealMidway so the
+      //             face is swapped in while the card is edge-on (~90deg).
+      //   • spin  → rotateZ: a playful in-plane spin (note: rotates the face
+      //             content too, so prefer `flip` for dealt cards that reveal).
+      el.style.transformOrigin='center';
+      const midRot=opts.flip?'rotateY(90deg) ':(opts.spin?'rotateZ(180deg) ':'');
+      const endRot=opts.flip?'rotateY(0deg) ':(opts.spin?'rotateZ(360deg) ':'');
       const toRect=stableRect(toAnchor)||toAnchor.getBoundingClientRect();
       const midX=(fromRect.left+toRect.left)/2,midY=Math.min(fromRect.top,toRect.top)-(opts.arc??46);
       requestAnimationFrame(()=>{
         el.style.top=midY+'px';
         el.style.left=midX+'px';
-        el.style.transform=(opts.spin?'rotateZ(180deg) ':'')+'scale('+(opts.midScale??1.12)+')';
+        el.style.transform=midRot+'scale('+(opts.midScale??1.12)+')';
       });
 
       // Reveal face at midpoint
@@ -436,6 +445,11 @@ const Kit=(()=>{
         setTimeout(()=>{
           const front=renderCard(c);
           if(front){
+            // Clear the face-down inline visuals first so a card whose face is
+            // styled purely by CSS class (e.g. gold +N modifiers) is not left
+            // with the leftover card-back background/border/color from the flight.
+            el.style.background='';el.style.borderColor='';el.style.color='';
+            if(appliedBackClass){el.classList.remove(appliedBackClass);appliedBackClass=null;}
             el.className=front.className+' kit-card-registered kit-card-moving';
             el.innerHTML=front.innerHTML;
             if(front.style.cssText)el.style.cssText+=';'+front.style.cssText;
@@ -445,13 +459,13 @@ const Kit=(()=>{
         },Math.floor(duration*(opts.revealAt??0.42)));
       }
 
-      // Fly to destination
+      // Fly to destination (rotation resolves to upright/face-up)
       setTimeout(()=>{
         el.style.top=toRect.top+'px';
         el.style.left=toRect.left+'px';
         el.style.width=toRect.width+'px';
         el.style.height=toRect.height+'px';
-        el.style.transform=(opts.spin?'rotateZ(360deg) ':'')+'scale(1)';
+        el.style.transform=endRot+'scale(1)';
       },Math.floor(duration*0.5));
 
       await sleep(duration+45);

@@ -237,8 +237,9 @@ async function smokeFlip7(window, document) {
 
   // Instrument the animation API so we can verify the deck → slot deal flight
   // actually runs (the deal must go through Kit.CardManager.moveTo, not appear
-  // instantly). Counter is read back via window.eval since Kit is script-scoped.
-  window.eval(`window.__f7moveTo=0;(function(){const cm=Kit.CardManager,orig=cm.moveTo;cm.moveTo=function(id,to,opts){if(typeof id==='string'&&id.indexOf('flip7:table:')===0)window.__f7moveTo++;return orig.call(this,id,to,opts);};})();`);
+  // instantly) and uses a card-flip (rotateY) so cards land upright, not spun
+  // upside-down. Records are read back via window.eval since Kit is script-scoped.
+  window.eval(`window.__f7mv=[];(function(){const cm=Kit.CardManager,orig=cm.moveTo;cm.moveTo=function(id,to,opts){if(typeof id==='string'&&id.indexOf('flip7:table:')===0)window.__f7mv.push({id,flip:!!(opts&&opts.flip),spin:!!(opts&&opts.spin)});return orig.call(this,id,to,opts);};})();`);
 
   // Use the public act API directly because it drives the same code path as the
   // buttons. Hit until at least one card is dealt (every dealt card — number,
@@ -258,7 +259,32 @@ async function smokeFlip7(window, document) {
   const view = localView(window, 0);
   assert(view.flip7.seq > 0, 'Flip7: event timeline did not advance after hit');
   assert(document.querySelector('[data-f7-seat]'), 'Flip7: board markup missing after action playback');
-  assert(window.eval('window.__f7moveTo') > 0, 'Flip7: card deal did not animate via CardManager.moveTo (deck → slot flight missing)');
+  const deals = JSON.parse(window.eval('JSON.stringify(window.__f7mv)'));
+  assert(deals.length > 0, 'Flip7: card deal did not animate via CardManager.moveTo (deck → slot flight missing)');
+  // Dealt cards must use the card-flip (rotateY), not the in-plane spin (rotateZ),
+  // so they land face-up & upright rather than upside-down.
+  assert(deals.every((m) => m.flip && !m.spin), 'Flip7: deal flight should use flip (rotateY), not spin (rotateZ)');
+
+  // ── Bust card must FLY in before the player is shown as busted (regression) ──
+  // The engine emits `bust` with no preceding `card` event, so the handler must
+  // deal the offending card itself. Drive a deterministic bust via a rigged
+  // Flip7Engine and confirm its bust card animates via moveTo.
+  const bustResult = JSON.parse(window.eval(`(function(){
+    window.__f7mv.length=0;
+    const E=new Flip7Engine(['P1','P2']);
+    E.s.players[0].nums=[5];E.s.players[0].tableau=[{id:'x5',kind:'num',v:5}];
+    E.s.current=0;E.s.players[0].status='active';
+    E.s.deck.push({id:'dup5',kind:'num',v:5}); // next draw duplicates the 5 → bust
+    E.apply(0,{action:'hit'});
+    window._flip7ResetSeq && window._flip7ResetSeq();
+    const v=E.viewFor(0);window._renderView=v;
+    GameShell.render(v, window.GameClients['flip7']);
+    return JSON.stringify({status:E.s.players[0].status, bustCard:E.s.players[0].bustCard});
+  })()`));
+  assert(bustResult.status === 'busted', 'Flip7: rigged bust scenario did not bust as expected');
+  await sleep(2400); // let the bust card fly + bust reaction play
+  const bustMoves = JSON.parse(window.eval('JSON.stringify(window.__f7mv)')).filter((m) => m.id.indexOf(':bust-') >= 0);
+  assert(bustMoves.length > 0, 'Flip7: busting card did not fly to the board before the bust (it must arrive first)');
 
   window.quitLocal();
   await sleep(50);
