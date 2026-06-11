@@ -170,24 +170,23 @@ writeFileSync(clientPath, `/**
     GameActions.send(action, extra, seat);
   }
 
-  // SHARED CARD KIT (recommended). Use Kit.cardFace for the unified card look and
-  // Kit.CardBoard for all create/pin/reconcile wiring + card-sized flights, so you
-  // never hand-roll the boilerplate (or reintroduce the "scale to container width"
-  // bug). Build each card anchor with Kit.cardFace + data-card-reg, then call
-  // Kit.CardBoard.sync(PREFIX, …) once after renderTable.
-  //
-  //   function cardAnchor(card) {
-  //     const el = Kit.cardFace({ value: card.v, suit: card.suit }); // .kit-card look
-  //     el.dataset.cardReg = PREFIX + card.id;        // stable id → smooth flights
-  //     el.dataset.val = card.v; el.dataset.suit = card.suit;
-  //     return el;
-  //   }
-  //   // after GameShell.renderTable(...):
-  //   Kit.CardBoard.sync(PREFIX, {
-  //     renderer: (a) => ({ value: a.dataset.val, suit: a.dataset.suit }),
-  //     location: (a, i) => ({ zone: 'board', player: 0, slot: i }),
+  // ── SHARED FRAMEWORK (use these — do NOT hand-roll cards/boards/controls) ──
+  // CARDS — strict declarative spec (tokens only): bg/border/content/emblem/state/zone.
+  //   const a = Kit.Cards.anchor(PREFIX + card.id, {
+  //     bg: { gradient: ['#60a5fa','#2563eb'] }, content: { text: card.v }, pips: [card.v, card.v],
   //   });
-  //   // to animate a card a→b: Kit.CardBoard.fly(PREFIX + card.id, { to: destEl, fromRect, flip:true });
+  //   // after GameShell.renderTable(...): one call wires create/pin/reconcile/sync:
+  //   Kit.Cards.board(PREFIX, { location: (el, i) => ({ zone: 'board', player: 0, slot: i }) });
+  //   // flights (all keep canonical geometry, card-sized source):
+  //   Kit.Cards.deal(id, deckEl, destEl);   // deck → slot (face-down + mid-flip reveal)
+  //   Kit.Cards.move(id, fromRect, destEl); // slot → slot (use Kit.Cards.snapshot(PREFIX) for fromRect)
+  //   Kit.Cards.toPile(id, discardEl);      // card → deck/discard
+  // ZONES: Kit.Cards.hand() / grid(cols) / deck({id,count,onClick}) / discard() / drop(el,{onClick}).
+  // PRESETS (no game hand-rolls these):
+  //   Kit.Status.set({ text:'Your turn!', tone:'go' })  // tones: go|warn|muted|info; or {button:{label,onClick}}
+  //   Kit.Controls.set([{ label:'End turn ▶', kind:'green', onClick }], { id: ID + 'Controls' })
+  //   Kit.MiniBoard({ name, badge, active, you, body, onClick, seat })  // opponent panel (body = your guts)
+  //   Kit.rollDice(containerEl, dice)  // for dice games
 
   function render(view, ctx = {}) {
     const s = view[ID];
