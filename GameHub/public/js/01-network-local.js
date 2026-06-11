@@ -112,17 +112,62 @@ function renderPublic(rooms){
 
 /* ====================== GAME VIEW DISPATCH ====================== */
 // Hub hands the view to the right game client. Adding a game = add a client here.
+// #2 — Pass-and-play board rotation. On a shared device with ≥2 human seats, when
+// the FOCUSED seat changes the big main board rotates OUT, we render the next
+// player's board, then it rotates IN. Card overlays are body-level fixed and
+// pinned to anchors via getBoundingClientRect (which reflects ancestor
+// transforms), so re-syncing them each frame makes them rescale + move together
+// with the rotating board.
+let _lastDisplaySeat=null,_lastDisplayGame=null;
+function shouldRotateBoards(view){
+  if(mode!=='local')return false;
+  if(typeof localSeats==='undefined')return false;
+  const humanSeats=localSeats.map((s,i)=>!s.bot?i:-1).filter(i=>i>=0);
+  if(humanSeats.length<2)return false;                 // only when actually passing the device
+  if(_lastDisplayGame!==view.game)return false;        // not on first render / game switch
+  if(view.yourSeat==null||view.yourSeat===_lastDisplaySeat)return false;
+  if(!humanSeats.includes(view.yourSeat))return false; // rotating TO a human-controlled board
+  try{if(window.matchMedia('(prefers-reduced-motion: reduce)').matches)return false;}catch(_){ }
+  return true;
+}
+function syncOverlaysFor(ms){
+  // keep card overlays glued to the (transforming) anchors for the duration.
+  const end=performance.now()+ms;
+  (function loop(){
+    if(typeof Kit!=='undefined'&&Kit.CardManager)Kit.CardManager.sync();
+    if(performance.now()<end)requestAnimationFrame(loop);
+  })();
+}
+// Play the rotate-in (and a brief rotate-out flourish) WITHOUT blocking the
+// render or the game's own animations: we render immediately (so any per-game
+// deal/move flights run on time), then swing the freshly-built board into view,
+// re-syncing the body-level card overlays each frame so they ride along.
+function playBoardRotation(){
+  const board=document.getElementById('mainBoardsContainer');
+  if(!board)return;
+  board.classList.remove('board-rotate-in','board-rotate-out');void board.offsetWidth;
+  if(typeof SFX!=='undefined'&&SFX.swap)SFX.swap();
+  board.classList.add('board-rotate-in');
+  syncOverlaysFor(360);
+  setTimeout(()=>{
+    board.classList.remove('board-rotate-in');
+    if(typeof Kit!=='undefined'&&Kit.CardManager)Kit.CardManager.sync();
+  },360);
+}
 function dispatchView(view){
   const client=window.GameClients[view.game];
   if(!client){toast('Unknown game: '+view.game);return;}
   window._renderView=view;
   if(animating){pendingView=view;return;}
+  const rotate=shouldRotateBoards(view);
+  _lastDisplaySeat=view.yourSeat;_lastDisplayGame=view.game;
   GameShell.render(view,client);
+  if(rotate)playBoardRotation();   // non-blocking; game animations already running
   maybeRunBot(view); // drive bot seats if we're responsible
 }
 function flushView(){if(pendingView){const v=pendingView;pendingView=null;dispatchView(v);}}
 function removeQwixxUi(){const top=$('topArea');if(!top)return;top.querySelectorAll('.qwixx-dice-zone,.qwixx-top-mini-strip').forEach(el=>el.remove());}
-function resetGameUi(){curView=null;prevView=null;animating=false;pendingView=null;summaryShown=false;lastRoundShown=false;$('overlay').classList.add('hidden');$('overlay').style.opacity='';GameShell.unmount();$('topArea').style.display='';const piles=$('topArea').querySelector('.piles');if(piles)piles.style.display='flex';$('heldCardWrapper').style.display='';if(window._flip7ResetSeq)window._flip7ResetSeq();}
+function resetGameUi(){curView=null;prevView=null;animating=false;pendingView=null;summaryShown=false;lastRoundShown=false;_lastDisplaySeat=null;_lastDisplayGame=null;$('overlay').classList.add('hidden');$('overlay').style.opacity='';GameShell.unmount();$('topArea').style.display='';const piles=$('topArea').querySelector('.piles');if(piles)piles.style.display='flex';$('heldCardWrapper').style.display='';if(window._flip7ResetSeq)window._flip7ResetSeq();}
 function hideOverlay(){const o=$('overlay');if(o.classList.contains('hidden'))return;o.style.opacity='0';setTimeout(()=>{o.classList.add('hidden');o.style.opacity='';},220);}
 function bumpStatus(){const sb=$('statusBar');sb.classList.remove('bump');void sb.offsetWidth;sb.classList.add('bump');}
 

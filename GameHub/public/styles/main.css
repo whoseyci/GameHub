@@ -595,3 +595,23 @@ button.kc-mini:hover{transform:translateY(-2px);box-shadow:0 6px 14px rgba(0,0,0
 @media(max-width:430px){.kc-mini{padding:3px 4px}.kc-mini-head{font-size:.5rem}.kc-mini-badge{font-size:.46rem}}
 /* spent freeze/flip3 cards that stay on the target player's board */
 .kc-zone-f7.f7-spent,.f7-spent{opacity:.6;filter:grayscale(.2)}
+
+/* #2 Pass-and-play board rotation: when the focused seat changes on a shared
+   device, the big main board rotates OUT then the next player's rotates IN.
+   Card overlays are body-level fixed and re-synced each frame during the
+   transition (JS), so they rescale/move together with the board. */
+#mainBoardsContainer{transform-origin:center center;will-change:transform,opacity}
+#mainBoardsContainer.board-rotate-out{animation:boardRotateOut .26s cubic-bezier(.55,0,.85,.3) forwards}
+#mainBoardsContainer.board-rotate-in{animation:boardRotateIn .34s cubic-bezier(.18,.9,.3,1.15) both}
+@keyframes boardRotateOut{
+  0%{transform:perspective(1100px) rotateY(0deg) scale(1);opacity:1}
+  100%{transform:perspective(1100px) rotateY(-82deg) scale(.82);opacity:0}
+}
+@keyframes boardRotateIn{
+  0%{transform:perspective(1100px) rotateY(82deg) scale(.82);opacity:0}
+  60%{opacity:1}
+  100%{transform:perspective(1100px) rotateY(0deg) scale(1);opacity:1}
+}
+@media (prefers-reduced-motion: reduce){
+  #mainBoardsContainer.board-rotate-out,#mainBoardsContainer.board-rotate-in{animation:none}
+}

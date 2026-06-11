@@ -549,6 +549,55 @@ async function smokeSchotten(window, document) {
   assert(document.querySelectorAll('[data-card-reg^="schotten:"]').length === 0, 'Schotten: card anchors should be cleaned up on quit');
 }
 
+// #2 — Pass-and-play board rotation: when the focused seat changes on a shared
+// (2-human) device, the main board swings in (.board-rotate-in). With a single
+// human seat (vs a bot) the device never passes, so it must NOT rotate.
+async function smokeBoardRotation(window, document) {
+  // (a) two humans → rotation fires when focus moves 0→1.
+  setLocalConfig(window, 'qwixx', [
+    { name: 'P1', bot: false },
+    { name: 'P2', bot: false },
+  ]);
+  window.startLocalGame();
+  await sleep(120);
+  window.eval('document.getElementById("qwixxThrowBtn").onclick()');
+  await sleep(1300);
+  let sawRotate = false;
+  const obs = setInterval(() => {
+    const b = document.getElementById('mainBoardsContainer');
+    if (b && b.classList.contains('board-rotate-in')) sawRotate = true;
+  }, 15);
+  const before = window._renderView.yourSeat;
+  window.GameClients['qwixx'].act('skip');   // seat 0 decides → focus rotates to seat 1
+  await sleep(600);
+  clearInterval(obs);
+  assert(window._renderView.yourSeat !== before, 'BoardRotation: focus should have changed seats');
+  assert(sawRotate, 'BoardRotation: 2-human focus change should rotate the board in (#2)');
+  window.quitLocal();
+  await sleep(50);
+
+  // (b) one human + one bot → no device passing → no rotation.
+  setLocalConfig(window, 'qwixx', [
+    { name: 'P1', bot: false },
+    { name: 'Bot', bot: true },
+  ]);
+  window.startLocalGame();
+  await sleep(120);
+  window.eval('document.getElementById("qwixxThrowBtn").onclick()');
+  await sleep(1300);
+  let sawRotate2 = false;
+  const obs2 = setInterval(() => {
+    const b = document.getElementById('mainBoardsContainer');
+    if (b && b.classList.contains('board-rotate-in')) sawRotate2 = true;
+  }, 15);
+  window.GameClients['qwixx'].act('skip');
+  await sleep(600);
+  clearInterval(obs2);
+  assert(!sawRotate2, 'BoardRotation: single-human game must NOT rotate boards');
+  window.quitLocal();
+  await sleep(50);
+}
+
 async function main() {
   const { window, document, errors } = await loadApp();
 
@@ -559,6 +608,7 @@ async function main() {
   await smokeQwixx(window, document);
   await smokeFlip7(window, document);
   await smokeSchotten(window, document);
+  await smokeBoardRotation(window, document);
   await smokeBotFlows(window, document);
   await smokeMidAnimationQuit(window, document);
 
