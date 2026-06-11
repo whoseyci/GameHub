@@ -216,15 +216,9 @@
   }
 
   function boardDOM(s,p,pi,isMain,interactive,viewer){
-    const wrap=document.createElement('div');
     const active=s.currentPlayer===pi&&(s.phase==='PLAY'||s.phase==='FINAL_TURNS')&&isMain;
-    wrap.className='player-board'+(isMain?'':' board-mini')+(active?' active-turn':'')+(pi===viewer&&isMain?' me':'');
-    wrap.id=(isMain?'main':'mini')+'-board-'+pi;
-    if(!isMain)wrap.onclick=()=>investigate(s,pi,viewer);
-    const h=document.createElement('div');h.className='board-header';
     const live=p.board.filter(c=>c.revealed&&!c.cleared).reduce((a,c)=>a+c.value,0);
-    h.innerHTML=`<span>${esc(p.name)}${pi===viewer?' (You)':''}</span><span class="score-badge">Now: ${esc(live)} · Total: ${esc(p.totalScore)}</span>`;
-    wrap.appendChild(h);
+    // the 4×3 grid of card anchors (the overlay sync pins onto these .board-card .kc).
     const grid=document.createElement('div');grid.className='board-grid';
     p.board.forEach((c,ci)=>{const card=document.createElement('div');
       // anchor carries the canonical geometry (.kc) + the Skyjo sizing zone so the
@@ -232,7 +226,26 @@
       card.className='kc kc-zone-skyjo board-card registry-anchor';card.dataset.cardReg=skyjoCardId(s,pi,ci);
       if(interactive&&isMain&&!c.cleared&&canClick(s,pi,ci,c,viewer)){card.classList.add('clickable');card.onclick=()=>cardClick(s,pi,ci,c);}
       grid.appendChild(card);});
-    wrap.appendChild(grid);return wrap;
+
+    // MINI/opponent board → shared Kit.MiniBoard (frame + header + inspect click).
+    // The card grid is the body. We keep id='mini-board-N' so boardEl() can find it.
+    if(!isMain){
+      const mb=Kit.MiniBoard({
+        name:p.name+(pi===viewer?' (You)':''), badge:'Now '+live+' · '+p.totalScore,
+        you:pi===viewer, seat:pi, variant:'skyjo', body:grid,
+        onClick:()=>investigate(s,pi,viewer),
+      });
+      mb.id='mini-board-'+pi;
+      mb.classList.add('board-mini'); // keep the legacy Skyjo mini SIZING selectors working
+      return mb;
+    }
+    // MAIN (focused) board — the big interactive panel, unchanged structure.
+    const wrap=document.createElement('div');
+    wrap.className='player-board'+(active?' active-turn':'')+(pi===viewer?' me':'');
+    wrap.id='main-board-'+pi;
+    const h=document.createElement('div');h.className='board-header';
+    h.innerHTML=`<span>${esc(p.name)}${pi===viewer?' (You)':''}</span><span class="score-badge">Now: ${esc(live)} · Total: ${esc(p.totalScore)}</span>`;
+    wrap.appendChild(h);wrap.appendChild(grid);return wrap;
   }
   function canClick(s,pi,ci,c,viewer){
     if(s.phase==='REVEAL'){if(mode!=='local'&&pi!==viewer)return false;if(s.tiebreakerPlayers.length)return s.tiebreakerPlayers.includes(pi)&&!c.revealed&&!c.cleared;return s.players[pi].revealCount<2&&!c.revealed&&!c.cleared;}

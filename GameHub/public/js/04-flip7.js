@@ -191,21 +191,22 @@
   }
 
   function miniDOM(s,p,i,viewer,pending){
-    const b=document.createElement('button');
-    b.className='player-board f7-opponent-board'+(s.current===i?' active-turn':'')+(p.status==='busted'?' busted':'');
-    b.dataset.f7Seat=i;
-    b.onclick=()=>inspect(i);
     const busted=p.status==='busted';
-    const head=document.createElement('div');head.className='board-header';
-    head.innerHTML='<span>'+esc(p.name)+' <span class="f7-status '+esc(p.status)+'">'+esc(p.status)+'</span></span><span class="score-badge">'+(busted?'BUST':'Now: '+esc(p.live))+' · '+esc(p.banked)+'</span>';
-    b.appendChild(head);
+    // BODY = the cards row (must keep .f7-row + data-f7Seat so syncF7Cards pins the
+    // permanent card overlays onto it). The shared Kit.MiniBoard provides the frame,
+    // active/busted states, header (name+status badge) and the inspect click.
     const row=document.createElement('div');row.className='f7-row';row.dataset.f7Seat=i;
     if(!(p.cards&&p.cards.length)&&!p.nums.length&&!p.mods.length&&!p.second)row.innerHTML='<span class="f7-empty">no cards</span>';
     renderF7PlayerCards(row,p,busted);
-    b.appendChild(row);
-    const meta=document.createElement('div');meta.className='muted';meta.textContent=p.unique+'/7 unique';b.appendChild(meta);
     const canTarget=pending&&p.status==='active'&&!(s.pendingAction.kind==='give_second'&&i===viewer);
-    if(canTarget){b.classList.add('targetable');b.onclick=()=>net.spectating?null:act(viewer,{action:'target',target:i});}
+    const b=Kit.MiniBoard({
+      name:p.name, badge:(busted?'BUST':'Now '+p.live)+' · '+p.banked,
+      headExtra:p.status, active:s.current===i, dim:busted,
+      seat:i, variant:'f7', body:row,
+      onClick:()=>canTarget?(net.spectating?null:act(viewer,{action:'target',target:i})):inspect(i),
+    });
+    b.dataset.f7Seat=i;                 // wrapper also carries the seat (board lookups)
+    if(canTarget)b.classList.add('targetable');
     return b;
   }
 

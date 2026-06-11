@@ -254,5 +254,52 @@
   }
   Kit.Status = { set: statusSet, TONE };
 
+  // ---- shared MINI-BOARD / OPPONENT panel -------------------------------------
+  // Every game hand-rolled its own opponent/mini panel: a wrapper with active/you/
+  // dimmed states, a header (name + a score badge) and a clickable body. Kit.MiniBoard
+  // owns that CHROME and takes the BODY from the caller — so card games pass a cards
+  // row, and dice games (Qwixx) pass their dot grid. Maximum design freedom in the
+  // body; full consistency in the frame, states, header and inspect-click.
+  //   Kit.MiniBoard({
+  //     name, badge,                 // header: player name + a small badge (string/Element)
+  //     you, active, dim,            // states (you = highlight as the viewer)
+  //     body,                        // Element OR HTML string — the game-specific guts
+  //     onClick,                     // click handler (e.g. inspect this seat)
+  //     seat,                        // stamped as data-seat
+  //     variant,                     // optional extra class (e.g. 'strip'|'investigate')
+  //     headExtra,                   // optional extra header markup (string)
+  //   }) -> Element
+  function miniBoard(opts){
+    opts = opts || {};
+    const tag = opts.onClick ? 'button' : 'div';
+    const el = document.createElement(tag);
+    el.className = 'kc-mini'
+      + (opts.you ? ' kc-mini-you' : '')
+      + (opts.active ? ' kc-mini-active' : '')
+      + (opts.dim ? ' kc-mini-dim' : '')
+      + (opts.variant ? ' kc-mini-' + opts.variant : '');
+    if (opts.seat != null) el.dataset.seat = opts.seat;
+    if (opts.onClick) { el.type = 'button'; el.onclick = opts.onClick; }
+
+    const head = document.createElement('div'); head.className = 'kc-mini-head';
+    const nm = document.createElement('span'); nm.className = 'kc-mini-name';
+    nm.textContent = (opts.active ? '▶ ' : '') + (opts.name != null ? opts.name : '');
+    head.appendChild(nm);
+    if (opts.badge != null) {
+      const bd = document.createElement('span'); bd.className = 'kc-mini-badge';
+      if (opts.badge instanceof Element) bd.appendChild(opts.badge); else bd.textContent = String(opts.badge);
+      head.appendChild(bd);
+    }
+    if (opts.headExtra) { const ex = document.createElement('span'); ex.className = 'kc-mini-headx'; ex.textContent = String(opts.headExtra); head.appendChild(ex); }
+    el.appendChild(head);
+
+    const body = document.createElement('div'); body.className = 'kc-mini-body';
+    if (opts.body instanceof Element) body.appendChild(opts.body);
+    else if (opts.body != null) body.innerHTML = String(opts.body); // game-built guts (its own markup)
+    el.appendChild(body);
+    return el;
+  }
+  Kit.MiniBoard = miniBoard;
+
   Kit.Cards = { el, anchor, board, snapshot, hand, grid, deck, discard, drop, deal, move, toPile, paint, _decodeSpec:decodeSpec };
 })();

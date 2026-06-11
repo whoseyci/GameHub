@@ -147,11 +147,9 @@ window.GameClients = window.GameClients || {};
       return `<div class="qwixx-mini-row"><span class="qwixx-mini-row-key ${color}"></span>${dots}<span class="qwixx-mini-row-pts">${rowPoints(row)}</span></div>`;
     }).join('');
     const pens = Array.from({length:4}, (_, i) => `<span class="qwixx-mini-pen ${player.penalties > i ? 'on' : ''}">⚠</span>`).join('');
-    return `<div class="qwixx-mini-board${player.active ? ' active' : ''}${player.seat === viewerSeat ? ' you' : ''}">
-      <div class="qwixx-mini-head"><b>${player.active ? '🎲 ' : ''}${esc(player.name)}</b><span>${player.score}</span></div>
-      <div class="qwixx-mini-grid">${rows}</div>
-      <div class="qwixx-mini-pens">${pens}</div>
-    </div>`;
+    // BODY only — the dot grid + penalty pips. The shared Kit.MiniBoard provides the
+    // frame, active/you states, header (name + score) and the inspect click.
+    return `<div class="qwixx-mini-grid">${rows}</div><div class="qwixx-mini-pens">${pens}</div>`;
   }
 
   function renderScorecard(player, state, viewerSeat, compact=false){
@@ -221,7 +219,17 @@ window.GameClients = window.GameClients || {};
         : `<span class="muted">${esc(activeName)} may take one color mark…</span>`;
     }
 
-    const opponents = others.map(player => `<button class="qwixx-mini-wrap${player.active ? ' active' : ''}" onclick="window.GameClients['qwixx'].inspect(${player.seat})">${renderMiniBoard(player, displayState, view.yourSeat)}</button>`).join('');
+    // Opponent strip: a live container of shared Kit.MiniBoard panels (Elements, so
+    // their inspect-click handlers survive — renderTable accepts a Node).
+    const opponents = document.createElement('div');
+    opponents.style.display = 'contents'; // transparent to the strip grid on the container
+    others.forEach(player => opponents.appendChild(Kit.MiniBoard({
+      name: player.name, badge: player.score,
+      active: !!player.active, you: player.seat === view.yourSeat,
+      seat: player.seat, variant: 'qwixx',
+      body: renderMiniBoard(player, displayState, view.yourSeat),
+      onClick: () => window.GameClients['qwixx'].inspect(player.seat),
+    })));
     const center = `<div class="qwixx-dice-zone">
       <div class="qwixx-turn-head">
         <span>${!diceRevealed ? '🎲 New throw' : (isWhite ? '🎲 Everyone: white dice' : '🎯 Active player: one color combo')}</span>

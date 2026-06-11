@@ -207,4 +207,28 @@ describe("Permanent Card System: Flip 7 fully on CardManager", () => {
     expect(schotten).toContain("Kit.Cards.move(");
     expect(schotten).not.toContain("Kit.CardManager.reconcile(PREFIX");
   });
+
+  it("provides shared UI presets (Status / Controls / MiniBoard) used across games", () => {
+    const cardsSrc = readFileSync(new URL("../public/js/00-cards.js", import.meta.url), "utf8");
+    const skyjo = readFileSync(new URL("../public/js/03-skyjo.js", import.meta.url), "utf8");
+    const flip7Src = readFileSync(new URL("../public/js/04-flip7.js", import.meta.url), "utf8");
+    const qwixx = readFileSync(new URL("../public/js/02-qwixx.js", import.meta.url), "utf8");
+
+    expect(cardsSrc).toContain("Kit.Status =");
+    expect(cardsSrc).toContain("Kit.Controls =");
+    expect(cardsSrc).toContain("Kit.MiniBoard =");
+
+    // Status preset: Skyjo + Flip 7 use it instead of hand-rolled sb.innerHTML spans.
+    expect(skyjo).toContain("Kit.Status.set");
+    expect(flip7Src).toContain("Kit.Status.set");
+    // Controls preset: Flip 7 drives its floating control bar through it.
+    expect(flip7Src).toContain("Kit.Controls.set");
+    // MiniBoard: every game with opponent panels builds them via the shared component.
+    expect(skyjo).toContain("Kit.MiniBoard(");
+    expect(flip7Src).toContain("Kit.MiniBoard(");
+    expect(qwixx).toContain("Kit.MiniBoard(");
+    // The old bespoke opponent wrappers are no longer constructed in JS.
+    expect(flip7Src).not.toContain("f7-opponent-board");
+    expect(qwixx).not.toContain("qwixx-mini-wrap");
+  });
 });
