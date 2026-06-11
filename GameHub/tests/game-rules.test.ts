@@ -219,6 +219,36 @@ describe("Qwixx rule regressions", () => {
     expect(state.players[0].penalties).toBe(1);
   });
 
+  it("active player gets a penalty even when they SKIP COLOR during the white phase (no mark all turn)", () => {
+    // Regression: the active player skipped white, then used the white-phase
+    // "skip color / pass to others" finishTurn, then the passive player resolved
+    // white. The turn ended via the white-resolution path which never checked the
+    // no-mark penalty, so the active player escaped it. Penalty must apply on any
+    // turn-end where nothing was crossed off.
+    const state: any = Qwixx.create(["A", "B"]);
+    const active = state.activeSeat;
+    Qwixx.applyAction(state, active, { action: "skip" });        // active skips white (no mark)
+    Qwixx.applyAction(state, active, { action: "finishTurn" });  // active skips color (still WHITE_PHASE)
+    Qwixx.applyAction(state, 1 - active, { action: "skip" });    // passive resolves white -> turn ends
+    expect(state.players[active].penalties).toBe(1);
+  });
+
+  it("active player gets NO penalty when they crossed off a white number", () => {
+    const state: any = Qwixx.create(["A", "B"]);
+    const active = state.activeSeat;
+    const w = state.dice.w[0] + state.dice.w[1];
+    // find a row where the white sum is markable and cross it
+    let marked = false;
+    for (const c of ["red", "yellow", "green", "blue"]) {
+      const i = state.players[active].rows[c].nums.indexOf(w);
+      if (i >= 0) { Qwixx.applyAction(state, active, { action: "mark", c, i, use: "white" }); marked = true; break; }
+    }
+    expect(marked).toBe(true);
+    Qwixx.applyAction(state, 1 - active, { action: "skip" });
+    if (state.phase === "COLOR_PHASE") Qwixx.applyAction(state, active, { action: "finishTurn" });
+    expect(state.players[active].penalties).toBe(0);
+  });
+
   it("shows/removes colored dice by real color keys when a row locks", () => {
     const state: any = Qwixx.create(["A", "B"]);
     state.dice = { w: [6, 6], r: 1, y: 2, g: 3, b: 4 };

@@ -1114,6 +1114,7 @@
   }
   function maybeEndOrNextTurn(s) {
     applyPendingLocks(s);
+    if (!s.activeMarkedThisTurn) s.players[s.activeSeat].penalties++;
     if (s.locked.length >= 2 || s.players.some((p) => p.penalties >= 4)) {
       s.phase = "GAME_OVER";
       return;
@@ -1262,7 +1263,6 @@
           return;
         }
         if (s.phase !== "COLOR_PHASE") return;
-        if (!s.activeMarkedThisTurn) s.players[s.activeSeat].penalties++;
         maybeEndOrNextTurn(s);
       }
     },

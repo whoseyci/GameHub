@@ -173,7 +173,13 @@ window.GameClients = window.GameClients || {};
         if(marked) cls += ' x';
         if(unavailable) cls += ' bad';
         if(locked || pendingLock) cls += ' lock';
-        if(cellHints.length) cls += ' hintable good';
+        if(cellHints.length){
+          cls += ' hintable good';
+          // Tint the flashing hint glow by the mark's die: white dice → white glow,
+          // colored dice → that row's colour (so the indicator reads as which die it is).
+          const hasWhite = cellHints.some(h => h.kind === 'white');
+          cls += hasWhite ? ' hint-glow-white' : (' hint-glow-' + color);
+        }
         const firstAction = cellHints.find(h => h.actionable);
         const click = legal ? `onclick="window.GameClients['qwixx'].act('mark',{c:'${color}',i:${i},use:'${firstAction?.use||firstAction?.kind||'white'}'})"` : '';
         html += `<div class="${cls}" ${click}><span class="qwixx-num">${marked ? '✕' : n}</span>${hintHtml}</div>`;
@@ -219,10 +225,12 @@ window.GameClients = window.GameClients || {};
         : `<span class="muted">${esc(activeName)} may take one color mark…</span>`;
     }
 
-    // Opponent strip: a live container of shared Kit.MiniBoard panels (Elements, so
-    // their inspect-click handlers survive — renderTable accepts a Node).
-    const opponents = document.createElement('div');
-    opponents.style.display = 'contents'; // transparent to the strip grid on the container
+    // Opponent strip: append each mini DIRECTLY as a grid child (a DocumentFragment
+    // flattens on append), so they are the real grid items. (A display:contents
+    // wrapper looked fine but hid the minis from the strip's :nth-child(N) column
+    // rules — which made rows past the first CLIP under overflow:hidden, so only the
+    // first 1–2 opponents showed their crossed-off marks. Fragment fixes that.)
+    const opponents = document.createDocumentFragment();
     others.forEach(player => opponents.appendChild(Kit.MiniBoard({
       name: player.name, badge: player.score,
       active: !!player.active, you: player.seat === view.yourSeat,

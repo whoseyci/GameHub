@@ -86,6 +86,12 @@ function scorePlayer(p: QwixxPlayer) {
 }
 function maybeEndOrNextTurn(s: QwixxState) {
   applyPendingLocks(s);
+  // The OUTGOING active player takes a penalty if they crossed off NOTHING this
+  // turn (neither white nor colour). Centralised here so it fires on EVERY path
+  // that ends the active player's turn — previously only the COLOR_PHASE finishTurn
+  // path checked it, so an active player who skipped white then skipped colour while
+  // still in the white phase escaped the penalty.
+  if (!s.activeMarkedThisTurn) s.players[s.activeSeat].penalties++;
   if (s.locked.length >= 2 || s.players.some((p) => p.penalties >= 4)) {
     s.phase = "GAME_OVER";
     return;
@@ -255,7 +261,7 @@ export const Qwixx: GameModule = {
         return;
       }
       if (s.phase !== "COLOR_PHASE") return;
-      if (!s.activeMarkedThisTurn) s.players[s.activeSeat].penalties++;
+      // (penalty for marking nothing is applied centrally in maybeEndOrNextTurn)
       maybeEndOrNextTurn(s);
     }
   },
