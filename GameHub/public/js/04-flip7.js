@@ -6,15 +6,27 @@
   function numFace(n){return NUMCOL[Math.max(0,Math.min(12,n))];}
   // Pacing (dramatic).
   const SPEED={cardReveal:560,flip3Gap:780,wiggleMin:350,wiggleMax:1700,actionFly:620,beat:420};
+  // Flip 7 cards now use the unified framework card (Kit.Cards.el → .kc): one shared
+  // geometry/back/sheen + the corner-lock that prevents pointy-edge flights. Flip 7
+  // theming (number colours, mod gold, action glyphs) is expressed as a declarative
+  // SPEC; the legacy .f7-card classes are kept as hooks for Flip7-specific states
+  // (busted/bust-cause) and the existing animation/mini-board CSS.
+  function f7Spec(kind,val){
+    if(kind==='num') return { bg:numFace(val), content:{ text:val, color:'#0b1020' }, classes:'f7-card num' };
+    if(kind==='mod') return val==='x2'
+      ? { bg:'#1f2937', border:'#f472b6', content:{ text:'×2', color:'#f472b6' }, classes:'f7-card modx2' }
+      : { bg:{gradient:['#fef3c7','#fcd34d']}, border:'#d97706', content:{ text:modText(val), color:'#7c4a03' }, classes:'f7-card mod' };
+    if(val==='second') return { bg:'#dc2626', border:'#ef4444', content:{ text:'♥', color:'#fbcfe8' }, classes:'f7-card second' };
+    if(val==='freeze') return { bg:{gradient:['#bae6fd','#7dd3fc']}, border:'#38bdf8', content:{ text:'❄', color:'#0369a1' }, classes:'f7-card freeze' };
+    if(val==='flip3')  return { bg:'#eaff00', border:'#d4e600', content:{ text:'F3', color:'#1a1a00' }, classes:'f7-card flip3' };
+    return { content:{ text:val }, classes:'f7-card' };
+  }
   function cardEl(kind,val,{busted=false,cause=false}={}){
-    const c=document.createElement('div');c.className='f7-card';
-    if(kind==='num'){c.classList.add('num');c.textContent=val;c.style.background=numFace(val);}
-    else if(kind==='mod'){c.classList.add(val==='x2'?'modx2':'mod');c.textContent=modText(val);}
-    else if(val==='second'){c.classList.add('second');c.innerHTML='&#9829;';c.title='Second Chance';}
-    else if(val==='freeze'){c.classList.add('freeze');c.innerHTML='&#10052;';c.title='Freeze';}
-    else if(val==='flip3'){c.classList.add('flip3');c.textContent='F3';c.title='Flip Three';}
-    if(busted)c.classList.add('busted-card');
-    if(cause){c.classList.remove('busted-card');c.classList.add('bust-cause');}
+    const spec=f7Spec(kind,val);
+    if(busted) spec.classes+=' busted-card';
+    if(cause)  spec.classes+=' bust-cause';
+    const c=Kit.Cards.el(spec);
+    if(kind!=='num'&&val) c.title = val==='second'?'Second Chance':val==='freeze'?'Freeze':val==='flip3'?'Flip Three':'';
     return c;
   }
 
@@ -65,8 +77,8 @@
       arc:46,
       flip:true,            // rotateY card-flip → always lands face-up & upright
       startFaceDown:true,
-      backHTML:'<div class="f7-card f7-card-back"><span style="color:#c7d2fe;font-size:1.5rem">\u2726</span></div>',
-      backClass:'f7-card-back',
+      backHTML:'<div class="kc kc-back"></div>',
+      backClass:'kc-back',
       revealMidway:true,
       revealAt:0.5,         // swap to the face while edge-on (mid-flip)
       onReveal:()=>SFX.flip(),
@@ -118,7 +130,7 @@
   function rowOf(i){const b=boardOf(i);return b?b.querySelector('.f7-row'):null;}
   function rectOf(el){return el?el.getBoundingClientRect():null;}
   function cloneCard(card){return card?{kind:card.kind,v:card.v}:card;}
-  function f7BackHTML(){return '<div class="f7-card f7-card-back"><span>7</span></div>';}
+  function f7BackHTML(){return '<div class="kc kc-back"></div>';}
   function actionCardSourceEl(seat,kind){
     const row=rowOf(seat); if(!row)return null;
     const anchors=[...row.querySelectorAll('[data-card-reg]')];
