@@ -65,7 +65,11 @@
   function el(spec){
     spec = spec || {};
     const card = document.createElement('div');
-    card.className = 'kc ' + (SIZES[spec.size] || 'kc-md') + (spec.classes ? ' ' + spec.classes : '');
+    // Default (no size class) IS md — so board-context selectors (e.g. mini/opponent
+    // boards setting --kc-w) win by normal specificity without needing !important.
+    // Only an explicit non-md size adds a class.
+    const sizeCls = (spec.size && spec.size !== 'md') ? (SIZES[spec.size] || '') : '';
+    card.className = 'kc' + (sizeCls ? ' ' + sizeCls : '') + (spec.classes ? ' ' + spec.classes : '');
     if (spec.faceDown){ card.classList.add('kc-back'); applyData(card, spec.data); return card; }
 
     // background + border (declarative paint)

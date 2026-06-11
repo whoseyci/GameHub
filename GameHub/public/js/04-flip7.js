@@ -33,9 +33,8 @@
   function addF7Card(row,el,key){
     const seat=row?.dataset?.f7Seat||'x';
     const id=`flip7:table:p${seat}:${key}`;
-    const anchor=el.cloneNode(false);
-    anchor.className=el.className+' registry-anchor';
-    anchor.textContent=el.textContent;
+    const anchor=el.cloneNode(false);   // shallow: keep .kc classes + geometry; the
+    anchor.className=el.className+' registry-anchor'; // CardManager overlay shows content.
     anchor.dataset.cardKey=key;anchor.dataset.cardReg=id;
     anchor.dataset.kind=el.classList.contains('num')?'num':(el.classList.contains('mod')||el.classList.contains('modx2'))?'mod':'act';
     anchor.dataset.value=el.textContent||'';
