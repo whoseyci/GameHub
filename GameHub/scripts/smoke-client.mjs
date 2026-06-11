@@ -233,6 +233,12 @@ async function smokeQwixx(window, document) {
   assert(throwBtn.classList.contains('hidden'), 'Qwixx: throw button should hide after roll');
   assert(document.querySelector('#qwixxDiceKit .kit-die-static, #qwixxDiceKit .kit-die-phys'), 'Qwixx: dice did not render');
 
+  // Shared 3D dice API exists and degrades gracefully: headless has no WebGL, so
+  // Dice3D.supported() is false and Qwixx fell back to the CSS dice above (which is
+  // why .kit-die-static rendered). Guards the API surface + the fallback path.
+  assert(window.eval('typeof Kit.Dice3D?.roll === "function"'), 'Dice3D: Kit.Dice3D.roll missing');
+  assert(window.eval('Kit.Dice3D.supported() === false'), 'Dice3D: supported() should be false in headless (no WebGL)');
+
   // Pass-and-play rotation: the white phase is SIMULTANEOUS, so the display must
   // rotate to EACH seat that still has a pending white decision (driving via act(),
   // which targets the focused/displayed seat — the realistic on-screen-button path).

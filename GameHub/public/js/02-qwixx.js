@@ -267,12 +267,15 @@ window.GameClients = window.GameClients || {};
     const doThrow = () => {
       if(throwBtn) throwBtn.classList.add('hidden');
       window._qwixxDiceSig = diceSig;
-      Kit.rollDice(diceTray, diceList(dice), {size: innerWidth < 760 ? 30 : 42, animate: true, originEl: throwBtn}).then(()=>{
+      // Roll via the shared WebGL 3D dice API (falls back to the CSS dice if WebGL
+      // is unavailable or reduced-motion). Resting display uses the flat CSS dice.
+      const roller = (Kit.Dice3D && Kit.Dice3D.roll) ? Kit.Dice3D.roll : Kit.rollDice;
+      roller(diceTray, diceList(dice), {size: innerWidth < 760 ? 30 : 42, animate: true, originEl: throwBtn}).then(()=>{
         if(window._renderView && window._renderView.game === 'qwixx') dispatchView(window._renderView);
       });
     };
     if(shouldRoll){ diceTray.innerHTML=''; if(throwBtn){ throwBtn.classList.remove('hidden'); throwBtn.onclick=doThrow; } }
-    else { if(throwBtn) throwBtn.classList.add('hidden'); Kit.rollDice(diceTray, diceList(dice), {size: innerWidth < 760 ? 30 : 42, animate: false}); }
+    else { if(throwBtn) throwBtn.classList.add('hidden'); diceTray.classList.remove('kit-dice3d'); Kit.rollDice(diceTray, diceList(dice), {size: innerWidth < 760 ? 30 : 42, animate: false}); }
 
     if(s.phase === 'GAME_OVER') showSummary(view);
   }
