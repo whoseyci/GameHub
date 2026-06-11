@@ -264,18 +264,27 @@ window.GameClients = window.GameClients || {};
 
     const shouldRoll = !diceRevealed;
     const diceTray = $('qwixxDiceKit'), throwBtn = $('qwixxThrowBtn');
+    const dsize = innerWidth < 760 ? 30 : 42;
     const doThrow = () => {
       if(throwBtn) throwBtn.classList.add('hidden');
       window._qwixxDiceSig = diceSig;
-      // Roll via the shared WebGL 3D dice API (falls back to the CSS dice if WebGL
-      // is unavailable or reduced-motion). Resting display uses the flat CSS dice.
-      const roller = (Kit.Dice3D && Kit.Dice3D.roll) ? Kit.Dice3D.roll : Kit.rollDice;
-      roller(diceTray, diceList(dice), {size: innerWidth < 760 ? 30 : 42, animate: true, originEl: throwBtn}).then(()=>{
+      // Roll via the shared WebGL 3D dice API only (no legacy CSS-dice roller). The 3D
+      // dice settle on their real result and STAY shown (we tag the tray with the
+      // diceSig so the next re-render leaves the settled canvas in place).
+      Kit.Dice3D.roll(diceTray, diceList(dice), {size: dsize}).then(()=>{
+        diceTray.dataset.shown = diceSig;
         if(window._renderView && window._renderView.game === 'qwixx') dispatchView(window._renderView);
       });
     };
-    if(shouldRoll){ diceTray.innerHTML=''; if(throwBtn){ throwBtn.classList.remove('hidden'); throwBtn.onclick=doThrow; } }
-    else { if(throwBtn) throwBtn.classList.add('hidden'); diceTray.classList.remove('kit-dice3d'); Kit.rollDice(diceTray, diceList(dice), {size: innerWidth < 760 ? 30 : 42, animate: false}); }
+    if(shouldRoll){ diceTray.dataset.shown=''; diceTray.innerHTML=''; if(throwBtn){ throwBtn.classList.remove('hidden'); throwBtn.onclick=doThrow; } }
+    else {
+      if(throwBtn) throwBtn.classList.add('hidden');
+      // Revealed: if the settled 3D canvas for THIS throw is already on screen, leave
+      // it (don't wipe the result). Otherwise (e.g. opponent's throw arriving, or
+      // post-roll re-render with no canvas) render the clean settled readout.
+      const has3d = diceTray.querySelector('canvas') && diceTray.dataset.shown === diceSig;
+      if(!has3d){ Kit.Dice3D.showStatic(diceTray, diceList(dice), {size: dsize}); diceTray.dataset.shown = diceSig; }
+    }
 
     if(s.phase === 'GAME_OVER') showSummary(view);
   }

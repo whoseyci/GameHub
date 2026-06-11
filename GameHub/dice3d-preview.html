@@ -4,19 +4,22 @@
   body{margin:0;background:radial-gradient(circle at 30% 0,#22324f 0,transparent 40%),linear-gradient(180deg,#0b1020,#070a16);color:#e8eefc;font-family:system-ui,sans-serif;min-height:100vh;display:flex;flex-direction:column;align-items:center;gap:14px;padding:20px}
   :root{--qwixx-red:#e74c3c;--qwixx-yellow:#f1c40f;--qwixx-green:#2ecc71;--qwixx-blue:#3498db}
   button{border:0;border-radius:12px;padding:11px 18px;font-weight:800;background:linear-gradient(135deg,#7c5cff,#9d8fff);color:#fff;cursor:pointer}
-  .stage{width:min(560px,94vw);background:linear-gradient(180deg,rgba(124,92,255,.05),transparent);border-radius:18px;padding:8px}
-  .qwixx-kit-dice{margin:0 auto} .out{font-weight:800;color:#a5b4fc}
-  .qwixx-kit-dice.kit-dice3d{display:block;min-height:clamp(180px,46vh,320px);width:min(100%,520px);border:0;background:none;overflow:visible}
+  /* dice zone has NO window chrome now */
+  .stage{width:min(560px,94vw)} .qwixx-kit-dice{margin:0 auto;background:none;border:0;min-height:clamp(180px,46vh,320px);display:flex;align-items:center;justify-content:center;gap:10px} .out{font-weight:800;color:#a5b4fc}
+  .qwixx-kit-dice.kit-dice3d{display:block;width:min(100%,520px);border:0;background:none;overflow:visible}
   .kit-dice3d canvas{width:100%;height:100%;display:block;background:transparent}
+  /* settled static dice faces */
+  .kit-die-static{width:var(--die-size,42px);height:var(--die-size,42px);display:inline-flex;align-items:center;justify-content:center}
+  .kit-die{width:100%;height:100%;border-radius:22%;display:flex;align-items:center;justify-content:center;font-weight:900;color:#111;position:relative}
+  .kit-die.white{background:linear-gradient(145deg,#fff,#cfd6e3)} .kit-die.red{background:linear-gradient(145deg,#e74c3c,#a8271e);color:#fff} .kit-die.yellow{background:linear-gradient(145deg,#f1c40f,#b88704)} .kit-die.green{background:linear-gradient(145deg,#2ecc71,#167a3c);color:#fff} .kit-die.blue{background:linear-gradient(145deg,#3498db,#155a91);color:#fff}
+  .kit-die .face.back,.kit-die .face.right,.kit-die .face.left,.kit-die .face.top,.kit-die .face.bottom{display:none}
+  .kit-die .front span{font-size:calc(var(--die-size,42px)*.5)}
 </style></head><body>
-  <h2>Kit.Dice3D — blended-into-scene preview (soft contact shadows, no boxed window)</h2>
+  <h2>Kit.Dice3D — no window, blended; settles to result</h2>
   <div class="stage"><div id="tray" class="qwixx-kit-dice"></div></div>
-  <div><button onclick="go()">\u{1F3B2} Roll</button></div>
+  <div><button onclick="go()">\u{1F3B2} Roll</button> <button onclick="rest()">show settled (static)</button></div>
   <div class="out" id="out">rolling…</div>
-<script>
-  window.SFX={tap(){},draw(){},reveal(){},flip(){}};
-  window.Kit={ rollDice(c,d){ c.textContent='[CSS fallback] '+d.map(x=>x.color+':'+x.value).join(' '); return Promise.resolve(); } };
-</script>
+<script> window.SFX={tap(){},draw(){},reveal(){},flip(){}}; window.Kit={}; </script>
 <script>
 /* ============================================================================
    Kit.Dice3D — shared WebGL 3D dice rolling API (for ALL dice games)
@@ -210,13 +213,13 @@
     dice = dice || [];
     if(!container) return Promise.resolve();
     if(!supported() || opts.animate===false){
-      // graceful fallback to the existing CSS dice
-      return Kit.rollDice ? Kit.rollDice(container, dice, opts) : Promise.resolve();
+      // No WebGL / reduced-motion: show the settled faces directly (no legacy roller).
+      showStatic(container, dice, opts); return Promise.resolve();
     }
     container.innerHTML='';
     container.classList.add('kit-dice3d');
     const scene=makeScene(container);
-    if(!scene){ return Kit.rollDice ? Kit.rollDice(container, dice, opts) : Promise.resolve(); }
+    if(!scene){ showStatic(container, dice, opts); return Promise.resolve(); }
 
     const sim=[];
     // spread them across the table, tossed in with spin
@@ -260,20 +263,32 @@
     });
   }
 
-  Kit.Dice3D = { roll, supported };
+  // showStatic(container, dice): a clean SETTLED readout (no box/window) — the dice
+  // faces at rest, using the shared .kit-die-static markup. Used for the resting
+  // display after a roll and as the no-WebGL fallback, so there is ONE dice look and
+  // no legacy CSS-dice roller wired into games.
+  function showStatic(container, dice, opts={}){
+    if(!container) return;
+    dice = dice || [];
+    const size = opts.size || 42;
+    const cc = {white:'white',red:'red',yellow:'yellow',green:'green',blue:'blue',r:'red',y:'yellow',g:'green',b:'blue'};
+    container.classList.remove('kit-dice3d');
+    container.innerHTML = dice.map(d=>{
+      const c = cc[d.color]||d.color||'white';
+      return `<div class="kit-die-static" style="--die-size:${size}px"><div class="kit-die ${c}"><b class="face front"><span>${d.value}</span></b><b class="face back"></b><b class="face right"></b><b class="face left"></b><b class="face top"></b><b class="face bottom"></b></div></div>`;
+    }).join('');
+  }
+
+  Kit.Dice3D = { roll, supported, showStatic };
 })();
 
 </script>
 <script>
-  function go(){
-    const dice=[{color:'white',value:1+(Math.random()*6|0)},{color:'white',value:1+(Math.random()*6|0)},
-      {color:'red',value:1+(Math.random()*6|0)},{color:'yellow',value:1+(Math.random()*6|0)},
-      {color:'green',value:1+(Math.random()*6|0)},{color:'blue',value:1+(Math.random()*6|0)}];
-    document.getElementById('out').textContent='supported='+Kit.Dice3D.supported()+' \u00b7 rolling '+dice.map(d=>d.color+'='+d.value).join(' ');
-    Kit.Dice3D.roll(document.getElementById('tray'),dice,{}).then(()=>{
-      document.getElementById('out').textContent='settled \u00b7 '+dice.map(d=>d.color+'='+d.value).join(' ');
-    });
-  }
+  let last=[];
+  function mk(){return [{color:'white',value:1+(Math.random()*6|0)},{color:'white',value:1+(Math.random()*6|0)},{color:'red',value:1+(Math.random()*6|0)},{color:'yellow',value:1+(Math.random()*6|0)},{color:'green',value:1+(Math.random()*6|0)},{color:'blue',value:1+(Math.random()*6|0)}];}
+  function go(){ last=mk(); document.getElementById('out').textContent='rolling '+last.map(d=>d.color+'='+d.value).join(' ');
+    Kit.Dice3D.roll(document.getElementById('tray'),last,{}).then(()=>{ document.getElementById('out').textContent='settled \u00b7 '+last.map(d=>d.color+'='+d.value).join(' '); }); }
+  function rest(){ if(!last.length)last=mk(); Kit.Dice3D.showStatic(document.getElementById('tray'),last,{size:46}); document.getElementById('out').textContent='static settled \u00b7 '+last.map(d=>d.color+'='+d.value).join(' '); }
   setTimeout(go,300);
 </script>
 </body></html>

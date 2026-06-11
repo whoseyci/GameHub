@@ -9,7 +9,7 @@
     --qwixx-border:rgba(255,255,255,0.07);--qwixx-border2:rgba(255,255,255,0.12);
     --qwixx-accent:#7c5cff;--qwixx-accent2:#9d8fff;
   }
-  .qwixx-dice-zone{padding:1rem;background:linear-gradient(180deg,rgba(124,92,255,0.04) 0%,transparent 100%);border-bottom:1px solid var(--border);display:flex;flex-direction:column;gap:0.85rem;align-items:center;width:100%}
+  .qwixx-dice-zone{padding:1rem;background:none;border:0;display:flex;flex-direction:column;gap:0.85rem;align-items:center;width:100%}
   .qwixx-dice-rows{display:flex;justify-content:center;gap:1rem;flex-wrap:wrap;margin:0.5rem 0}
   .qwixx-dice-row{display:flex;align-items:center;gap:0.6rem}
   .qwixx-scorecard{min-width:400px;background:var(--surface);border:2px solid var(--border);border-radius:20px;overflow:hidden;margin:0 auto}
@@ -230,8 +230,8 @@
   /* 3D DICE & QWIXX SPECIFICS */
   .qwixx-dice-zone {
     padding: 1rem;
-    background: linear-gradient(180deg, rgba(124,92,255,0.04) 0%, transparent 100%);
-    border-bottom: 1px solid var(--border);
+    background: none;
+    border: 0;
     display: flex; flex-direction: column; gap: 0.85rem; align-items: center; width: 100%;
   }
   .qwixx-dice-rows { display: flex; justify-content: center; gap: 1rem; flex-wrap: wrap; margin: 0.5rem 0; }
@@ -287,7 +287,7 @@ html,body,#app{height:100%;max-height:100%;overflow:hidden}.screen{min-height:0}
 .kit-die-scene{width:var(--die-size,42px);height:var(--die-size,42px);perspective:420px;display:inline-flex;align-items:center;justify-content:center;animation:kitDieTumble .72s cubic-bezier(.18,.8,.22,1) both}.kit-die{width:100%;height:100%;border-radius:22%;display:flex;align-items:center;justify-content:center;font-weight:1000;font-size:calc(var(--die-size,42px)*.43);box-shadow:inset 0 0 12px rgba(255,255,255,.22),0 10px 22px rgba(0,0,0,.35);border:2px solid rgba(255,255,255,.25);transform-style:preserve-3d}.kit-die.white{background:linear-gradient(145deg,#fff,#cfd6e3);color:#111827}.kit-die.red{background:linear-gradient(145deg,var(--qwixx-red,#e74c3c),#a8271e);color:white}.kit-die.yellow{background:linear-gradient(145deg,var(--qwixx-yellow,#f1c40f),#b88704);color:#241800}.kit-die.green{background:linear-gradient(145deg,var(--qwixx-green,#2ecc71),#167a3c);color:white}.kit-die.blue{background:linear-gradient(145deg,var(--qwixx-blue,#3498db),#155a91);color:white}.kit-die span{transform:translateZ(8px)}.kit-die-scene.settled .kit-die{animation:kitDieSettle .18s ease-out both}@keyframes kitDieTumble{0%{transform:translateY(-18px) rotateX(0) rotateY(0) rotateZ(0);opacity:.6}45%{transform:translateY(5px) rotateX(var(--rx)) rotateY(var(--ry)) rotateZ(var(--rz));opacity:1}75%{transform:translateY(-3px) rotateX(calc(var(--rx)*.92)) rotateY(calc(var(--ry)*.92)) rotateZ(calc(var(--rz)*.92))}100%{transform:translateY(0) rotateX(0) rotateY(0) rotateZ(0)}}@keyframes kitDieSettle{0%{transform:scale(1.08)}70%{transform:scale(.96)}100%{transform:scale(1)}}
 
 /* Kit physics dice tray */
-.qwixx-kit-dice{position:relative;min-height:58px;min-width:min(100%,330px);display:flex;align-items:center;justify-content:center;gap:6px;margin:0 auto}.qwixx-kit-dice.rolling{display:block;background:radial-gradient(ellipse at center,rgba(255,255,255,.05),rgba(0,0,0,.08));border:1px solid rgba(255,255,255,.08);border-radius:14px;overflow:hidden}.kit-die-phys{position:absolute;left:0;top:0;width:var(--die-size,42px);height:var(--die-size,42px);perspective:420px;transform-style:preserve-3d;will-change:transform}.kit-die-static{width:var(--die-size,42px);height:var(--die-size,42px);display:inline-flex;align-items:center;justify-content:center}.kit-die-phys .kit-die,.kit-die-static .kit-die{width:100%;height:100%}
+.qwixx-kit-dice{position:relative;min-height:58px;min-width:min(100%,330px);display:flex;align-items:center;justify-content:center;gap:10px;margin:0 auto;background:none;border:0}.kit-die-phys{position:absolute;left:0;top:0;width:var(--die-size,42px);height:var(--die-size,42px);perspective:420px;transform-style:preserve-3d;will-change:transform}.kit-die-static{width:var(--die-size,42px);height:var(--die-size,42px);display:inline-flex;align-items:center;justify-content:center}.kit-die-phys .kit-die,.kit-die-static .kit-die{width:100%;height:100%}
 @media(max-width:760px){.qwixx-kit-dice{min-height:38px;min-width:220px}.qwixx-kit-dice.rolling{border-radius:10px}}
 
 /* Responsive policy: hub may scroll; active game must fit the viewport */

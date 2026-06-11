@@ -190,13 +190,13 @@
     dice = dice || [];
     if(!container) return Promise.resolve();
     if(!supported() || opts.animate===false){
-      // graceful fallback to the existing CSS dice
-      return Kit.rollDice ? Kit.rollDice(container, dice, opts) : Promise.resolve();
+      // No WebGL / reduced-motion: show the settled faces directly (no legacy roller).
+      showStatic(container, dice, opts); return Promise.resolve();
     }
     container.innerHTML='';
     container.classList.add('kit-dice3d');
     const scene=makeScene(container);
-    if(!scene){ return Kit.rollDice ? Kit.rollDice(container, dice, opts) : Promise.resolve(); }
+    if(!scene){ showStatic(container, dice, opts); return Promise.resolve(); }
 
     const sim=[];
     // spread them across the table, tossed in with spin
@@ -240,5 +240,21 @@
     });
   }
 
-  Kit.Dice3D = { roll, supported };
+  // showStatic(container, dice): a clean SETTLED readout (no box/window) — the dice
+  // faces at rest, using the shared .kit-die-static markup. Used for the resting
+  // display after a roll and as the no-WebGL fallback, so there is ONE dice look and
+  // no legacy CSS-dice roller wired into games.
+  function showStatic(container, dice, opts={}){
+    if(!container) return;
+    dice = dice || [];
+    const size = opts.size || 42;
+    const cc = {white:'white',red:'red',yellow:'yellow',green:'green',blue:'blue',r:'red',y:'yellow',g:'green',b:'blue'};
+    container.classList.remove('kit-dice3d');
+    container.innerHTML = dice.map(d=>{
+      const c = cc[d.color]||d.color||'white';
+      return `<div class="kit-die-static" style="--die-size:${size}px"><div class="kit-die ${c}"><b class="face front"><span>${d.value}</span></b><b class="face back"></b><b class="face right"></b><b class="face left"></b><b class="face top"></b><b class="face bottom"></b></div></div>`;
+    }).join('');
+  }
+
+  Kit.Dice3D = { roll, supported, showStatic };
 })();
