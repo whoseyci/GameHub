@@ -173,24 +173,38 @@ describe("Permanent Card System: Flip 7 fully on CardManager", () => {
     expect(core).toContain("assertCardInvariants('renderTable')");
   });
 
-  it("exposes ONE unified card API (cardFace + CardBoard) and games share it", () => {
+  it("exposes the declarative card+board framework (Kit.Cards) and games use it", () => {
+    const cards = readFileSync(new URL("../public/js/00-cards.js", import.meta.url), "utf8");
+    const css = readFileSync(new URL("../public/styles/main.css", import.meta.url), "utf8");
     const schotten = readFileSync(new URL("../public/js/games/schotten.js", import.meta.url), "utf8");
-    // Core provides the shared visual (cardFace) and the shared create/pin/reconcile
-    // loop (CardBoard.sync) + card-sized flight staging (CardBoard.fly/snapshot).
-    expect(core).toContain("function cardFace(");
-    expect(core).toContain("const CardBoard=");
-    expect(core).toContain("function sync(prefix,opts");
-    expect(core).toContain("function snapshot(prefix)");
-    expect(core).toContain("async function fly(id,opts");
-    // The flight source is always a card-sized proxy (no ballooning to container width).
-    expect(core).toContain("function rectAnchor(rect)");
-    // Multiple games use the shared wiring (not a Schotten-only abstraction).
-    expect(flip7).toContain("Kit.CardBoard.sync('flip7:table:'");
-    expect(schotten).toContain("Kit.CardBoard.sync(PREFIX");
-    expect(schotten).toContain("Kit.CardBoard.fly(");
-    expect(schotten).toContain("Kit.cardFace(");
-    // The games no longer hand-roll their own create/pin/reconcile loop.
-    expect(flip7).not.toContain("Kit.CardManager.reconcile('flip7:table:'");
+
+    // The framework exposes one declarative card spec renderer + board zones + flights.
+    expect(cards).toContain("Kit.Cards = {");
+    expect(cards).toContain("function el(spec)");      // spec → element
+    expect(cards).toContain("function paint(token");   // colorToken → solid/gradient/multicolor
+    expect(cards).toContain("function board(prefix");  // one wiring call
+    expect(cards).toContain("function deal(");         // canonical flights
+    expect(cards).toContain("function move(");
+    expect(cards).toContain("function toPile(");
+    // STRICT: content is text-only (no HTML injection) — the framework renders pixels.
+    expect(cards).toContain("ce.textContent = String(c.text)");
+    expect(cards).not.toContain("innerHTML = c.");
+
+    // ONE canonical geometry + ONE shared back, with the corners locked in EVERY
+    // state (idle + flying) via !important — this is what kills the "pointy
+    // rectangle while flying" bug class.
+    expect(css).toContain("--kc-radius:");
+    expect(css).toContain("--kc-aspect:");
+    expect(css).toContain(".kc.kc-back");
+    expect(css).toContain(".kit-card-registered.kc,.kit-card-moving.kc{border-radius:var(--kc-radius)!important");
+
+    // Schotten declares cards as SPECS and uses framework zones/flights — no bespoke
+    // geometry, no hand-rolled wiring.
+    expect(schotten).toContain("Kit.Cards.anchor(");
+    expect(schotten).toContain("Kit.Cards.board(PREFIX");
+    expect(schotten).toContain("Kit.Cards.deck(");
+    expect(schotten).toContain("Kit.Cards.deal(");
+    expect(schotten).toContain("Kit.Cards.move(");
     expect(schotten).not.toContain("Kit.CardManager.reconcile(PREFIX");
   });
 });

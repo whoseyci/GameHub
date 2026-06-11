@@ -483,8 +483,8 @@ async function smokeSchotten(window, document) {
   // Pick the first hand card, then place it on stone 0 (drop zone appears).
   window.eval('document.querySelectorAll(".st-hand-card")[0].click()');
   await sleep(60);
-  assert(document.querySelectorAll('.st-side-me.kit-drop').length > 0, 'Schotten: selecting a card should reveal stone drop zones');
-  window.eval('document.querySelectorAll(".st-side-me.kit-drop")[0].click()');
+  assert(document.querySelectorAll('.st-side-me.kc-drop').length > 0, 'Schotten: selecting a card should reveal stone drop zones');
+  window.eval('document.querySelectorAll(".st-side-me.kc-drop")[0].click()');
   // The placed card must actually ANIMATE hand→stone (a moving CardManager overlay
   // appears mid-flight). This guard has teeth: it fails if the flight is skipped
   // (e.g. the old bug where lastAction carried no seq so runAnimation always bailed).

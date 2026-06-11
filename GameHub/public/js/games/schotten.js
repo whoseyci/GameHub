@@ -48,21 +48,33 @@
   }
   function act(action, extra = {}) { send(action, extra); }
 
-  // A clan card uses the SHARED card look (Kit.cardFace → .kit-card). We render the
-  // anchor with Kit.cardFace and stamp data-* so the unified Kit.CardBoard.sync()
-  // loop can rebuild each managed overlay from the anchor alone.
+  // Clan colours → a declarative card SPEC. This is the ONLY place Schotten describes
+  // what a card looks like; geometry/back/sheen are owned by the framework (.kc).
+  const CLAN = {
+    red:    { bg:{gradient:['#f87171','#dc2626']}, border:'#fca5a5', fg:'#fff' },
+    orange: { bg:{gradient:['#fb923c','#ea580c']}, border:'#fdba74', fg:'#fff' },
+    yellow: { bg:{gradient:['#facc15','#ca8a04']}, border:'#fde68a', fg:'#3b2f00' },
+    green:  { bg:{gradient:['#4ade80','#16a34a']}, border:'#86efac', fg:'#fff' },
+    blue:   { bg:{gradient:['#60a5fa','#2563eb']}, border:'#93c5fd', fg:'#fff' },
+    purple: { bg:{gradient:['#c084fc','#9333ea']}, border:'#d8b4fe', fg:'#fff' },
+  };
+  function clanSpec(card, { small=false } = {}) {
+    const t = CLAN[card.c] || CLAN.blue;
+    return {
+      size: small ? 'sm' : 'md',
+      bg: t.bg, border: t.border,
+      content: { text: card.v, color: t.fg },
+      pips: [card.v, card.v],
+    };
+  }
+  // A clan card anchor: a framework card element (Kit.Cards.anchor) carrying its spec
+  // + its board location, so Kit.Cards.board() rebuilds the overlay from the anchor.
   function clanAnchor(card, { small=false, loc=null } = {}) {
-    const a = Kit.cardFace({ value: card.v, suit: card.c, className: 'st-clan', sm: small });
+    const spec = clanSpec(card, { small });
+    const a = Kit.Cards.anchor(cmId(card), spec);
     a.classList.add('st-anchor');
-    a.dataset.cardReg = cmId(card);
-    a.dataset.val = card.v; a.dataset.suit = card.c; if (small) a.dataset.sm = '1';
     if (loc) { a.dataset.zone = loc.zone; a.dataset.player = loc.player; a.dataset.slot = loc.slot; }
     return a;
-  }
-  // The renderer Kit.CardBoard.sync() calls for each anchor: read its data-* and
-  // produce the shared card spec. ONE place describes what a Schotten card looks like.
-  function clanSpec(anchor) {
-    return { value: anchor.dataset.val, suit: anchor.dataset.suit, className: 'st-clan', sm: anchor.dataset.sm === '1' };
   }
   function clanLoc(anchor) {
     return { zone: anchor.dataset.zone || 'board', player: Number(anchor.dataset.player) || 0, slot: Number(anchor.dataset.slot) || 0 };
@@ -115,11 +127,10 @@
       }
       // drop target: a selected hand card may be placed on a stone with room
       if (myTurn && !s.placedThisTurn && selectedHand != null && claimed < 0 && st.sides[me].length < 3) {
-        bottom.classList.add('kit-drop');
-        bottom.onclick = () => {
+        Kit.Cards.drop(bottom, { onClick: () => {
           const h = selectedHand; selectedHand = null;
           act('place', { index: h, target: i });
-        };
+        }});
       }
 
       col.append(top, stone, bottom);
@@ -127,15 +138,14 @@
     });
 
     // ---------- HAND ----------
-    const hand = document.createElement('div');
-    hand.className = 'kit-hand st-hand';
+    const hand = Kit.Cards.hand({ classes: 'st-hand' });
     const myHand = s.players[me]?.hand || [];
     myHand.forEach((card, idx) => {
       const el = clanAnchor(card, { loc:{ zone:'hand', player:me, slot:idx } });
       el.classList.add('st-hand-card');
       if (myTurn && !s.placedThisTurn) {
-        el.classList.add('kit-selectable');
-        if (selectedHand === idx) el.classList.add('kit-selected');
+        el.classList.add('kc-selectable');
+        if (selectedHand === idx) el.classList.add('kc-selected');
         el.onclick = () => {
           selectedHand = (selectedHand === idx ? null : idx);
           GameShell.render(window._renderView, window.GameClients[ID]);
@@ -148,16 +158,17 @@
     const focus = document.createElement('div');
     focus.className = 'player-board st-board';
 
-    // header rail: scores + deck pile
+    // header rail: scores + deck pile (deck is a framework zone primitive)
     const head = document.createElement('div'); head.className = 'st-head';
     const myWon = s.players[me]?.stonesWon || 0;
     const oppWon = s.players[opp]?.stonesWon || 0;
-    head.innerHTML =
-      `<div class="st-scorebox st-scorebox-me"><span class="st-pname">${esc(s.players[me]?.name || 'You')}</span>`
-      + `<span class="st-stonecount">🪨 ${myWon}</span></div>`
-      + `<div class="st-deckrail"><div id="stDeck" class="kit-deck"><span class="kit-count">deck ${esc(s.deckCount)}</span></div></div>`
-      + `<div class="st-scorebox st-scorebox-opp"><span class="st-pname">${esc(s.players[opp]?.name || 'Opponent')}</span>`
-      + `<span class="st-stonecount">🪨 ${oppWon}</span></div>`;
+    const scoreMe = document.createElement('div'); scoreMe.className = 'st-scorebox st-scorebox-me';
+    scoreMe.innerHTML = `<span class="st-pname">${esc(s.players[me]?.name || 'You')}</span><span class="st-stonecount">🪨 ${myWon}</span>`;
+    const scoreOpp = document.createElement('div'); scoreOpp.className = 'st-scorebox st-scorebox-opp';
+    scoreOpp.innerHTML = `<span class="st-pname">${esc(s.players[opp]?.name || 'Opponent')}</span><span class="st-stonecount">🪨 ${oppWon}</span>`;
+    const deckRail = document.createElement('div'); deckRail.className = 'st-deckrail';
+    deckRail.appendChild(Kit.Cards.deck({ id: 'stDeck', count: s.deckCount, label: 'deck ' + s.deckCount }));
+    head.append(scoreMe, deckRail, scoreOpp);
 
     focus.append(head, border, hand);
 
@@ -170,14 +181,15 @@
     else status = '⚖️ Claim a stone you’ve won, or end your turn';
 
     // Capture where every card sits NOW (pre-rebuild) so a card that changed zones
-    // can fly from its true previous spot. (Unified: Kit.CardBoard.snapshot.)
-    const preRects = Kit.CardBoard.snapshot(PREFIX);
+    // can fly from its true previous spot. (Unified: Kit.Cards.snapshot.)
+    const preRects = Kit.Cards.snapshot(PREFIX);
 
     GameShell.renderTable({ game: ID, focus, topMode: 'hidden', status });
 
-    // Wire every [data-card-reg] anchor to its permanent card in ONE shared call —
-    // create-if-missing, refresh renderer, pin, reconcile, sync. (Unified: CardBoard.)
-    Kit.CardBoard.sync(PREFIX, { renderer: clanSpec, location: clanLoc });
+    // Wire every [data-card-reg] anchor to its permanent card in ONE framework call.
+    // Kit.Cards.board rebuilds each overlay from the anchor's embedded declarative
+    // spec — uniform look + correct geometry guaranteed.
+    Kit.Cards.board(PREFIX, { location: clanLoc });
 
     // ---------- ANIMATE the latest action ----------
     runAnimation(s, me, preRects).catch(() => {});
@@ -210,41 +222,30 @@
       const id = cmId(a.card);
       const dest = document.querySelector(`[data-card-reg="${id}"]`);
       if (Kit.CardManager.has(id) && dest) {
-        // Fly the SAME permanent card from its previous (hand) spot → stone, via the
-        // unified flight (card-sized source from the snapshot — no ballooning).
-        await Kit.CardBoard.fly(id, {
-          to: dest, fromRect: preRects[id],
-          duration: 460, arc: 40, land: true, hideTarget: true,
-          toLocation: { zone:'stone', player:a.player },
-        });
+        // Move the SAME permanent card hand → stone (framework flight: card-sized
+        // source from the snapshot, canonical geometry throughout — no ballooning,
+        // no pointy edges).
+        await Kit.Cards.move(id, preRects[id], dest, { toLocation: { zone:'stone', player:a.player } });
         if (typeof SFX !== 'undefined' && SFX.flip) SFX.flip();
       }
       return;
     }
 
     if (a.type === 'end') {
-      // A draw happened from the visible deck pile.
       const deck = document.getElementById('stDeck');
       if (!deck) return;
-      deck.classList.remove('deal'); void deck.offsetWidth; deck.classList.add('deal');
       if (a.player === me && a.drew) {
-        // The drawer sees the real card fly deck→hand with a mid-flight reveal.
-        // Same permanent card that now lives in the hand (no throwaway).
+        // Drawer sees the real card fly deck → hand with a mid-flight reveal — the
+        // canonical deal, same permanent card that now lives in the hand.
         const id = cmId(a.drew);
         const dest = document.querySelector(`[data-card-reg="${id}"]`);
         if (Kit.CardManager.has(id) && dest) {
-          await Kit.CardBoard.fly(id, {
-            to: dest, fromEl: deck, updateContent: false,
-            duration: 520, arc: 46, flip: true, startFaceDown: true,
-            backHTML: '<div class="kit-card kit-face-down"></div>', backClass: 'kit-face-down',
-            revealMidway: true, revealAt: 0.5, land: true, hideTarget: true,
-            toLocation: { zone:'hand', player:me },
-          });
+          await Kit.Cards.deal(id, deck, dest, { toLocation: { zone:'hand', player:me } });
           if (typeof SFX !== 'undefined' && SFX.flip) SFX.flip();
         }
       } else {
-        // Opponent drew: hidden info, no on-screen home → just the deck pulse above.
-        // No transient throwaway card.
+        // Opponent drew: hidden info, no on-screen home → just pulse the deck.
+        deck.classList.remove('deal'); void deck.offsetWidth; deck.classList.add('deal');
         if (typeof SFX !== 'undefined' && SFX.flip) SFX.flip();
       }
       return;
