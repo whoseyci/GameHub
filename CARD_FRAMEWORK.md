@@ -89,7 +89,7 @@ so a card never balloons to a container's width.
 `Kit.Cards`, sets raw card geometry inline, or `innerHTML`s a card element. The
 geometry/back/corner-lock invariants are asserted (teeth-verified).
 
-## 7. Why CSS cards, not SVG
+## 7. Why CSS cards, not SVG (Skyjo included)
 
 We deliberately render cards as themed `.kc` **divs**, not SVG:
 
@@ -103,9 +103,11 @@ We deliberately render cards as themed `.kc` **divs**, not SVG:
 - SVG `viewBox`/`preserveAspectRatio` interacts badly with the CardManager's
   `transform:scale` flights — it would re-open the very scaling edge cases we closed.
 
-(Skyjo still uses its older inline-SVG card visual; it shares the canonical corner
-radius. Bringing it fully onto the spec is an optional follow-up, gated behind its
-fragile discard/number-render regression suite.)
+**Every card game is now on the framework.** Schotten, Flip 7 and Skyjo all build
+cards via `Kit.Cards` (Skyjo's old inline-SVG card visual was replaced by a
+declarative `.kc` spec — white face, value-coloured number). Qwixx has no cards.
+The lockdown test (below) covers all three game clients, so none can drift back to
+bespoke cards.
 
 ## Adding a game
 

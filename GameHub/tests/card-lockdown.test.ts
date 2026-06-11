@@ -14,13 +14,16 @@ import { readFileSync, readdirSync } from "node:fs";
 
 const read = (p: string) => readFileSync(new URL(`../public/${p}`, import.meta.url), "utf8");
 
-// All scaffold-style game clients (the path new games take).
+// All game clients now on the framework: the scaffold-style games AND the built-in
+// clients (Skyjo, Flip 7) that have been fully migrated. Qwixx has no cards, so it's
+// excluded. This proves the migration is complete AND guards it from regressing.
 let gameFiles: string[] = [];
 try {
   gameFiles = readdirSync(new URL("../public/js/games", import.meta.url))
     .filter((f) => f.endsWith(".js") && !f.startsWith("_"))
     .map((f) => `js/games/${f}`);
 } catch { /* none */ }
+gameFiles.push("js/03-skyjo.js", "js/04-flip7.js");
 
 describe("card system lockdown (water-tight)", () => {
   it("the framework defines the ONE canonical geometry + shared back", () => {

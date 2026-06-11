@@ -4,11 +4,17 @@
   const C=Kit.cardColor;
   function boardEl(pi){return document.getElementById('main-board-'+pi)||document.getElementById('mini-board-'+pi);}
   function cardAt(pi,idx){const b=boardEl(pi);return b?b.querySelectorAll('.board-card')[idx]:null;}
-  function skyjoSvg(kind,value=null,color=null){
-    if(kind==='back')return `<svg class="card-svg" viewBox="0 0 100 142" aria-hidden="true"><rect x="4" y="4" width="92" height="134" rx="14" fill="url(#g)"/><defs><linearGradient id="g" x1="0" x2="1" y1="0" y2="1"><stop stop-color="#6366f1"/><stop offset="1" stop-color="#4338ca"/></linearGradient></defs><text x="50" y="81" text-anchor="middle" font-size="42" font-weight="900" fill="#c7d2fe">✦</text></svg>`;
-    return `<svg class="card-svg" viewBox="0 0 100 142" aria-hidden="true"><rect x="4" y="4" width="92" height="134" rx="14" fill="#fff"/><text x="50" y="85" text-anchor="middle" font-size="48" font-weight="900" font-family="system-ui,-apple-system,Segoe UI,sans-serif" fill="${color||'#111'}">${esc(value)}</text></svg>`;
+  // Skyjo cards now use the unified framework card (Kit.Cards.el → .kc): one shared
+  // geometry/back/sheen + the corner-lock that prevents pointy-edge flights. A Skyjo
+  // card is a declarative SPEC — white face, number coloured by value (low=green …
+  // high=red, negatives=indigo). The .board-card class is kept as a hook for Skyjo's
+  // grid/mini-board sizing CSS.
+  function skyjoSpec(c){
+    if(c.cleared) return { classes:'board-card cleared' };
+    if(c.revealed) return { bg:'#fff', border:'#fff', content:{ text:c.value, color:C(c.value) }, classes:'board-card revealed' };
+    return { faceDown:true, classes:'board-card face-down' };
   }
-  function skyjoVisual(c){const el=document.createElement('div');if(c.cleared)el.className='board-card cleared';else if(c.revealed){el.className='board-card revealed svg-card';el.innerHTML=skyjoSvg('front',c.value,C(c.value));el.style.color=C(c.value);}else{el.className='board-card face-down svg-card';el.innerHTML=skyjoSvg('back');}return el;}
+  function skyjoVisual(c){ return Kit.Cards.el(skyjoSpec(c)); }
   function skyjoCardId(s,pi,ci){return `skyjo:table:r${s.round}:p${pi}:c${ci}`;}
   // The discard pile is a PERMANENT card (id 'skyjo:discard') pinned to #uiDiscard.
   // A card that goes to the discard is the REAL moving card — we fly it onto the
@@ -222,7 +228,8 @@
     wrap.appendChild(h);
     const grid=document.createElement('div');grid.className='board-grid';
     p.board.forEach((c,ci)=>{const card=document.createElement('div');
-      card.className='board-card registry-anchor';card.dataset.cardReg=skyjoCardId(s,pi,ci);
+      // anchor carries the canonical geometry (.kc) so the overlay sizes to it.
+      card.className='kc board-card registry-anchor';card.dataset.cardReg=skyjoCardId(s,pi,ci);
       if(interactive&&isMain&&!c.cleared&&canClick(s,pi,ci,c,viewer)){card.classList.add('clickable');card.onclick=()=>cardClick(s,pi,ci,c);}
       grid.appendChild(card);});
     wrap.appendChild(grid);return wrap;
