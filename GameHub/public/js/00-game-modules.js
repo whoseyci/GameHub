@@ -58,7 +58,7 @@
     return items;
   }
 
-  // src/engine.ts
+  // src/games/skyjo/engine.ts
   function createDeck(rng = { rngState: makeSeed() }) {
     const d = [];
     for (let i = 0; i < 5; i++) d.push(-2);

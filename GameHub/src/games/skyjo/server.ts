@@ -9,7 +9,7 @@ import type {
   GameFeatures,
 } from "../types";
 import { mapPhase } from "../types";
-import { GameEngine } from "../../engine";
+import { GameEngine } from "./engine";
 
 // Rehydrate the engine from plain stored state. This is cheap (an Object.assign);
 // the previous hot-path cost came from JSON.parse(JSON.stringify(...)) on write

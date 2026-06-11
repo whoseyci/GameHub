@@ -1,6 +1,8 @@
-// engine.ts — Authoritative Skyjo game logic (server-side, framework-free).
+// games/skyjo/engine.ts — Authoritative Skyjo game logic (server-side, framework-free).
+// (Formerly src/engine.ts — it was always Skyjo-specific; moved here so the name
+//  matches reality. Only Skyjo imports it.)
 
-import { makeSeed, shuffleInPlace, type RngStateHolder } from "./rng";
+import { makeSeed, shuffleInPlace, type RngStateHolder } from "../../rng";
 
 export interface Card { value: number; revealed: boolean; cleared: boolean; }
 export interface Player {

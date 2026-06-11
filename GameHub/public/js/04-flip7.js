@@ -226,29 +226,27 @@
     const s=view.flip7,viewer=s.viewerSeat;
     const myTurn=s.phase==='PLAY'&&s.current===viewer&&s.players[viewer]&&s.players[viewer].status==='active'&&!s.pendingAction;
     const pending=s.pendingAction&&s.pendingAction.from===viewer;
-    let ctrl=$('f7Controls');if(!ctrl){ctrl=document.createElement('div');ctrl.id='f7Controls';ctrl.className='f7-controls';document.body.appendChild(ctrl);}
-    ctrl.innerHTML='';
-    const sb=$('statusBar');sb.style.color='var(--text)';
-    if(net.spectating){sb.innerHTML='<span style="color:#f59e0b">\ud83d\udc41 Spectating \u2014 you\'ll join next round</span>';}
+    const hitStay=(seat)=>Kit.Controls.set([
+      {label:'Hit',kind:'green',onClick:()=>act(seat,{action:'hit'})},
+      {label:'Stay',kind:'secondary',onClick:()=>act(seat,{action:'stay'})},
+    ],{id:'f7Controls'});
+    Kit.Controls.clear('f7Controls'); // default: no controls unless a branch sets them
+    if(net.spectating){Kit.Status.set({text:'👁 Spectating — you\'ll join next round',tone:'warn'});}
     else if(s.phase==='ROUND_END'||s.phase==='GAME_OVER'){
-      if(mode==='local'||net.isHost)sb.innerHTML='<button class="btn" style="margin:0;padding:10px 20px" onclick="'+(mode==='local'?'localNext()':"net.send({type:'next_round'})")+'">'+(s.phase==='GAME_OVER'?(mode==='local'?'Play Again':'New Game'):'Next Round')+'</button>';
-      else sb.innerHTML='<span class="muted">Waiting for host\u2026</span>';
+      if(mode==='local'||net.isHost)Kit.Status.set({button:{label:s.phase==='GAME_OVER'?(mode==='local'?'Play Again':'New Game'):'Next Round',onClick:()=>mode==='local'?localNext():net.send({type:'next_round'})}});
+      else Kit.Status.set({text:'Waiting for host…',tone:'muted'});
     }
     else if(pending){
       const k=s.pendingAction.kind;
-      sb.innerHTML='<span style="color:#f59e0b">'+(k==='freeze'?'\u2744 Choose who to Freeze':k==='flip3'?'\ud83d\udd03 Choose who flips 3':'\u2665 Give Second Chance to an opponent')+' (tap a player)</span>';
+      Kit.Status.set({text:(k==='freeze'?'❄ Choose who to Freeze':k==='flip3'?'🔃 Choose who flips 3':'♥ Give Second Chance to an opponent')+' (tap a player)',tone:'warn'});
     }
-    else if(myTurn){sb.innerHTML='<span style="color:#10b981">Your turn \u2014 Hit or Stay</span>';
-      const hit=document.createElement('button');hit.className='btn green';hit.textContent='Hit';hit.onclick=()=>act(viewer,{action:'hit'});
-      const stay=document.createElement('button');stay.className='btn secondary';stay.textContent='Stay';stay.onclick=()=>act(viewer,{action:'stay'});
-      ctrl.appendChild(hit);ctrl.appendChild(stay);
-    }
+    else if(myTurn){Kit.Status.set({text:'Your turn — Hit or Stay',tone:'go'});hitStay(viewer);}
     else if(mode==='local'){const cur=s.players[s.current];
-      if(s.pendingAction){const k=s.pendingAction.kind;sb.innerHTML='<span style="color:#f59e0b">'+esc(cur.name)+': '+(k==='freeze'?'Freeze \u2744':k==='flip3'?'Flip 3':'Give \u2665')+' \u2014 tap a player</span>';}
-      else{sb.innerHTML='<span style="color:#10b981">'+(cur?esc(cur.name):'')+'\'s turn</span>';
-        if(s.phase==='PLAY'&&cur&&cur.status==='active'){const hit=document.createElement('button');hit.className='btn green';hit.textContent='Hit';hit.onclick=()=>act(s.current,{action:'hit'});const stay=document.createElement('button');stay.className='btn secondary';stay.textContent='Stay';stay.onclick=()=>act(s.current,{action:'stay'});ctrl.appendChild(hit);ctrl.appendChild(stay);}}
+      if(s.pendingAction){const k=s.pendingAction.kind;Kit.Status.set({text:esc(cur.name)+': '+(k==='freeze'?'Freeze ❄':k==='flip3'?'Flip 3':'Give ♥')+' — tap a player',tone:'warn'});}
+      else{Kit.Status.set({text:(cur?cur.name:'')+'\'s turn',tone:'go'});
+        if(s.phase==='PLAY'&&cur&&cur.status==='active')hitStay(s.current);}
     }
-    else sb.textContent='Waiting for '+(s.players[s.current]?.name||'\u2026');
+    else Kit.Status.set({text:'Waiting for '+(s.players[s.current]?.name||'…'),tone:'info'});
   }
 
   // ---- fly a card-like element between two points ----
@@ -425,7 +423,7 @@
   }
   function maybeSummary(view){
     const s=view.flip7;
-    if(s.phase==='ROUND_END'||s.phase==='GAME_OVER'){if(!summaryShown){summaryShown=true;showSummary(view);}const c=$('f7Controls');if(c)c.innerHTML='';}
+    if(s.phase==='ROUND_END'||s.phase==='GAME_OVER'){if(!summaryShown){summaryShown=true;showSummary(view);}Kit.Controls.clear('f7Controls');}
     else{summaryShown=false;hideOverlay();}
   }
   async function runUnifiedEvent(liveView,e,finalView,token=currentToken()){
@@ -572,7 +570,7 @@
   }
   // reset the timeline cursor when (re)entering a game
   window._flip7ResetSeq=function(){lastSeq=-1;invalidateToken();};
-  function unmount(){invalidateToken(); const c=$('f7Controls');if(c)c.remove();const d=$('f7DealerWrap');if(d)d.remove();const mini=$('miniBoardsContainer');if(mini){mini.innerHTML='';mini.className='mini-boards-container';}}
+  function unmount(){invalidateToken(); Kit.Controls.clear('f7Controls');const d=$('f7DealerWrap');if(d)d.remove();const mini=$('miniBoardsContainer');if(mini){mini.innerHTML='';mini.className='mini-boards-container';}}
   window.GameClients['flip7']={render,inspect,unmount,act:clientAct};
 
 })();

@@ -176,21 +176,20 @@
     }
 
     // status bar
-    const sb=$('statusBar');sb.style.color='var(--text)';
-    if(net.spectating){sb.innerHTML='<span style="color:#f59e0b">👁 Spectating — you\'ll join next round</span>';}
+    if(net.spectating){Kit.Status.set({text:'👁 Spectating — you\'ll join next round',tone:'warn'});}
     else if(s.phase==='REVEAL'){
-      if(s.tiebreakerPlayers&&s.tiebreakerPlayers.length){const inTb=s.tiebreakerPlayers.includes(viewer);sb.textContent=mode==='local'?'Tie! Tied players flip 1 more card.':(inTb?'Tie! Flip 1 more card.':'Waiting for tiebreaker…');sb.style.color=(mode==='local'||inTb)?'var(--accent)':'var(--text)';}
-      else sb.textContent=mode==='local'?'Everyone: flip 2 cards to begin.':'Flip 2 cards to begin.';
+      if(s.tiebreakerPlayers&&s.tiebreakerPlayers.length){const inTb=s.tiebreakerPlayers.includes(viewer);Kit.Status.set({text:mode==='local'?'Tie! Tied players flip 1 more card.':(inTb?'Tie! Flip 1 more card.':'Waiting for tiebreaker…'),tone:(mode==='local'||inTb)?'go':'info'});}
+      else Kit.Status.set({text:mode==='local'?'Everyone: flip 2 cards to begin.':'Flip 2 cards to begin.',tone:'info'});
     }
     else if(s.phase==='ROUND_END'||s.phase==='GAME_OVER'){
-      if(mode==='local'||net.isHost)sb.innerHTML=`<button class="btn" style="margin:0;padding:10px 20px" onclick="${mode==='local'?'localNext()':"net.send({type:'next_round'})"}">${s.phase==='GAME_OVER'?(mode==='local'?'Play Again':'New Game'):'Next Round'}</button>`;
-      else sb.innerHTML='<span class="muted">Waiting for host…</span>';
+      if(mode==='local'||net.isHost)Kit.Status.set({button:{label:s.phase==='GAME_OVER'?(mode==='local'?'Play Again':'New Game'):'Next Round',onClick:()=>mode==='local'?localNext():net.send({type:'next_round'})}});
+      else Kit.Status.set({text:'Waiting for host…',tone:'muted'});
     }
     else{
-      if(ta==='turn_end_delay')sb.innerHTML='<span class="muted">Ending turn…</span>';
-      else if(mode==='local')sb.innerHTML=`<span style="color:#10b981">${esc(s.players[s.currentPlayer].name)}'s turn!</span>`;
-      else if(myTurn)sb.innerHTML='<span style="color:#10b981">Your turn!</span>';
-      else sb.textContent='Waiting for '+s.players[s.currentPlayer].name+'…';
+      if(ta==='turn_end_delay')Kit.Status.set({text:'Ending turn…',tone:'muted'});
+      else if(mode==='local')Kit.Status.set({text:`${s.players[s.currentPlayer].name}'s turn!`,tone:'go'});
+      else if(myTurn)Kit.Status.set({text:'Your turn!',tone:'go'});
+      else Kit.Status.set({text:'Waiting for '+s.players[s.currentPlayer].name+'…',tone:'info'});
     }
   }
 

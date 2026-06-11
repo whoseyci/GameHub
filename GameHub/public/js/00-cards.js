@@ -223,5 +223,36 @@
   function controlsClear(id){ const bar = document.getElementById(id || CONTROLS_ID); if (bar) bar.remove(); }
   Kit.Controls = { set: controlsSet, clear: controlsClear };
 
+  // ---- shared STATUS line -----------------------------------------------------
+  // Every game wrote sb.innerHTML with ad-hoc inline-styled spans (your turn / waiting
+  // / prompt / spectating). Kit.Status is the one preset: a message with an enumerated
+  // TONE, optionally an inline action button (e.g. "Next Round" / "Play Again").
+  //   Kit.Status.set({ text:'Your turn!', tone:'go' })
+  //   Kit.Status.set({ button:{ label:'Next Round', onClick } })           // host action
+  //   Kit.Status.set({ text:'Waiting for host…', tone:'muted' })
+  // Tones: 'go' (green) | 'warn' (amber) | 'muted' (dim) | 'info' (default text).
+  const TONE = { go:'#10b981', warn:'#f59e0b', muted:'var(--text-dim)', info:'var(--text)' };
+  function statusSet(opts){
+    opts = opts || {};
+    const sb = document.getElementById('statusBar');
+    if (!sb) return;
+    sb.style.color = 'var(--text)';
+    if (opts.button) {
+      const b = opts.button;
+      const btn = document.createElement('button');
+      btn.className = 'btn' + (b.kind ? ' ' + b.kind : '');
+      btn.style.cssText = 'margin:0;padding:10px 20px';
+      btn.textContent = b.label || '';
+      if (typeof b.onClick === 'function') btn.onclick = b.onClick;
+      sb.replaceChildren(btn);
+      return;
+    }
+    const span = document.createElement('span');
+    span.style.color = TONE[opts.tone] || TONE.info;
+    span.textContent = opts.text != null ? String(opts.text) : '';
+    sb.replaceChildren(span);
+  }
+  Kit.Status = { set: statusSet, TONE };
+
   Kit.Cards = { el, anchor, board, snapshot, hand, grid, deck, discard, drop, deal, move, toPile, paint, _decodeSpec:decodeSpec };
 })();
