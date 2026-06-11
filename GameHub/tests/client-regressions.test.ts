@@ -86,7 +86,7 @@ describe("shared game shell", () => {
     expect(skyjo).toContain("Kit.CardManager.has");
     // Flip 7 uses CardManager for permanent card lifecycle
     expect(flip7).toContain("Kit.CardManager.get(permId)");
-    expect(flip7).toContain("Kit.CardBoard.sync"); // create/pin/reconcile/sync via the shared board wiring
+    expect(flip7).toContain("Kit.Cards.board"); // create/pin/reconcile/sync via the framework board wiring
     // Permanent TABLE cards are created/reconciled by syncF7Cards, never
     // destroyed directly. (Transient discard cards use a separate temp id and
     // may be destroyed — that's expected.)

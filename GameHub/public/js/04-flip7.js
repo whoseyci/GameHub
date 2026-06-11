@@ -11,50 +11,39 @@
   // theming (number colours, mod gold, action glyphs) is expressed as a declarative
   // SPEC; the legacy .f7-card classes are kept as hooks for Flip7-specific states
   // (busted/bust-cause) and the existing animation/mini-board CSS.
-  function f7Spec(kind,val){
-    if(kind==='num') return { bg:numFace(val), content:{ text:val, color:'#0b1020' }, classes:'f7-card num' };
-    if(kind==='mod') return val==='x2'
+  function f7Spec(kind,val,{busted=false,cause=false}={}){
+    let spec;
+    if(kind==='num') spec={ bg:numFace(val), content:{ text:val, color:'#0b1020' }, classes:'f7-card num' };
+    else if(kind==='mod') spec= val==='x2'
       ? { bg:'#1f2937', border:'#f472b6', content:{ text:'×2', color:'#f472b6' }, classes:'f7-card modx2' }
       : { bg:{gradient:['#fef3c7','#fcd34d']}, border:'#d97706', content:{ text:modText(val), color:'#7c4a03' }, classes:'f7-card mod' };
-    if(val==='second') return { bg:'#dc2626', border:'#ef4444', content:{ text:'♥', color:'#fbcfe8' }, classes:'f7-card second' };
-    if(val==='freeze') return { bg:{gradient:['#bae6fd','#7dd3fc']}, border:'#38bdf8', content:{ text:'❄', color:'#0369a1' }, classes:'f7-card freeze' };
-    if(val==='flip3')  return { bg:'#eaff00', border:'#d4e600', content:{ text:'F3', color:'#1a1a00' }, classes:'f7-card flip3' };
-    return { content:{ text:val }, classes:'f7-card' };
-  }
-  function cardEl(kind,val,{busted=false,cause=false}={}){
-    const spec=f7Spec(kind,val);
+    else if(val==='second') spec={ bg:'#dc2626', border:'#ef4444', content:{ text:'♥', color:'#fbcfe8' }, classes:'f7-card second' };
+    else if(val==='freeze') spec={ bg:{gradient:['#bae6fd','#7dd3fc']}, border:'#38bdf8', content:{ text:'❄', color:'#0369a1' }, classes:'f7-card freeze' };
+    else if(val==='flip3')  spec={ bg:'#eaff00', border:'#d4e600', content:{ text:'F3', color:'#1a1a00' }, classes:'f7-card flip3' };
+    else spec={ content:{ text:val }, classes:'f7-card' };
     if(busted) spec.classes+=' busted-card';
     if(cause)  spec.classes+=' bust-cause';
-    const c=Kit.Cards.el(spec);
+    return spec;
+  }
+  function cardEl(kind,val,opts={}){
+    const c=Kit.Cards.el(f7Spec(kind,val,opts));
     if(kind!=='num'&&val) c.title = val==='second'?'Second Chance':val==='freeze'?'Freeze':val==='flip3'?'Flip Three':'';
     return c;
   }
 
-  function addF7Card(row,el,key){
+  // Mount a card on a player's row as a framework ANCHOR: it carries the declarative
+  // spec, so Kit.Cards.board() rebuilds the overlay from the anchor alone — no
+  // per-game data-kind/value re-encoding, no bespoke renderer.
+  function addF7Card(row,kind,val,key,opts={}){
     const seat=row?.dataset?.f7Seat||'x';
     const id=`flip7:table:p${seat}:${key}`;
-    const anchor=el.cloneNode(false);   // shallow: keep .kc classes + geometry; the
-    anchor.className=el.className+' registry-anchor'; // CardManager overlay shows content.
-    anchor.dataset.cardKey=key;anchor.dataset.cardReg=id;
-    anchor.dataset.kind=el.classList.contains('num')?'num':(el.classList.contains('mod')||el.classList.contains('modx2'))?'mod':'act';
-    anchor.dataset.value=el.textContent||'';
-    if(el.classList.contains('second'))anchor.dataset.value='second';
-    if(el.classList.contains('freeze'))anchor.dataset.value='freeze';
-    if(el.classList.contains('flip3'))anchor.dataset.value='flip3';
-    anchor.dataset.busted=el.classList.contains('busted-card')?'1':'';
-    anchor.dataset.cause=el.classList.contains('bust-cause')?'1':'';
-    row.appendChild(anchor);return anchor;
-  }
-  // Flip 7 keeps its distinct `.f7-card` look (cardEl) but uses the SHARED board
-  // wiring (Kit.CardBoard.sync) for create/pin/reconcile — no per-game loop. The
-  // renderer returns an Element (advanced mode), so the unified loop just hosts it.
-  function f7AnchorEl(anchor){
-    const kind=anchor.dataset.kind, val=kind==='num'?Number(anchor.dataset.value):anchor.dataset.value;
-    return cardEl(kind==='num'?'num':(val==='second'||val==='freeze'||val==='flip3')?'act':'mod',val,{busted:anchor.dataset.busted==='1',cause:anchor.dataset.cause==='1'});
+    const a=Kit.Cards.anchor(id, f7Spec(kind,val,opts));
+    a.classList.add('registry-anchor');
+    a.dataset.cardKey=key;
+    row.appendChild(a);return a;
   }
   function syncF7Cards(){
-    Kit.CardBoard.sync('flip7:table:',{
-      renderer:f7AnchorEl,
+    Kit.Cards.board('flip7:table:',{
       location:(anchor,index)=>({zone:'grid',player:Number(anchor.closest('[data-f7-seat]')?.dataset?.f7Seat)||0,slot:index}),
     });
   }
@@ -67,44 +56,27 @@
     const deck=$('f7Deck');
     const destAnchor=document.querySelector(`[data-card-reg="${permId}"]`);
     if(!cmCard||!deck||!destAnchor)return;
-    // Deck visual pulse as the card leaves the pile.
-    deck.classList.remove('deal');void deck.offsetWidth;deck.classList.add('deal');
-    // Start the card on the deck so the flight originates there.
-    Kit.CardManager.pin(permId,deck,{hideAnchor:false,updateContent:false});
-    await Kit.CardManager.moveTo(permId,destAnchor,{
-      duration:620,
-      arc:46,
-      flip:true,            // rotateY card-flip → always lands face-up & upright
-      startFaceDown:true,
-      backHTML:'<div class="kc kc-back"></div>',
-      backClass:'kc-back',
-      revealMidway:true,
-      revealAt:0.5,         // swap to the face while edge-on (mid-flip)
-      onReveal:()=>SFX.flip(),
-      land:true,
-      hideTarget:true,      // keep the slot empty during the flight (clean arrival)
+    // The canonical deal flight (Kit.Cards.deal): deck → slot, face-down with a
+    // mid-flip reveal, card-sized source, canonical geometry the whole way.
+    await Kit.Cards.deal(permId,deck,destAnchor,{
+      duration:620, arc:46, onReveal:()=>SFX.flip(),
       toLocation:{zone:'grid',player:Number(seat)||0,slot},
     });
-    // moveTo() performs the clean hand-off (overlay settles onto the anchor); no
-    // extra pin/sync needed — that previously caused a double-snap flicker.
   }
-  // Fly an EXISTING permanent card (by its CardManager id) from its board slot to
-  // the discard pile, then remove it. We move the real card — no transient clone
-  // — so there is never a duplicate left behind on the board during the flight.
-  // The caller must remove the card from liveView.cards (so the board slot
-  // collapses) BEFORE calling this; reconcile() then won't recreate it.
+  // Fly an EXISTING permanent card from its board slot to the discard pile, then
+  // remove it (it's logically in the pile). We move the REAL card — no transient
+  // clone — so no duplicate flashes on the board. The caller must remove the card
+  // from liveView.cards (so reconcile() won't recreate it) BEFORE calling this.
   async function flyPermToDiscard(permId, face){
     const discard=$('f7Discard');
     const c=Kit.CardManager.get(permId);
     if(!discard||!c)return;
-    // Keep the underlying board anchor hidden for the whole trip so no empty/dupe
-    // slot flashes when the overlay leaves it.
     const anchor=document.querySelector(`[data-card-reg="${permId}"]`);
     const prevVis=anchor?anchor.style.visibility:null;
     if(anchor)anchor.style.visibility='hidden';
     if(face){c.face={kind:face.kind,value:face.v};c.faceUp=true;}
-    await Kit.CardManager.moveTo(permId,discard,{duration:480,arc:34,spin:true,land:true,toLocation:{zone:'discard'},hideTarget:false});
-    Kit.CardManager.destroy(permId); // it's now in the (logical) discard pile
+    await Kit.Cards.toPile(permId,discard,{duration:480,arc:34,toLocation:{zone:'discard'}});
+    Kit.CardManager.destroy(permId);
     if(anchor)anchor.style.visibility=prevVis||'';
     discard.classList.remove('land');void discard.offsetWidth;discard.classList.add('land');
   }
@@ -129,7 +101,6 @@
   function rowOf(i){const b=boardOf(i);return b?b.querySelector('.f7-row'):null;}
   function rectOf(el){return el?el.getBoundingClientRect():null;}
   function cloneCard(card){return card?{kind:card.kind,v:card.v}:card;}
-  function f7BackHTML(){return '<div class="kc kc-back"></div>';}
   function actionCardSourceEl(seat,kind){
     const row=rowOf(seat); if(!row)return null;
     const anchors=[...row.querySelectorAll('[data-card-reg]')];
@@ -168,14 +139,14 @@
   function renderF7PlayerCards(row,p,busted){
     const cards=Array.isArray(p.cards)?p.cards:null;
     if(cards&&cards.length){
-      cards.forEach((c,idx)=>addF7Card(row,cardEl(c.kind,c.v,{busted}),c.id||('card-'+idx+'-'+c.kind+'-'+c.v)));
+      cards.forEach((c,idx)=>addF7Card(row,c.kind,c.v,c.id||('card-'+idx+'-'+c.kind+'-'+c.v),{busted}));
     }else{
-      p.nums.forEach(n=>addF7Card(row,cardEl('num',n,{busted}),'num-'+n));
-      p.mods.forEach((m,mi)=>addF7Card(row,cardEl('mod',m,{busted}),'mod-'+mi+'-'+m));
-      if(p.second)addF7Card(row,cardEl('act','second'),'second');
-      (p.actionCards||[]).forEach((a,ai)=>addF7Card(row,cardEl('act',a),'act-'+ai+'-'+a));
+      p.nums.forEach(n=>addF7Card(row,'num',n,'num-'+n,{busted}));
+      p.mods.forEach((m,mi)=>addF7Card(row,'mod',m,'mod-'+mi+'-'+m,{busted}));
+      if(p.second)addF7Card(row,'act','second','second');
+      (p.actionCards||[]).forEach((a,ai)=>addF7Card(row,'act',a,'act-'+ai+'-'+a));
     }
-    if(busted&&p.bustCard!=null)addF7Card(row,cardEl('num',p.bustCard,{cause:true}),'bust-'+p.bustCard);
+    if(busted&&p.bustCard!=null)addF7Card(row,'num',p.bustCard,'bust-'+p.bustCard,{cause:true});
   }
 
   // ---- static board render from state ----

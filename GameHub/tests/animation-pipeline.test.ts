@@ -437,16 +437,15 @@ describe("CardManager: permanent card system invariants", () => {
     expect(flip7Source).toContain("animateF7Layout(before);");
     // Card is found by its permanent ID after draw pins it
     expect(flip7Source).toContain("Kit.CardManager.get(permId);");
-    // The deck → slot flight uses the CardManager animation API (moveTo),
-    // not hand-rolled inline style juggling — pinned to the deck, then moved.
-    expect(flip7Source).toContain("Kit.CardManager.pin(permId,deck");
-    expect(flip7Source).toContain("Kit.CardManager.moveTo(permId,destAnchor");
-    // The flight starts face-down and reveals midway via the API options.
-    expect(flip7Source).toContain("startFaceDown:true");
-    expect(flip7Source).toContain("revealMidway:true");
-    // syncF7Cards pins all cards to real anchors
-    expect(flip7Source).toContain("Kit.CardBoard.sync('flip7:table:'");
-    // reconcile/pin/sync now live ONCE in the shared CardBoard.sync (core), not per-game.
+    // The deck → slot flight uses the unified framework deal (Kit.Cards.deal):
+    // deck → slot, face-down, mid-flip reveal — no hand-rolled style juggling.
+    expect(flip7Source).toContain("Kit.Cards.deal(permId,deck,destAnchor");
+    // The canonical deal's face-down + mid-flight reveal live ONCE in the framework.
+    const cardsSrc = readFileSync(new URL("../public/js/00-cards.js", import.meta.url), "utf8");
+    expect(cardsSrc).toContain("startFaceDown:true");
+    expect(cardsSrc).toContain("revealMidway:true");
+    // The board is wired via the framework (Kit.Cards.board → CardBoard.sync → reconcile).
+    expect(flip7Source).toContain("Kit.Cards.board('flip7:table:'");
     const coreForBoard = readFileSync(new URL("../public/js/00-core.js", import.meta.url), "utf8");
     expect(coreForBoard).toContain("CardManager.reconcile(prefix,active)");
     // Permanent TABLE cards are reconciled, never destroyed directly. (Transient
