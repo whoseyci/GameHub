@@ -90,10 +90,22 @@ Kit.Cards.toPile(id, pileEl)             // card → deck/discard
 All flights run through `Kit.CardManager` and always stage a **card-sized** source,
 so a card never balloons to a container's width.
 
-## 5. Other shared presets
+## 5. Other shared presets (used by every game)
 
-- `Kit.Controls.set([{label,onClick,kind,disabled}], {id})` / `Kit.Controls.clear(id)`
-  — one floating control bar; no game hand-rolls its own anymore.
+- **`Kit.Controls.set([{label,onClick,kind,disabled}], {id})` / `.clear(id)`** — one
+  floating control bar (Hit/Stay, End turn, …). Used by Flip 7 + Schotten.
+- **`Kit.Status.set({text, tone})` / `set({button:{label,onClick}})`** — the status
+  line with enumerated tones (`go`/`warn`/`muted`/`info`) and an optional inline
+  action button (Next Round / Play Again). Used by Skyjo + Flip 7. (Qwixx/Schotten
+  pass a plain `status` string through `GameShell.renderTable`.)
+- **`Kit.MiniBoard({name, badge, you, active, dim, body, onClick, seat, variant})`**
+  — the opponent/mini panel: the framework owns the frame + states + header + inspect
+  click; the **body is the game's own** (a cards row, a Qwixx dot grid, anything).
+  Used by Skyjo, Flip 7 and Qwixx. This is the "design freedom in the body,
+  consistency in the frame" component.
+- **`Kit.rollDice(container, dice, opts)`** — the shared dice roll/render (3D tumble +
+  settle). Qwixx uses it; any future dice game gets dice for free. (The legacy
+  per-game 3D-cube CSS was deleted — dice are unified.)
 
 ## 6. Lockdown (so it stays water-tight)
 
