@@ -61,6 +61,9 @@ export const TemplateGame: GameModule = {
       minDurationSec: 60,
       maxDurationSec: 300,
     },
+    actionTypes: [
+      "example",
+    ] as const,
   },
 
   create(names: string[]): TemplateState {
@@ -101,4 +104,18 @@ export const TemplateGame: GameModule = {
   isOver(state: TemplateState): boolean {
     return state.phase === "GAME_OVER";
   },
+
+  // PROPOSAL 3: State migration — backfill new fields when schema evolves.
+  migrate(state: any) {
+    // Example for a future schema bump:
+    // if (!state.schemaVersion || state.schemaVersion < 2) {
+    //   state.newField = [];
+    //   state.schemaVersion = 2;
+    // }
+  },
+
+  // PROPOSAL 6: Server-side bot (optional — games may keep client-side bots)
+  // runBot(state: TemplateState, seat: number, difficulty: string): GameAction | null {
+  //   return { action: "example" };
+  // },
 };
