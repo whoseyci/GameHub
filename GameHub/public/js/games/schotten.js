@@ -194,15 +194,11 @@
     // ---------- ANIMATE the latest action ----------
     runAnimation(s, me, preRects).catch(() => {});
 
-    // ---------- end-turn control ----------
-    let ctrl = document.getElementById('stControls');
-    if (!ctrl) { ctrl = document.createElement('div'); ctrl.id = 'stControls'; ctrl.className = 'f7-controls'; document.body.appendChild(ctrl); }
-    ctrl.innerHTML = '';
-    if (myTurn && s.placedThisTurn) {
-      const end = document.createElement('button');
-      end.className = 'btn green'; end.textContent = 'End turn ▶';
-      end.onclick = () => act('end'); ctrl.appendChild(end);
-    }
+    // ---------- end-turn control (shared preset) ----------
+    Kit.Controls.set(
+      (myTurn && s.placedThisTurn) ? [{ label: 'End turn ▶', kind: 'green', onClick: () => act('end') }] : [],
+      { id: 'stControls' }
+    );
 
     if (view.summary && typeof showSummary === 'function' && !summaryShown) showSummary(view);
   }
@@ -264,7 +260,7 @@
 
   function unmount() {
     selectedHand = null; lastSeq = -1;
-    const c = document.getElementById('stControls'); if (c) c.remove();
+    Kit.Controls.clear('stControls');
     Kit.CardManager.clear(PREFIX);
   }
 

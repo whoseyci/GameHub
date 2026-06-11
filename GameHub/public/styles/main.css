@@ -592,3 +592,7 @@ html,body,#app{min-height:100%;height:auto;max-height:none;overflow-x:hidden;ove
 .kc-deck.deal{animation:kitDeckPulse .35s var(--spring)}
 .kc-drop{outline:2px dashed var(--kit-green);outline-offset:2px;border-radius:10px;cursor:pointer;
   background:rgba(34,197,94,.07);animation:kitDropPulse 1.3s ease-in-out infinite}
+
+/* shared floating control bar (Kit.Controls) — one preset for all games */
+.kc-controls{position:fixed;bottom:calc(70px + env(safe-area-inset-bottom,0px));left:50%;transform:translateX(-50%);display:flex;gap:12px;z-index:110}
+.kc-controls .btn{margin:0;width:auto;padding:14px 28px}

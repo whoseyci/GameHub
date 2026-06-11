@@ -170,5 +170,33 @@
     }, extra||{}));
   }
 
+  // ---- shared FLOATING CONTROL BAR -------------------------------------------
+  // Every game hand-rolled its own bottom control bar (create a fixed div, append
+  // to body, fill with buttons, remember to remove it on unmount). Kit.Controls is
+  // the one preset: declare buttons, it renders/auto-cleans a single shared bar.
+  //   Kit.Controls.set([{ label:'End turn ▶', onClick, kind:'green', disabled }], { id })
+  //   Kit.Controls.clear(id?)
+  const CONTROLS_ID = 'kcControls';
+  function controlsSet(buttons, opts){
+    opts = opts || {};
+    const id = opts.id || CONTROLS_ID;
+    let bar = document.getElementById(id);
+    if (!bar){ bar = document.createElement('div'); bar.id = id; bar.className = 'kc-controls'; document.body.appendChild(bar); }
+    bar.innerHTML = '';
+    (buttons || []).forEach((b) => {
+      if (!b) return;
+      const btn = document.createElement('button');
+      btn.className = 'btn' + (b.kind ? ' ' + b.kind : '');
+      btn.textContent = b.label || '';
+      if (b.disabled) btn.disabled = true;
+      if (typeof b.onClick === 'function') btn.onclick = b.onClick;
+      bar.appendChild(btn);
+    });
+    if (!bar.children.length) bar.remove();
+    return bar;
+  }
+  function controlsClear(id){ const bar = document.getElementById(id || CONTROLS_ID); if (bar) bar.remove(); }
+  Kit.Controls = { set: controlsSet, clear: controlsClear };
+
   Kit.Cards = { el, anchor, board, snapshot, hand, grid, deck, discard, drop, deal, move, toPile, paint, _decodeSpec:decodeSpec };
 })();
