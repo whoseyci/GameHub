@@ -8,7 +8,7 @@
    shape as Skyjo below. The hub never needs to change.
    ==================================================================== */
 const PARTYKIT_HOST = location.host; // served by the same Worker
-const BUILD_VERSION = "v51-strict-expressive-card-tokens"; // bump on each change; shown on the menu
+const BUILD_VERSION = "v52-proportional-card-scaling"; // bump on each change; shown on the menu
 
 const $=id=>document.getElementById(id);
 function esc(v){return String(v ?? '').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));}
@@ -169,9 +169,19 @@ const Kit=(()=>{
       if(!overlayEl||!anchor)return;
       const r=stableRect(anchor);if(!r)return;
       const cs=getComputedStyle(anchor);
-      Object.assign(overlayEl.style,{position:'fixed',top:r.top+'px',left:r.left+'px',width:r.width+'px',height:r.height+'px',opacity:'1',borderRadius:cs.borderRadius,borderWidth:cs.borderWidth,borderStyle:cs.borderStyle,boxShadow:cs.boxShadow,pointerEvents:'none',boxSizing:'border-box'});
-      if(overlayEl.classList.contains('board-card'))overlayEl.style.fontSize=Math.max(8,Math.min(30,r.width*0.42))+'px';
-      if(overlayEl.classList.contains('f7-card'))overlayEl.style.fontSize=Math.max(7,Math.min(30,r.width*0.46))+'px';
+      Object.assign(overlayEl.style,{position:'fixed',top:r.top+'px',left:r.left+'px',width:r.width+'px',height:r.height+'px',opacity:'1',pointerEvents:'none',boxSizing:'border-box'});
+      // Framework cards (.kc): drive ALL geometry from the measured width so corners,
+      // border, font and pips stay proportional at ANY size (mini → focus). We set
+      // --kc-w to the rendered width; the proportional CSS (border-radius/font =
+      // calc(--kc-w*…)) does the rest. Do NOT copy a fixed radius or clamp the font.
+      if(overlayEl.classList.contains('kc')){
+        overlayEl.style.setProperty('--kc-w', r.width+'px');
+      } else {
+        // legacy non-framework cards: copy the anchor's resolved box styling.
+        Object.assign(overlayEl.style,{borderRadius:cs.borderRadius,borderWidth:cs.borderWidth,borderStyle:cs.borderStyle,boxShadow:cs.boxShadow});
+        if(overlayEl.classList.contains('board-card'))overlayEl.style.fontSize=Math.max(8,Math.min(30,r.width*0.42))+'px';
+        if(overlayEl.classList.contains('f7-card'))overlayEl.style.fontSize=Math.max(7,Math.min(30,r.width*0.46))+'px';
+      }
     }
 
     function restore(c){if(c.hidden){c.hidden.el.style.visibility=c.hidden.visibility||'';c.hidden=null;}}

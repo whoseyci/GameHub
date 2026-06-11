@@ -480,7 +480,7 @@ html,body,#app{min-height:100%;height:auto;max-height:none;overflow-x:hidden;ove
 .st-side-me{justify-content:flex-end}
 .st-side-opp{justify-content:flex-start}
 /* empty slot mirrors the canonical small-card geometry (width-driven + locked aspect) */
-.st-slot-empty{width:clamp(26px,5.6vw,38px);aspect-ratio:var(--kc-aspect);border-radius:var(--kc-radius-sm);
+.st-slot-empty{--kc-w:clamp(26px,5.6vw,38px);width:var(--kc-w);aspect-ratio:var(--kc-aspect);border-radius:calc(var(--kc-w)*0.135);
   border:1.5px dashed rgba(255,255,255,.12);box-sizing:border-box;flex:0 0 auto}
 .st-anchor{flex:0 0 auto}
 
@@ -517,16 +517,17 @@ html,body,#app{min-height:100%;height:auto;max-height:none;overflow-x:hidden;ove
    the look uniform and the "pointy rectangle while flying" bug impossible.
    ===================================================================== */
 :root{
-  --kc-radius:11px;            /* the ONE corner radius for every card, every state */
-  --kc-radius-sm:8px;
   --kc-aspect:5 / 7;           /* the ONE card aspect ratio */
-  --kc-border:2px;
   --kc-shadow:0 4px 10px rgba(0,0,0,.4);
   --kc-shadow-hi:0 12px 22px rgba(0,0,0,.5);
 }
 /* The base card. .kc IS every card. Size comes from --kc-w (width-driven; height
-   follows the locked aspect ratio so cards never become odd rectangles). */
+   follows the locked aspect ratio). Corners, border, text and pips are ALL derived
+   from --kc-w (computed ON the card, so the card's own width is in scope) — a card
+   looks identical at any size, just scaled. */
 .kc{
+  --kc-radius:calc(var(--kc-w,56px) * 0.135);
+  --kc-border:max(1px, calc(var(--kc-w,56px) * 0.045));
   position:relative;box-sizing:border-box;
   width:var(--kc-w,56px);aspect-ratio:var(--kc-aspect);height:auto;
   border-radius:var(--kc-radius);
@@ -541,16 +542,17 @@ html,body,#app{min-height:100%;height:auto;max-height:none;overflow-x:hidden;ove
 /* glossy sheen — part of the canonical look */
 .kc::before{content:'';position:absolute;inset:0;border-radius:inherit;pointer-events:none;
   background:linear-gradient(180deg,rgba(255,255,255,.26),rgba(255,255,255,0) 44%);mix-blend-mode:soft-light;z-index:2}
-/* content layer (declarative: text/emoji/svg-free), honors rotation/align/color/font */
+/* content layer (declarative: text/emoji/svg-free), honors rotation/align/color/font.
+   font-size derives from --kc-w so the number scales WITH the card (no min/max floor). */
 .kc-content{position:relative;z-index:1;display:flex;align-items:center;justify-content:center;
   width:100%;height:100%;font-weight:1000;line-height:1;text-align:center;
-  font-size:var(--kc-fs,calc(var(--kc-w,56px)*.46));
+  font-size:var(--kc-fs,calc(var(--kc-w,56px)*.5));
   color:var(--kc-fg,#fff);transform:rotate(var(--kc-rot,0deg));text-shadow:0 1px 2px rgba(0,0,0,.35)}
 .kc-content.kc-tl{align-items:flex-start;justify-content:flex-start;padding:6%}
 .kc-content.kc-tr{align-items:flex-start;justify-content:flex-end;padding:6%}
 .kc-content.kc-bl{align-items:flex-end;justify-content:flex-start;padding:6%}
 .kc-content.kc-br{align-items:flex-end;justify-content:flex-end;padding:6%}
-/* corner pips (optional, declarative) */
+/* corner pips (optional, declarative) — also scale with --kc-w */
 .kc-pip{position:absolute;z-index:1;font-size:calc(var(--kc-w,56px)*.2);font-weight:900;line-height:1;color:var(--kc-fg,#fff);opacity:.92}
 .kc-pip.tl{top:5%;left:7%}.kc-pip.br{bottom:5%;right:7%;transform:rotate(180deg)}
 /* THE shared card back — one design for every face-down card, everywhere */
@@ -558,12 +560,13 @@ html,body,#app{min-height:100%;height:auto;max-height:none;overflow-x:hidden;ove
 .kc.kc-back .kc-content,.kc.kc-back .kc-pip{visibility:hidden}
 .kc.kc-back::after{content:'✦';position:absolute;z-index:1;color:rgba(199,210,254,.92);
   font-size:calc(var(--kc-w,56px)*.42);text-shadow:0 1px 4px rgba(0,0,0,.45)}
-/* sizes — width-driven; aspect locked so every size keeps the SAME proportions */
+/* sizes — width-driven ONLY; aspect + radius + border + font all derive from --kc-w,
+   so every size is the SAME design at a different scale (no per-size radius/border). */
 .kc{--kc-w:clamp(40px,9vw,60px)}
 .kc.kc-md{--kc-w:clamp(40px,9vw,60px)}
-.kc.kc-sm{--kc-w:clamp(26px,5.6vw,38px);border-radius:var(--kc-radius-sm);border-width:1.5px}
-.kc.kc-xs{--kc-w:clamp(18px,4vw,26px);border-radius:6px;border-width:1px}
-.kc.kc-mini{--kc-w:16px;border-radius:4px;border-width:1px}
+.kc.kc-sm{--kc-w:clamp(26px,5.6vw,38px)}
+.kc.kc-xs{--kc-w:clamp(18px,4vw,26px)}
+.kc.kc-mini{--kc-w:16px}
 /* interaction states (shared) */
 .kc.kc-selectable{cursor:pointer}
 .kc.kc-selectable:hover{transform:translateY(-7px) scale(1.05);box-shadow:var(--kc-shadow-hi);filter:brightness(1.1)}
@@ -582,14 +585,11 @@ html,body,#app{min-height:100%;height:auto;max-height:none;overflow-x:hidden;ove
    keep the canonical corners/aspect — no game/legacy rule can flatten a flying card
    into a pointy rectangle. These win because they target the framework classes. */
 .kit-card-registered.kc,.kit-card-moving.kc{border-radius:var(--kc-radius)!important;overflow:hidden!important}
-.kit-card-registered.kc.kc-sm,.kit-card-moving.kc.kc-sm{border-radius:var(--kc-radius-sm)!important}
-.kit-card-registered.kc.kc-xs{border-radius:6px!important}
-.kit-card-registered.kc.kc-mini{border-radius:4px!important}
 /* zones built from primitives */
 .kc-hand{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;align-items:flex-end}
 .kc-grid{display:grid;gap:6px}
-.kc-deck,.kc-discard{position:relative;width:var(--kc-w,clamp(40px,9vw,60px));aspect-ratio:var(--kc-aspect);
-  border-radius:var(--kc-radius);box-shadow:var(--kc-shadow)}
+.kc-deck,.kc-discard{position:relative;--kc-w:var(--kc-w,clamp(40px,9vw,60px));width:var(--kc-w);aspect-ratio:var(--kc-aspect);
+  border-radius:calc(var(--kc-w,56px)*0.135);box-shadow:var(--kc-shadow)}
 .kc-deck{background:var(--card-back);border:var(--kc-border) solid #818cf8;display:flex;align-items:center;justify-content:center;color:#c7d2fe}
 .kc-deck::before{content:'✦';font-size:calc(var(--kc-w,56px)*.4);opacity:.82}
 .kc-deck::after{content:'';position:absolute;inset:0;border-radius:inherit;box-shadow:3px 3px 0 -1px #4338ca,6px 6px 0 -2px #3730a3;z-index:-1}
