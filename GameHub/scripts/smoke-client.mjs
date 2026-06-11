@@ -366,6 +366,15 @@ async function smokeBotFlows(window, document) {
   await sleep(2200);
   let view = localView(window, 0);
   assert(view.skyjo.players[1].revealCount > 0, 'Skyjo bot did not perform reveal actions');
+  // Investigate popup must show REAL card faces (regression: it used overlay anchors
+  // that don't render inside the modal → an empty popup).
+  const mini = document.querySelector('.kc-mini');
+  assert(mini, 'Skyjo: opponent mini board missing');
+  mini.click();
+  await sleep(120);
+  const popupCards = document.querySelectorAll('#investigateBox .board-card').length;
+  assert(popupCards === 12, 'Skyjo: investigate popup must render 12 real cards (got ' + popupCards + ')');
+  document.getElementById('investigateOverlay').classList.add('hidden');
   window.quitLocal();
   await sleep(50);
 

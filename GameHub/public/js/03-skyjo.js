@@ -339,9 +339,22 @@
     const seats=s.players.map((_,i)=>i).filter(i=>i!==viewer);
     const idx=seats.indexOf(pi),prev=seats[(idx-1+seats.length)%seats.length],next=seats[(idx+1)%seats.length];
     const box=$('investigateBox');box.innerHTML=`<div class="inspect-head"><button class="icon-btn" onclick="window._skyjoInspect(${prev})">‹</button><b>${esc(s.players[pi].name)}</b><button class="icon-btn" onclick="window._skyjoInspect(${next})">›</button><button class="icon-btn" onclick="$('investigateOverlay').classList.add('hidden')">✕</button></div>`;
-    box.appendChild(boardDOM(s,s.players[pi],pi,true,false,viewer));
+    box.appendChild(staticBoard(s,s.players[pi],pi,viewer));
     window._skyjoLastInspect={s,viewer};window._skyjoInspect=(seat)=>investigate(window._skyjoLastInspect.s,seat,window._skyjoLastInspect.viewer);
     $('investigateOverlay').classList.remove('hidden');
+  }
+  // A self-contained STATIC board for the popup: real .kc face cards rendered inline
+  // (NOT CardManager overlays — those are fixed-positioned over the live table and
+  // would not appear inside this modal). This is why the popup used to show no cards.
+  function staticBoard(s,p,pi,viewer){
+    const wrap=document.createElement('div');wrap.className='player-board';
+    const h=document.createElement('div');h.className='board-header';
+    const live=p.board.filter(c=>c.revealed&&!c.cleared).reduce((a,c)=>a+c.value,0);
+    h.innerHTML=`<span>${esc(p.name)}${pi===viewer?' (You)':''}</span><span class="score-badge">Now: ${esc(live)} · Total: ${esc(p.totalScore)}</span>`;
+    wrap.appendChild(h);
+    const grid=document.createElement('div');grid.className='board-grid';
+    p.board.forEach(c=>{const face=Kit.Cards.el(skyjoSpec(c));face.classList.add('board-card');grid.appendChild(face);});
+    wrap.appendChild(grid);return wrap;
   }
 
   function unmount(){const mini=$('miniBoardsContainer');if(mini)mini.innerHTML='';}

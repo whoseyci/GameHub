@@ -430,6 +430,8 @@ html,body,#app{min-height:100%;height:auto;max-height:none;overflow-x:hidden;ove
 .st-pname{font-weight:800;font-size:.86rem;max-width:34vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .st-stonecount{font-size:1.05rem;font-weight:900;color:var(--kit-gold)}
 .st-deckrail{display:flex;justify-content:center;align-items:flex-start;padding-bottom:18px}
+/* size the Schotten deck pile to match the (small) clan cards so it scales together */
+.st-deckrail .kc-deck{--kc-w:clamp(30px,6.5vw,44px)}
 
 /* The border: 9 vertical stone columns */
 .st-border{display:grid;grid-template-columns:repeat(9,1fr);gap:6px;align-items:stretch;
@@ -548,12 +550,18 @@ html,body,#app{min-height:100%;height:auto;max-height:none;overflow-x:hidden;ove
 /* zones built from primitives */
 .kc-hand{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;align-items:flex-end}
 .kc-grid{display:grid;gap:6px}
-.kc-deck,.kc-discard{position:relative;--kc-w:var(--kc-w,clamp(40px,9vw,60px));width:var(--kc-w);aspect-ratio:var(--kc-aspect);
-  border-radius:calc(var(--kc-w,56px)*0.135);box-shadow:var(--kc-shadow)}
+/* Piles use the SAME proportional geometry as cards: radius + border + the stacked
+   "deck depth" shadow all derive from --kc-w, so a pile scales like a card at any size
+   (no fixed corners/shadow deforming a small deck). */
+.kc-deck,.kc-discard{position:relative;width:var(--kc-w,clamp(40px,9vw,60px));aspect-ratio:var(--kc-aspect);
+  --kc-radius:calc(var(--kc-w,56px)*0.135);--kc-border:max(1px,calc(var(--kc-w,56px)*0.045));
+  border-radius:var(--kc-radius);box-shadow:var(--kc-shadow)}
 .kc-deck{background:var(--card-back);border:var(--kc-border) solid #818cf8;display:flex;align-items:center;justify-content:center;color:#c7d2fe}
 .kc-deck::before{content:'✦';font-size:calc(var(--kc-w,56px)*.4);opacity:.82}
-.kc-deck::after{content:'';position:absolute;inset:0;border-radius:inherit;box-shadow:3px 3px 0 -1px #4338ca,6px 6px 0 -2px #3730a3;z-index:-1}
-.kc-discard{background:rgba(255,255,255,.04);border:2px dashed rgba(255,255,255,.18)}
+.kc-deck::after{content:'';position:absolute;inset:0;border-radius:inherit;
+  box-shadow:calc(var(--kc-w,56px)*.05) calc(var(--kc-w,56px)*.05) 0 calc(var(--kc-w,56px)*-.018) #4338ca,
+             calc(var(--kc-w,56px)*.1) calc(var(--kc-w,56px)*.1) 0 calc(var(--kc-w,56px)*-.036) #3730a3;z-index:-1}
+.kc-discard{background:rgba(255,255,255,.04);border:var(--kc-border) dashed rgba(255,255,255,.18)}
 .kc-pile-count{position:absolute;bottom:-18px;left:0;right:0;text-align:center;font-size:.62rem;color:var(--text-dim);font-weight:700}
 .kc-clickable{cursor:pointer}.kc-clickable:hover{filter:brightness(1.12);transform:translateY(-2px)}
 .kc-deck.deal{animation:kitDeckPulse .35s var(--spring)}
@@ -579,5 +587,9 @@ button.kc-mini:hover{transform:translateY(-2px);box-shadow:0 6px 14px rgba(0,0,0
 .kc-mini-name{font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 .kc-mini-badge{flex:0 0 auto;font-weight:700;color:var(--text-dim);font-size:.55rem}
 .kc-mini-headx{flex-basis:100%;color:var(--text-dim);font-size:.52rem}
-.kc-mini-body{display:flex;flex-wrap:wrap;gap:2px;min-width:0}
+/* the body is the GAME's own content — don't impose a layout on it (each game's
+   body root manages its own: f7-row is flex, board-grid is grid, qwixx grid+pens
+   stack as blocks). A flex-wrap here squished multi-child bodies (Qwixx stripes). */
+.kc-mini-body{min-width:0}
+.kc-mini-body>.f7-row{display:flex;flex-wrap:wrap;gap:2px}
 @media(max-width:430px){.kc-mini{padding:3px 4px}.kc-mini-head{font-size:.5rem}.kc-mini-badge{font-size:.46rem}}
