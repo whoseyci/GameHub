@@ -8,7 +8,7 @@
    shape as Skyjo below. The hub never needs to change.
    ==================================================================== */
 const PARTYKIT_HOST = location.host; // served by the same Worker
-const BUILD_VERSION = "v62-passplay-board-rotation"; // bump on each change; shown on the menu
+const BUILD_VERSION = "v63-unify-inspect-overlay"; // bump on each change; shown on the menu
 
 const $=id=>document.getElementById(id);
 function esc(v){return String(v ?? '').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));}
@@ -719,12 +719,21 @@ const GameShell=(()=>{
     if(client.mount&&!client._mounted){client.mount();client._mounted=true;}
     client.render(view,ctx(view));
   }
+  // Shared inspect overlay (the "look at another player's board" popup). Games used
+  // to poke $('investigateBox')/$('investigateOverlay') directly; route them through
+  // here so there is ONE open/close path (also reachable outside render via the
+  // GameShell exports, since inspect is usually fired from a later onclick).
+  // content may be an HTML string OR a DOM node (setHTML handles both); returns the
+  // #investigateBox so callers that build their board with appendChild can keep doing so.
+  function inspect(content){const box=$('investigateBox');setHTML(box,content);$('investigateOverlay').classList.remove('hidden');return box;}
+  function closeInspect(){$('investigateOverlay')?.classList.add('hidden');}
   function ctx(view){
     return {
       mode,
       controlledSeats:SeatModel.controlled(),
       focus:(opts={})=>SeatModel.resolve(opts),
-      inspect:(html)=>{setHTML($('investigateBox'),html);$('investigateOverlay').classList.remove('hidden');},
+      inspect,
+      closeInspect,
       renderTable,
       clear:clearGlobal,
     };
@@ -745,7 +754,7 @@ const GameShell=(()=>{
     if(sb&&status!=null)sb.innerHTML=status||'';
     if(typeof Kit!=='undefined'&&Kit.CardManager){requestAnimationFrame(()=>{Kit.CardManager.sync();Kit.assertCardInvariants&&Kit.assertCardInvariants('renderTable');});setTimeout(()=>Kit.CardManager.sync(),80);setTimeout(()=>Kit.CardManager.sync(),550);}
   }
-  return {render,unmount,clearGlobal,renderTable,focus:(opts)=>SeatModel.resolve(opts)};
+  return {render,unmount,clearGlobal,renderTable,inspect,closeInspect,focus:(opts)=>SeatModel.resolve(opts)};
 })();
 
 /* ====================== CATALOGUE (single source of truth) ======================

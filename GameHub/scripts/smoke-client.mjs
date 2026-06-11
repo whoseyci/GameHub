@@ -199,6 +199,16 @@ async function smokeSkyjo(window, document) {
   const view = localView(window, 0);
   assert(view.skyjo.phase === 'PLAY' || view.skyjo.tiebreakerPlayers?.length > 0, 'Skyjo: did not leave reveal phase cleanly');
 
+  // Inspect overlay must flow through the SHARED shell path (Gap B): GameShell.inspect
+  // opens #investigateOverlay + fills #investigateBox; GameShell.closeInspect() hides
+  // it. (Games' inspect() now route through these instead of poking the DOM directly.)
+  assert(document.getElementById('investigateOverlay').classList.contains('hidden'), 'Skyjo: inspect overlay should start hidden');
+  window.eval(`GameShell.inspect('<div class="inspect-head">probe</div>')`);
+  assert(!document.getElementById('investigateOverlay').classList.contains('hidden'), 'Skyjo: GameShell.inspect() did not open the overlay');
+  assert(document.querySelector('#investigateBox .inspect-head'), 'Skyjo: GameShell.inspect() did not fill #investigateBox');
+  window.eval('GameShell.closeInspect()');
+  assert(document.getElementById('investigateOverlay').classList.contains('hidden'), 'Skyjo: GameShell.closeInspect() did not hide the overlay');
+
   window.quitLocal();
   await sleep(50);
 }

@@ -338,10 +338,9 @@
   function investigate(s,pi,viewer){
     const seats=s.players.map((_,i)=>i).filter(i=>i!==viewer);
     const idx=seats.indexOf(pi),prev=seats[(idx-1+seats.length)%seats.length],next=seats[(idx+1)%seats.length];
-    const box=$('investigateBox');box.innerHTML=`<div class="inspect-head"><button class="icon-btn" onclick="window._skyjoInspect(${prev})">‹</button><b>${esc(s.players[pi].name)}</b><button class="icon-btn" onclick="window._skyjoInspect(${next})">›</button><button class="icon-btn" onclick="$('investigateOverlay').classList.add('hidden')">✕</button></div>`;
+    const box=GameShell.inspect(`<div class="inspect-head"><button class="icon-btn" onclick="window._skyjoInspect(${prev})">‹</button><b>${esc(s.players[pi].name)}</b><button class="icon-btn" onclick="window._skyjoInspect(${next})">›</button><button class="icon-btn" onclick="GameShell.closeInspect()">✕</button></div>`);
     box.appendChild(staticBoard(s,s.players[pi],pi,viewer));
     window._skyjoLastInspect={s,viewer};window._skyjoInspect=(seat)=>investigate(window._skyjoLastInspect.s,seat,window._skyjoLastInspect.viewer);
-    $('investigateOverlay').classList.remove('hidden');
   }
   // A self-contained STATIC board for the popup: real .kc face cards rendered inline
   // (NOT CardManager overlays — those are fixed-positioned over the live table and
