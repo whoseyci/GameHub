@@ -8,7 +8,7 @@
    shape as Skyjo below. The hub never needs to change.
    ==================================================================== */
 const PARTYKIT_HOST = location.host; // served by the same Worker
-const BUILD_VERSION = "v60-f7-action-card-animations"; // bump on each change; shown on the menu
+const BUILD_VERSION = "v61-fix-intro-deal-cascade"; // bump on each change; shown on the menu
 
 const $=id=>document.getElementById(id);
 function esc(v){return String(v ?? '').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));}
@@ -65,8 +65,34 @@ const Kit=(()=>{
   }
   function turnBanner(text,mine){const b=document.createElement('div');b.className='turn-banner';b.textContent=text;b.style.color=mine?'#10b981':'#60a5fa';document.body.appendChild(b);setTimeout(()=>b.remove(),1700);}
   function dealCascade(){
-    const cards=document.querySelectorAll('#mainBoardsContainer .board-card, #miniBoardsContainer .board-card');
-    cards.forEach((c,i)=>{c.classList.remove('anim-deal');void c.offsetWidth;c.style.animationDelay=(i%12)*0.035+'s';c.classList.add('anim-deal');if(i%4===0)setTimeout(()=>SFX.deal(),(i%12)*35);setTimeout(()=>{c.style.animationDelay='';c.classList.remove('anim-deal');},700+(i%12)*40);});
+    // Intro deal cascade. Board cards are now framework anchors (empty .kc
+    // placeholders) whose VISIBLE pixels live in a CardManager overlay pinned on
+    // top — so animating the anchor animates nothing the player can see. Resolve
+    // each anchor to its overlay (matched by id: anchor[data-card-reg] ↔
+    // overlay[data-cm-id]) and cascade THAT; fall back to the anchor itself for
+    // any non-overlay (legacy) board card. This is why the intro animation had
+    // silently stopped after the overlay migration.
+    const anchors=document.querySelectorAll('#mainBoardsContainer .board-card, #miniBoardsContainer .board-card');
+    const targets=[];
+    // Build an id→overlay map once (ids can contain ':' etc.; avoid per-id
+    // selector escaping by indexing the registered overlays directly).
+    const ovById=new Map();
+    document.querySelectorAll('.kit-card-registered[data-cm-id]').forEach(o=>ovById.set(o.dataset.cmId,o));
+    anchors.forEach(a=>{
+      const id=a.dataset.cardReg;
+      const overlay=id?ovById.get(id):null;
+      targets.push(overlay||a);
+    });
+    // De-dupe (in case an anchor and its overlay both somehow matched).
+    const seen=new Set();
+    const cards=targets.filter(el=>el&&!seen.has(el)&&seen.add(el));
+    cards.forEach((c,i)=>{
+      c.classList.remove('anim-deal');void c.offsetWidth;
+      c.style.animationDelay=(i%12)*0.035+'s';
+      c.classList.add('anim-deal');
+      if(i%4===0)setTimeout(()=>SFX.deal(),(i%12)*35);
+      setTimeout(()=>{c.style.animationDelay='';c.classList.remove('anim-deal');},700+(i%12)*40);
+    });
   }
   const EventRunner=(()=>{
     let chain=Promise.resolve();

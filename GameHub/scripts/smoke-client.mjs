@@ -176,6 +176,17 @@ async function smokeSkyjo(window, document) {
 
   assert(activeScreen(document) === 'gameScreen', 'Skyjo: game screen did not open');
   assert(document.querySelector('#topArea .piles')?.style.display !== 'none', 'Skyjo: piles should be visible');
+
+  // Intro deal cascade must animate the VISIBLE overlays (the empty .board-card
+  // anchors carry no pixels after the overlay migration). Regression guard for #1.
+  let sawOverlayDeal = false;
+  const dealObs = setInterval(() => {
+    if (document.querySelectorAll('.kit-card-registered.anim-deal').length > 0) sawOverlayDeal = true;
+  }, 25);
+  window.eval('Kit.dealCascade()');
+  await sleep(400);
+  clearInterval(dealObs);
+  assert(sawOverlayDeal, 'Skyjo: intro deal cascade did not animate the card overlays (#1 regression)');
   assert(!document.querySelector('.qwixx-dice-zone'), 'Skyjo: Qwixx dice zone leaked into Skyjo');
   assert(!document.getElementById('f7Controls'), 'Skyjo: Flip7 controls leaked into Skyjo');
 
