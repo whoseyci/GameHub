@@ -43,6 +43,9 @@
     const a=Kit.Cards.anchor(id, f7Spec(kind,val,opts));
     a.classList.add('registry-anchor');
     a.dataset.cardKey=key;
+    // stamp the card's value so handlers can find e.g. the Second Chance card on a
+    // board regardless of its tableau id (anchors carry no face attr otherwise).
+    a.dataset.act=String(val);
     row.appendChild(a);return a;
   }
   function syncF7Cards(){
@@ -150,6 +153,9 @@
       (p.actionCards||[]).forEach((a,ai)=>addF7Card(row,'act',a,'act-'+ai+'-'+a));
     }
     if(busted&&p.bustCard!=null)addF7Card(row,'num',p.bustCard,'bust-'+p.bustCard,{cause:true});
+    // SPENT action cards (freeze/flip3 played ON this player) stay on their board,
+    // dimmed, so it's clear what was used on them. (Authoritative: view spentActions.)
+    (p.spentActions||[]).forEach((c,si)=>{const a=addF7Card(row,'act',c.v,c.id||('spent-'+si+'-'+c.v),{busted:true});a.classList.add('f7-spent');});
   }
 
   // ---- static board render from state ----
@@ -384,6 +390,8 @@
       const fp=lv.flip7.players[e.actor];
       if(fp&&fp.actionCards) removeOne(fp.actionCards,e.actionKind||e.card?.v);
       if(e.secondPass){ const tp=lv.flip7.players[e.target]; if(tp)tp.second=true; }
+      // freeze/flip3 spent marker on the target comes from the authoritative view's
+      // spentActions (server), so no client-side bookkeeping needed here.
     }
     else if(e.type==='effect.freeze_done'){ const tp=lv.flip7.players[e.target]; if(tp)tp.status='stayed'; }
     recalcAll(lv);
@@ -511,34 +519,40 @@
         const b=boardOf(e.target); if(b){b.style.transition='filter .3s';b.style.filter='brightness(1.4) saturate(1.4)';setTimeout(()=>b&&(b.style.filter=''),350);} await sleep(SPEED.beat*0.4); break;
       }
       case 'effect.second_used':{
-        // The engine emits second_used with NO preceding card event. Deal the
-        // duplicate IN first (so the player sees which card triggered it), then
-        // move BOTH the duplicate and the consumed Second Chance to the discard
-        // pile — so it's clear what happened and why.
+        // Engine emits second_used with NO preceding card event. We: (1) FIRST fly the
+        // consumed Second Chance card (still on the board from the previous render) to
+        // the discard — captured before any redraw, while its overlay still exists;
+        // (2) deal the offending duplicate IN so the player sees what triggered it;
+        // (3) fly that duplicate to discard too. All REAL permanent cards (no clones).
         if(mode==='local')eventFocus=e.actor;
         const sp=liveView.flip7.players[e.actor];
-        // 1) fly the duplicate in as a temporary card on the board
+        SFX.good(); Kit.turnBanner('Second Chance!',true);
+        // (1) discard the Second Chance card NOW. Prefer the REAL on-board card if its
+        //     overlay is still live; otherwise (the engine already consumed it before
+        //     this event, so it's gone from the board) fly a one-off representation
+        //     FROM the player's board TO the discard — it's leaving the screen anyway.
+        const secAnchor0=document.querySelector(`[data-card-reg^="flip7:table:p${e.actor}:"][data-act="second"]`);
+        const secPerm=secAnchor0?secAnchor0.dataset.cardReg:null;
+        const discardEl=$('f7Discard');
+        if(secPerm && Kit.CardManager.has(secPerm)){
+          await flyPermToDiscard(secPerm,{kind:'act',v:'second'}); if(!tokenAlive(token)) return;
+        } else {
+          const fromEl=rowOf(e.actor)||boardOf(e.actor);
+          if(fromEl && discardEl){ await flyF7Card(fromEl,discardEl,{kind:'act',v:'second'},{spin:true,duration:SPEED.actionFly}); if(!tokenAlive(token)) return; }
+        }
+        // (2) deal the duplicate in as a temporary card on the board.
         const dupId='second-dup-'+e.seq;
         sp.cards=Array.isArray(sp.cards)?sp.cards:[];
         if(!sp.cards.some(c=>c.id===dupId)) sp.cards=orderCards([...sp.cards,{id:dupId,kind:'num',v:e.value}]);
         recalcAll(liveView); draw(liveView);
         const dupPerm=`flip7:table:p${e.actor}:${dupId}`;
         await flyDealCard(dupPerm,e.actor,cmCardSlot(dupPerm)); if(!tokenAlive(token)) return;
-        SFX.good(); Kit.turnBanner('Second Chance!',true);
-        await sleep(SPEED.beat*0.5);
-        // 2) Find the on-board Second Chance card's permanent id while it still
-        //    exists, then fly the REAL duplicate + Second Chance overlays to the
-        //    discard pile (no transient clones → no leftover dupe on the board).
-        //    We hide their board anchors first so no empty slot shows mid-flight,
-        //    and only remove them from the model AFTER they land (so reconcile()
-        //    doesn't destroy the in-flight overlays).
-        const secAnchor=document.querySelector(`[data-card-reg^="flip7:table:p${e.actor}:"][data-value="second"]`);
-        const secPerm=secAnchor?secAnchor.dataset.cardReg:null;
+        await sleep(SPEED.beat*0.4);
+        // (3) discard the duplicate too.
         await flyPermToDiscard(dupPerm,{kind:'num',v:e.value}); if(!tokenAlive(token)) return;
-        if(secPerm) await flyPermToDiscard(secPerm,{kind:'act',v:'second'}); if(!tokenAlive(token)) return;
-        // 3) now remove both from the live model + apply authoritative state.
+        // apply authoritative state (p.second=false) + clean the temp card.
         sp.cards=(sp.cards||[]).filter(c=>c.id!==dupId && c.v!=='second');
-        advanceLiveView(liveView,e); // sets p.second=false
+        advanceLiveView(liveView,e);
         recalcAll(liveView);
         draw(liveView);
         await sleep(SPEED.beat*0.4); break;

@@ -593,3 +593,5 @@ button.kc-mini:hover{transform:translateY(-2px);box-shadow:0 6px 14px rgba(0,0,0
 .kc-mini-body{min-width:0}
 .kc-mini-body>.f7-row{display:flex;flex-wrap:wrap;gap:2px}
 @media(max-width:430px){.kc-mini{padding:3px 4px}.kc-mini-head{font-size:.5rem}.kc-mini-badge{font-size:.46rem}}
+/* spent freeze/flip3 cards that stay on the target player's board */
+.kc-zone-f7.f7-spent,.f7-spent{opacity:.6;filter:grayscale(.2)}

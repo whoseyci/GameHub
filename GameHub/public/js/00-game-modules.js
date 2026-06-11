@@ -573,7 +573,7 @@
     return d;
   }
   function newPlayer(name, banked = 0) {
-    return { name, nums: [], mods: [], tableau: [], secondChance: false, status: "active", bustCard: null, banked, roundScore: 0 };
+    return { name, nums: [], mods: [], tableau: [], spentActions: [], secondChance: false, status: "active", bustCard: null, banked, roundScore: 0 };
   }
   function normalizeFlip7Event(e) {
     switch (e.type) {
@@ -661,6 +661,7 @@
       p.nums = [];
       p.mods = [];
       p.tableau = [];
+      p.spentActions = [];
       p.secondChance = false;
       p.status = "active";
       p.bustCard = null;
@@ -811,6 +812,7 @@
     const actionCard = s.pendingAction?.card ?? removeTableauCard(s.players[from], (c) => c.kind === "act" && c.v === kind) ?? void 0;
     s.pendingAction = null;
     const tp = s.players[target];
+    if (actionCard) (tp.spentActions ?? (tp.spentActions = [])).push({ ...actionCard, id: `spent_${actionCard.id ?? kind}_${s.seq}` });
     if (kind === "freeze") {
       emit(s, { type: "play_action", kind: "freeze", from, target, card: actionCard, auto });
       if (tp.status === "active") {
@@ -1042,6 +1044,7 @@
             mods: p.mods,
             second: p.secondChance,
             cards: orderedTableau(p).map((c) => ({ id: c.id, kind: c.kind, v: c.v })),
+            spentActions: (p.spentActions ?? []).map((c) => ({ id: c.id, kind: c.kind, v: c.v })),
             status: p.status,
             bustCard: p.bustCard,
             banked: p.banked,

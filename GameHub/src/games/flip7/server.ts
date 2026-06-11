@@ -36,7 +36,7 @@ type CardKind = "num" | "mod" | "act";
 interface Card { id: string; kind: CardKind; v: number | string; }
 
 interface Player {
-  name: string; nums: number[]; mods: string[]; tableau: Card[];
+  name: string; nums: number[]; mods: string[]; tableau: Card[]; spentActions?: Card[];
   secondChance: boolean;
   status: "active" | "stayed" | "busted";
   bustCard: number | null;
@@ -76,7 +76,7 @@ function buildDeck(rng: RngStateHolder): Card[] {
   return d;
 }
 function newPlayer(name: string, banked = 0): Player {
-  return { name, nums: [], mods: [], tableau: [], secondChance: false, status: "active", bustCard: null, banked, roundScore: 0 };
+  return { name, nums: [], mods: [], tableau: [], spentActions: [], secondChance: false, status: "active", bustCard: null, banked, roundScore: 0 };
 }
 
 function normalizeFlip7Event(e: any): any {
@@ -135,7 +135,7 @@ function fresh(names: string[], banked: number[], rngState = makeSeed()): State 
 // when the deck runs out — see draw()). Reset per-round player state and deal.
 function startNextRound(s: State) {
   for (const p of s.players) {
-    p.nums = []; p.mods = []; p.tableau = []; p.secondChance = false;
+    p.nums = []; p.mods = []; p.tableau = []; p.spentActions = []; p.secondChance = false;
     p.status = "active"; p.bustCard = null; p.roundScore = 0;
   }
   s.current = 0; s.phase = "PLAY"; s.round += 1;
@@ -241,6 +241,9 @@ function resolveAction(s: State, from: number, kind: "freeze" | "flip3", target:
   const actionCard = s.pendingAction?.card ?? removeTableauCard(s.players[from], (c) => c.kind === "act" && c.v === kind) ?? undefined;
   s.pendingAction = null;
   const tp = s.players[target];
+  // Keep a SPENT marker of the played action card on the TARGET so it stays visible
+  // on their board (which card was used on them). Consumed otherwise.
+  if (actionCard) (tp.spentActions ??= []).push({ ...actionCard, id: `spent_${actionCard.id ?? kind}_${s.seq}` });
   if (kind === "freeze") {
     emit(s, { type: "play_action", kind: "freeze", from, target, card: actionCard, auto });
     if (tp.status === "active") { tp.status = "stayed"; emit(s, { type: "freeze_done", target }); }
@@ -456,6 +459,7 @@ export const Flip7: GameModule = {
         seq: state.seq, events: state.events,
         players: state.players.map((p) => ({
           name: p.name, nums: p.nums, mods: p.mods, second: p.secondChance, cards: orderedTableau(p).map((c) => ({ id: c.id, kind: c.kind, v: c.v })),
+          spentActions: (p.spentActions ?? []).map((c) => ({ id: c.id, kind: c.kind, v: c.v })),
           status: p.status, bustCard: p.bustCard, banked: p.banked, unique: uniqueCount(p),
           live: liveScore(p),
         })),

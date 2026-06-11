@@ -8,7 +8,7 @@
    shape as Skyjo below. The hub never needs to change.
    ==================================================================== */
 const PARTYKIT_HOST = location.host; // served by the same Worker
-const BUILD_VERSION = "v59-fix-qwixx-passplay-schotten-dupe-cards"; // bump on each change; shown on the menu
+const BUILD_VERSION = "v60-f7-action-card-animations"; // bump on each change; shown on the menu
 
 const $=id=>document.getElementById(id);
 function esc(v){return String(v ?? '').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));}
