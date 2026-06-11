@@ -46,38 +46,61 @@
   // numbers/strings allowed for sizes; everything else dropped (strict).
   const SIZES = { md:'kc-md', sm:'kc-sm', xs:'kc-xs', mini:'kc-mini' };
   const ALIGN = { center:'', tl:'kc-tl', tr:'kc-tr', bl:'kc-bl', br:'kc-br' };
+  // Enumerated, strict state tokens → framework classes. No free-form classes.
+  const STATES = { cleared:'kc-cleared', dim:'kc-dim', shake:'kc-shake', highlight:'kc-highlight', selectable:'kc-selectable', selected:'kc-selected' };
+  // Enumerated border-width tokens.
+  const BWIDTH = { thin:'1px', normal:'2px', thick:'3px' };
+  // A structural ZONE tag (sizing context only) → kc-zone-<id>. NOT for visual
+  // styling — the lockdown only permits kc-zone-* selectors to set --kc-w.
+  const SAFE_ZONE = /^[a-z][a-z0-9-]{0,23}$/;
 
   /**
    * Build a card element from a declarative spec. The ONLY way to make a card.
+   * STRICT (tokens only — no raw classes, no HTML) but very expressive:
+   *
    *   spec = {
-   *     size: 'md'|'sm'|'xs'|'mini',
-   *     faceDown: bool,                        // → the ONE shared back
-   *     bg:      colorToken,                   // background fill
-   *     border:  colorToken,                   // border color (geometry is fixed)
-   *     content: {                             // the front content (text only — no HTML)
-   *       text, font, size, rotation, align, color
-   *     } | 'A' (shorthand for {text:'A'}),
-   *     pips:    [tl,br] strings (optional corner pips),
-   *     classes: extra CSS classes (visual modifiers only),
-   *     data:    {k:v} extra data-* (e.g. for click wiring)
+   *     size:    'md'|'sm'|'xs'|'mini',
+   *     faceDown:bool,                          // → the ONE shared back
+   *     bg:      colorToken,                    // '#hex' | {gradient:[…],angle} | {multicolor:[…],angle}
+   *     border:  colorToken,
+   *     borderWidth: 'thin'|'normal'|'thick',
+   *     emblem:  glyph-string,                  // faint centred watermark behind content
+   *     content: 'A' | {                        // text ONLY (rendered as text, never HTML)
+   *       text, font, size, rotation, align,    // align: center|tl|tr|bl|br
+   *       color: colorToken, weight, italic, shadow:bool
+   *     },
+   *     pips:    [tl, br],                       // optional corner pips (use content.color)
+   *     state:   'cleared'|'dim'|'shake'|'highlight'|'selectable'|'selected' | [..],
+   *     zone:    'skyjo'|'f7'|…,                 // structural sizing tag (kc-zone-<id>)
+   *     data:    {k:v},                          // data-* (for click wiring / board sync)
    *   }
    */
   function el(spec){
     spec = spec || {};
     const card = document.createElement('div');
-    // Default (no size class) IS md — so board-context selectors (e.g. mini/opponent
-    // boards setting --kc-w) win by normal specificity without needing !important.
-    // Only an explicit non-md size adds a class.
-    const sizeCls = (spec.size && spec.size !== 'md') ? (SIZES[spec.size] || '') : '';
-    card.className = 'kc' + (sizeCls ? ' ' + sizeCls : '') + (spec.classes ? ' ' + spec.classes : '');
+    // 'md' is the implicit default size (no class) so board-context --kc-w wins by
+    // normal specificity. Only non-md sizes add a class.
+    const cls = ['kc'];
+    if (spec.size && spec.size !== 'md' && SIZES[spec.size]) cls.push(SIZES[spec.size]);
+    if (spec.zone && SAFE_ZONE.test(spec.zone)) cls.push('kc-zone-' + spec.zone);
+    for (const st of normStates(spec.state)) if (STATES[st]) cls.push(STATES[st]);
+    card.className = cls.join(' ');
+
     if (spec.faceDown){ card.classList.add('kc-back'); applyData(card, spec.data); return card; }
 
-    // background + border (declarative paint)
+    // background + border (declarative paint tokens)
     const bg = paint(spec.bg); if (bg) card.style.setProperty('--kc-bg', bg);
     const bd = paint(spec.border); if (bd) card.style.setProperty('--kc-bd', bd);
+    if (spec.borderWidth && BWIDTH[spec.borderWidth]) card.style.setProperty('--kc-bw', BWIDTH[spec.borderWidth]);
 
-    // content
-    const c = (typeof spec.content === 'string') ? { text: spec.content } : (spec.content || {});
+    // faint centred emblem/watermark (expressive, but a tokenised glyph — text only)
+    if (spec.emblem != null && spec.emblem !== '') {
+      const em = document.createElement('div'); em.className = 'kc-emblem'; em.textContent = String(spec.emblem); card.appendChild(em);
+    }
+
+    // content (text only)
+    const c = (typeof spec.content === 'string' || typeof spec.content === 'number') ? { text: spec.content } : (spec.content || {});
+    const fg = paint(c.color);
     if (c.text != null && c.text !== '') {
       const ce = document.createElement('div');
       ce.className = 'kc-content ' + (ALIGN[c.align] || '');
@@ -85,19 +108,21 @@
       if (c.font)     ce.style.fontFamily = c.font;
       if (c.size)     ce.style.setProperty('--kc-fs', typeof c.size === 'number' ? c.size + 'px' : c.size);
       if (c.rotation) ce.style.setProperty('--kc-rot', (typeof c.rotation === 'number' ? c.rotation + 'deg' : c.rotation));
-      const fg = paint(c.color);
+      if (c.weight)   ce.style.fontWeight = String(c.weight);
+      if (c.italic)   ce.style.fontStyle = 'italic';
+      if (c.shadow === false) ce.style.textShadow = 'none';
       if (fg) ce.style.setProperty('--kc-fg', fg);
       card.appendChild(ce);
     }
     // optional corner pips
     if (Array.isArray(spec.pips)) {
-      const fg = paint((typeof spec.content === 'object' && spec.content) ? spec.content.color : null);
       if (spec.pips[0] != null){ const p=document.createElement('div'); p.className='kc-pip tl'; p.textContent=String(spec.pips[0]); if(fg)p.style.color=fg; card.appendChild(p); }
       if (spec.pips[1] != null){ const p=document.createElement('div'); p.className='kc-pip br'; p.textContent=String(spec.pips[1]); if(fg)p.style.color=fg; card.appendChild(p); }
     }
     applyData(card, spec.data);
     return card;
   }
+  function normStates(s){ return Array.isArray(s) ? s : (s ? [s] : []); }
   function applyData(card, data){ if (data) for (const k in data) card.dataset[k] = data[k]; }
 
   // ---- card ANCHORS (the DOM mount point a permanent card pins onto) -----------

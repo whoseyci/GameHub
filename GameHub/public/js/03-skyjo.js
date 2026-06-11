@@ -10,9 +10,9 @@
   // high=red, negatives=indigo). The .board-card class is kept as a hook for Skyjo's
   // grid/mini-board sizing CSS.
   function skyjoSpec(c){
-    if(c.cleared) return { classes:'board-card cleared' };
-    if(c.revealed) return { bg:'#fff', border:'#fff', content:{ text:c.value, color:C(c.value) }, classes:'board-card revealed' };
-    return { faceDown:true, classes:'board-card face-down' };
+    if(c.cleared) return { zone:'skyjo', state:'cleared' };
+    if(c.revealed) return { zone:'skyjo', bg:'#fff', border:'#fff', content:{ text:c.value, color:C(c.value) } };
+    return { zone:'skyjo', faceDown:true };
   }
   function skyjoVisual(c){ return Kit.Cards.el(skyjoSpec(c)); }
   function skyjoCardId(s,pi,ci){return `skyjo:table:r${s.round}:p${pi}:c${ci}`;}
@@ -228,8 +228,9 @@
     wrap.appendChild(h);
     const grid=document.createElement('div');grid.className='board-grid';
     p.board.forEach((c,ci)=>{const card=document.createElement('div');
-      // anchor carries the canonical geometry (.kc) so the overlay sizes to it.
-      card.className='kc board-card registry-anchor';card.dataset.cardReg=skyjoCardId(s,pi,ci);
+      // anchor carries the canonical geometry (.kc) + the Skyjo sizing zone so the
+      // overlay sizes to it; .board-card stays purely as a DOM query/click hook.
+      card.className='kc kc-zone-skyjo board-card registry-anchor';card.dataset.cardReg=skyjoCardId(s,pi,ci);
       if(interactive&&isMain&&!c.cleared&&canClick(s,pi,ci,c,viewer)){card.classList.add('clickable');card.onclick=()=>cardClick(s,pi,ci,c);}
       grid.appendChild(card);});
     wrap.appendChild(grid);return wrap;

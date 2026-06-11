@@ -9,8 +9,8 @@ pixel and every flight.
 ## 1. The card spec (front)
 
 A card is built ONLY via `Kit.Cards.el(spec)` (or `Kit.Cards.anchor(id, spec)` to
-mount one on the board). The spec is strict (no raw HTML/CSS injection) but
-expressive:
+mount one on the board). The spec is **strict — tokens only, no raw classes and no
+HTML injection** — but very design-expressive:
 
 ```js
 Kit.Cards.el({
@@ -20,13 +20,18 @@ Kit.Cards.el({
         | { gradient: ['#f87171','#dc2626'], angle: 160 }   // smooth blend, OR
         | { multicolor: ['#f00','#0f0','#00f'], angle: 135 }, // hard-stop stripes
   border: '#fca5a5' | {gradient:[...]} | {multicolor:[...]},
+  borderWidth: 'thin' | 'normal' | 'thick',
+  emblem: '★',                            // faint centred watermark glyph (text)
   content: {                              // TEXT ONLY (rendered as text, never HTML)
     text: 7, font: 'Georgia', size: 24 | '1.4rem',
     rotation: -8, align: 'center'|'tl'|'tr'|'bl'|'br',
-    color: '#fff' | {gradient:[...]},
+    color: '#fff' | {gradient:[...]} | {multicolor:[...]},
+    weight: 700, italic: true, shadow: false,
   },
   pips: [7, 7],                           // optional corner pips
-  classes: 'f7-card num',                 // visual-modifier hooks only
+  state: 'cleared'|'dim'|'shake'|'highlight'|'selectable'|'selected' | [..],
+  zone: 'skyjo',                          // structural sizing tag → .kc-zone-<id>
+  data: { cardReg: '…' },                 // data-* (click wiring / board sync)
 });
 ```
 
@@ -34,6 +39,13 @@ Kit.Cards.el({
 Geometry (corner radius, aspect ratio, shadow, sheen) and the card **back** are
 fixed by the framework — games cannot change them, which is what keeps the look
 uniform.
+
+**Strictness is enforced, not just documented.** `el()` ignores any `classes:` or
+`html:` keys (they do nothing); a card's visuals come ONLY from the tokens above and
+its **state** comes ONLY from the enumerated `state` tokens. A game's per-card
+styling and sizing happens through `state` (visual states) and `zone` (a structural
+sizing tag whose CSS may only set `--kc-w`). The lockdown test fails CI if any card
+spec carries a raw `classes:`/`html:` key or sets card geometry directly.
 
 ## 2. Geometry is water-tight
 

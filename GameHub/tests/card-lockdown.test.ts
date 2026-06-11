@@ -43,6 +43,18 @@ describe("card system lockdown (water-tight)", () => {
     expect(cards).not.toMatch(/\.innerHTML\s*=\s*(c\.|spec\.)/);
   });
 
+  it("the card spec is STRICT: no raw-class or HTML escape hatches", () => {
+    const cards = read("js/00-cards.js");
+    // el() must NOT honor spec.classes or spec.html — visual design is tokens only.
+    expect(cards).not.toMatch(/spec\.classes/);
+    expect(cards).not.toMatch(/spec\.html/);
+    // It DOES expose the expressive token vocabulary.
+    expect(cards).toContain("const STATES =");      // enumerated state tokens
+    expect(cards).toContain("SAFE_ZONE");           // structural sizing zone (validated)
+    expect(cards).toContain("spec.emblem");         // watermark token
+    expect(cards).toContain("spec.borderWidth");    // border-width token
+  });
+
   for (const rel of gameFiles) {
     const src = read(rel);
     const name = rel.split("/").pop();
@@ -66,6 +78,18 @@ describe("card system lockdown (water-tight)", () => {
         // drift we forbid. (innerHTML on NON-card scaffolding like score rails is fine,
         // so we only flag innerHTML that assigns into a variable named like a card.)
         expect(src).not.toMatch(/\bcard\w*\.innerHTML\s*=/i);
+      });
+      it("card SPECS use tokens only (no classes:/html: escape hatch)", () => {
+        if (!/Kit\.Cards\.(el|anchor)\(/.test(src)) return; // no card specs here
+        // A spec-building function that feeds el()/anchor() must not carry a raw
+        // `classes:` or `html:` key. (Container zones like Kit.Cards.hand({classes})
+        // are NOT cards and are allowed — so we only scan the spec functions, found by
+        // the conventional `Spec(` name used by every game's card spec builder.)
+        const specFns = src.match(/function \w*[Ss]pec\([\s\S]*?\n  }/g) || [];
+        for (const fn of specFns) {
+          expect(fn, `${name}: card spec must not use a raw classes: key`).not.toMatch(/\bclasses\s*:/);
+          expect(fn, `${name}: card spec must not use a raw html: key`).not.toMatch(/\bhtml\s*:/);
+        }
       });
     });
   }

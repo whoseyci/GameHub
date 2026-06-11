@@ -11,18 +11,21 @@
   // theming (number colours, mod gold, action glyphs) is expressed as a declarative
   // SPEC; the legacy .f7-card classes are kept as hooks for Flip7-specific states
   // (busted/bust-cause) and the existing animation/mini-board CSS.
+  // A Flip 7 card as a STRICT declarative spec (tokens only — no raw classes).
+  // Theming = bg/border/content tokens; sizing context = zone:'f7'; states via tokens.
   function f7Spec(kind,val,{busted=false,cause=false}={}){
     let spec;
-    if(kind==='num') spec={ bg:numFace(val), content:{ text:val, color:'#0b1020' }, classes:'f7-card num' };
+    if(kind==='num') spec={ bg:numFace(val), content:{ text:val, color:'#0b1020' } };
     else if(kind==='mod') spec= val==='x2'
-      ? { bg:'#1f2937', border:'#f472b6', content:{ text:'×2', color:'#f472b6' }, classes:'f7-card modx2' }
-      : { bg:{gradient:['#fef3c7','#fcd34d']}, border:'#d97706', content:{ text:modText(val), color:'#7c4a03' }, classes:'f7-card mod' };
-    else if(val==='second') spec={ bg:'#dc2626', border:'#ef4444', content:{ text:'♥', color:'#fbcfe8' }, classes:'f7-card second' };
-    else if(val==='freeze') spec={ bg:{gradient:['#bae6fd','#7dd3fc']}, border:'#38bdf8', content:{ text:'❄', color:'#0369a1' }, classes:'f7-card freeze' };
-    else if(val==='flip3')  spec={ bg:'#eaff00', border:'#d4e600', content:{ text:'F3', color:'#1a1a00' }, classes:'f7-card flip3' };
-    else spec={ content:{ text:val }, classes:'f7-card' };
-    if(busted) spec.classes+=' busted-card';
-    if(cause)  spec.classes+=' bust-cause';
+      ? { bg:'#1f2937', border:'#f472b6', content:{ text:'×2', color:'#f472b6' } }
+      : { bg:{gradient:['#fef3c7','#fcd34d']}, border:'#d97706', content:{ text:modText(val), color:'#7c4a03' } };
+    else if(val==='second') spec={ bg:'#dc2626', border:'#ef4444', content:{ text:'♥', color:'#fbcfe8' } };
+    else if(val==='freeze') spec={ bg:{gradient:['#bae6fd','#7dd3fc']}, border:'#38bdf8', content:{ text:'❄', color:'#0369a1' } };
+    else if(val==='flip3')  spec={ bg:'#eaff00', border:'#d4e600', content:{ text:'F3', color:'#1a1a00', italic:true } };
+    else spec={ content:{ text:val } };
+    spec.zone='f7';
+    const st=[]; if(busted)st.push('dim'); if(cause)st.push('shake','highlight');
+    if(st.length)spec.state=st;
     return spec;
   }
   function cardEl(kind,val,opts={}){
