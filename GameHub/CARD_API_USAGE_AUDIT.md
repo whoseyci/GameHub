@@ -10,11 +10,11 @@
 
 The card API is **well adopted** — better than the older `UNIFICATION_AUDIT.md` implies (two of its claims are now stale: `EventRunner` *is* used, and no game hand-rolls card HTML anymore — everything goes through `Kit.Cards.el`). But there are **three real, layered gaps** where games still hand-roll something the API already does:
 
-| Rank | Gap | Game(s) | Effort | Risk |
-|---|---|---|---|---|
-| **A** | Skyjo bypasses the high-level `Kit.Cards.board()` loop and hand-rolls create/pin/reconcile (`syncSkyjoCards`, 42 raw `Kit.CardManager.*` calls) | Skyjo | Med | Med |
-| **B** | `ctx.inspect()` exists in the shell but **no game uses it** — all three reach into `$('investigateOverlay')`/`$('investigateBox')` directly (raw `innerHTML`) | all 3 | Low | Low |
-| **C** | Pile widgets `Kit.Cards.deck()/discard()` and zone helpers `Kit.Cards.grid()/hand()` are unused by Skyjo & Flip 7 (Skyjo uses raw `#uiDeck`/`#uiDiscard` + `.board-grid`; Flip 7 builds rows by hand) | Skyjo, Flip 7 | Med | Med |
+| Rank | Gap | Game(s) | Status |
+|---|---|---|---|
+| **A** | Skyjo bypassed the high-level `Kit.Cards.board()` loop and hand-rolled create/pin/reconcile (`syncSkyjoCards`, 42 raw `Kit.CardManager.*` calls) | Skyjo | ✅ **DONE** — now one `Kit.Cards.board('skyjo:table:')` call (commit `5896d87`) |
+| **B** | `ctx.inspect()` existed in the shell but no game used it — all three reached into `$('investigateOverlay')`/`$('investigateBox')` directly | all 3 | ✅ **DONE** — routed through `GameShell.inspect/closeInspect` (commit `acd6c6e`) |
+| **C** | Pile/zone widgets `Kit.Cards.deck/discard/grid/hand` unused by Skyjo & Flip 7 | Skyjo, Flip 7 | ⚪ **WON'T-FIX** — investigated; the helpers are thin factories, the games' piles/rows are legitimately game-specialized static/inline DOM + tuned CSS. Migrating = churn + regression risk, no gain. See Gap C section. |
 
 Plus two smaller items (D, E) below.
 
@@ -76,10 +76,15 @@ So `ctx.inspect()` is **exported but unused** — the audit's "dead or migrate" 
 
 ---
 
-## Gap C — pile & zone widgets (`Kit.Cards.deck/discard/grid/hand`) unused outside Schotten
-**Files:** Skyjo builds piles as raw slots (`03-skyjo.js:140-152`, `#uiDeck`/`#uiDiscard` with hand-set `className='card-slot ...'` + `innerHTML` count badges). Flip 7 builds player rows by hand.
+## Gap C — pile & zone widgets (`Kit.Cards.deck/discard/grid/hand`): investigated, intentionally NOT migrated ⚠️
+**Files:** Skyjo piles are **static elements in `index.html`** (`#uiDeck`/`#uiDiscard`, mutated by `drawPiles`, `03-skyjo.js:140-153`); Flip 7's deck/discard are built as an **inline HTML template** with `f7-deck`/`f7-discard` classes (`04-flip7.js:193`); grids/rows use game-specific CSS (`.board-grid`, `.f7-row`).
 
-`Kit.Cards.deck({id,count,onClick})` / `discard({id,count})` produce the unified `.kc-deck`/`.kc-discard` pile elements (with count badge + click wiring) that Schotten uses; `grid(cols)` / `hand()` produce the unified zone containers. Skyjo's piles predate these helpers and so look/scale slightly differently from Schotten's. Migrating is **Med effort / Med risk** because Skyjo's discard pile doubles as a clickable anchor for a *permanent* CardManager card (`skyjo:discard`) and the deck shows opponent's public-drawn card — both need the helper to keep the slot clickable (the helpers support `onClick`, so it's feasible, just fiddly).
+**Finding (after digging in): this is the one gap that should be left as-is.** The reason the audit flagged it overstates the benefit:
+- `Kit.Cards.deck()/discard()/grid()/hand()` are **thin factory functions** — they return a `<div>` with a base class and minimal CSS (`.kc-hand` = 1 rule, `.kc-grid` = 1 rule). They do **not** carry game styling.
+- The gold-standard game (Schotten) proves the pattern: it calls `Kit.Cards.hand()/deck()` but then applies its **own** `st-hand`/`st-hand-card`/`st-deckrail` classes for the real styling.
+- Skyjo & Flip 7 already have heavily-tuned, breakpoint-specific CSS for `.board-grid` / `.f7-row` / `.f7-deck` (e.g. `main.css:151,173,193,301,321,331,594`) plus a delicate clickability/overlay hand-off on the Skyjo discard pile. Replacing the containers with the generic helpers would force re-adding all that CSS to keep the identical look — **net churn + regression risk to the very pile/discard animations just fixed**, with zero functional or visual gain.
+
+**Decision:** keep Skyjo's static piles and Flip 7's inline pile template. They are legitimately game-specialized DOM, not "un-unified" duplication. Forcing the helpers here would be de-unification by breaking working layouts. (If a *new* card game is added, it should still start from `Kit.Cards.deck/discard/grid/hand` + its own classes, like Schotten.)
 
 ---
 
@@ -101,8 +106,10 @@ Already a thin wrapper over `Kit.CardManager.flyTransient` — fine. Mentioned o
 
 ---
 
-## Recommended order (impact ÷ effort)
-1. **Gap B (ctx.inspect)** — lowest risk, removes 3 raw-DOM reach-ins + the Esc handler reach-in. *~30 min.*
-2. **Gap A (Skyjo → Kit.Cards.board)** — biggest unification win for Skyjo; deletes the bespoke sync loop and makes Skyjo reconcile identically to the others. *~half day, needs the placeholder-anchor switch + faceUp callback, then re-run the smoke + card-invariant guard.*
-3. **Gap C (pile/zone widgets)** — visual consistency; do after A since both touch Skyjo's board build. *~half day.*
-4. **Gap D** — only if a second game needs row-reflow; otherwise leave the one justified hand-roll.
+## Outcome
+1. ✅ **Gap B (ctx.inspect)** — done (`acd6c6e`). One shared open/close path; 3 games + Esc handler migrated; smoke guard added.
+2. ✅ **Gap A (Skyjo → Kit.Cards.board)** — done (`5896d87`). Bespoke sync loop deleted; Skyjo's grid reconciles identically to Schotten/Flip 7; 3 architecture tests updated; faces + draw/swap/triplet verified.
+3. ⚪ **Gap C (pile/zone widgets)** — investigated and intentionally left (see Gap C). Forcing the generic factories onto the games' specialized static/inline piles would be churn + regression risk with no gain.
+4. **Gap D** — left as the one justified hand-roll (no second consumer needs a `reflow` primitive yet).
+
+**Net result of this pass:** every place a game was hand-rolling something the API *genuinely replaces* now uses the shared API. The remaining hand-rolled bits (Gap C piles, Gap D reflow) are legitimately game-specialized, not duplication.

@@ -125,12 +125,17 @@ describe("bot self-play termination (API-5)", () => {
     const module = GAMES[id];
     const n = Math.max(module.meta.minPlayers, 2);
     const names = Array.from({ length: n }, (_, i) => `P${i + 1}`);
+    // This random self-play fuzzes 6 full games and hashes the ENTIRE state
+    // (JSON.stringify) every turn, so it can take ~4–5s under parallel CPU load —
+    // right at vitest's 5000ms default, which made it flaky in the full suite (it
+    // always passed in isolation). The outcomes are seeded/deterministic; only the
+    // wall-clock was the issue. Give it a generous timeout so CI is stable.
     it(`${id}: terminates without deadlock across several games`, () => {
       for (let g = 0; g < 6; g++) {
         const result = playOut(module, names, 1000 + g * 7);
         expect(result.stuck, `${id} game ${g} DEADLOCKED at turn ${result.turns}`).toBe(false);
         expect(result.over, `${id} game ${g} did not terminate within turn cap (turns=${result.turns})`).toBe(true);
       }
-    });
+    }, 20000);
   }
 });
