@@ -71,7 +71,9 @@
   // + its board location, so Kit.Cards.board() rebuilds the overlay from the anchor.
   function clanAnchor(card, { small=false, loc=null } = {}) {
     const spec = clanSpec(card, { small });
-    const a = Kit.Cards.anchor(cmId(card), spec);
+    // placeholder anchor: empty .kc shell (the permanent overlay is the visible face),
+    // so the anchor never shows THROUGH as a duplicate behind the overlay.
+    const a = Kit.Cards.anchor(cmId(card), spec, { placeholder: true });
     a.classList.add('st-anchor');
     if (loc) { a.dataset.zone = loc.zone; a.dataset.player = loc.player; a.dataset.slot = loc.slot; }
     return a;

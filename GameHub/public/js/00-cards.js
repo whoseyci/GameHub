@@ -128,8 +128,15 @@
   // ---- card ANCHORS (the DOM mount point a permanent card pins onto) -----------
   // anchor(id, spec) builds a spec'd card element + stamps data-card-reg + the spec
   // (serialized) so Cards.board() can rebuild the overlay from the anchor alone.
-  function anchor(id, spec){
-    const a = el(spec);
+  // anchor(id, spec, opts?): the DOM mount point a permanent card pins onto.
+  //   By default the anchor renders the full face (handy for static boards). But when
+  //   a permanent CardManager overlay sits on top of it (Kit.Cards.board), a faced
+  //   anchor shows THROUGH as a duplicate. Pass {placeholder:true} to render an empty
+  //   .kc shell of the right geometry: the overlay is the only visible face (no ghost),
+  //   while the anchor stays in the layout + clickable. The spec is still embedded so
+  //   board() can render the overlay from it.
+  function anchor(id, spec, opts){
+    const a = (opts && opts.placeholder) ? el({ size: spec && spec.size, zone: spec && spec.zone }) : el(spec);
     a.dataset.cardReg = id;
     a.dataset.kcSpec = encodeSpec(spec);
     return a;

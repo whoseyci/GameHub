@@ -1130,9 +1130,13 @@
     const isWhitePhase = s.phase === "WHITE_PHASE";
     return {
       currentSeat: isWhitePhase ? -1 : s.activeSeat,
-      // The active "roller" — the UI centers the main board here even in the
-      // simultaneous white phase, so focus follows whose turn it is to roll/lead.
-      focusSeat: s.activeSeat,
+      // UI focus hint for pass-and-play (the client centers the main board here).
+      // White phase is SIMULTANEOUS: each seat must make its own white decision, so
+      // focus the FIRST seat that still has a pending white decision (it rotates as
+      // each decides — without it, the screen stuck on the roller and other seats
+      // could never make their choice). Once white is resolved, focus the roller for
+      // the color phase. Falls back to the roller.
+      focusSeat: isWhitePhase ? s.pendingWhiteDecisions.length ? s.pendingWhiteDecisions[0] : s.activeSeat : s.activeSeat,
       pendingAction: isWhitePhase ? s.activeColorUsed ? "finishTurn" : "white_choice" : s.phase === "COLOR_PHASE" ? "color_choice" : null,
       players: s.players.map((p, i) => ({
         seat: i,
