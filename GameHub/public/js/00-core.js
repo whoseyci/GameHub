@@ -8,7 +8,7 @@
    shape as Skyjo below. The hub never needs to change.
    ==================================================================== */
 const PARTYKIT_HOST = location.host; // served by the same Worker
-const BUILD_VERSION = "v65-qwixx-minimarks-hints-penalty"; // bump on each change; shown on the menu
+const BUILD_VERSION = "v66-flip7-uses-fly-api"; // bump on each change; shown on the menu
 
 const $=id=>document.getElementById(id);
 function esc(v){return String(v ?? '').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));}
@@ -611,7 +611,31 @@ const Kit=(()=>{
       await CardManager.moveTo(id,to,moveOpts);
       if(proxy)proxy.remove();
     }
-    return {sync,snapshot,rectAnchor,fly};
+    // playReflow(beforeRects, opts): FLIP-animate managed overlays that SHIFTED after
+    // a DOM rebuild. Pass the rects from a prior snapshot(prefix); each overlay whose
+    // current pinned position differs is translated from its old spot to the new one
+    // (transform-only, GPU-cheap). This is the shared primitive for "a card moved
+    // because siblings reflowed" (e.g. a new card pushed the row over) — replaces
+    // per-game getBoundingClientRect reflow math.
+    function playReflow(beforeRects,opts={}){
+      if(!beforeRects)return;
+      const dur=opts.duration??340, minShift=opts.minShift??3;
+      CardManager.sync(); // ensure overlays are at their new resting positions first
+      for(const id in beforeRects){
+        if(!CardManager.has(id))continue;
+        const c=CardManager.get(id); const el=c&&c.overlayEl; if(!el)continue;
+        const b=el.getBoundingClientRect(); const a=beforeRects[id];
+        const dx=a.left-b.left, dy=a.top-b.top;
+        if(Math.abs(dx)+Math.abs(dy)<minShift)continue;
+        el.style.transition='none';
+        el.style.transform=`translate(${dx}px,${dy}px)`;
+        el.offsetHeight; // commit the start frame
+        el.style.transition=`transform ${dur}ms var(--spring-soft)`;
+        requestAnimationFrame(()=>{el.style.transform='';});
+        setTimeout(()=>{el.style.transition='';el.style.transform='';},dur+50);
+      }
+    }
+    return {sync,snapshot,rectAnchor,fly,playReflow};
   })();
 
   // Dev-mode invariant guard. Off by default; enable in the console with

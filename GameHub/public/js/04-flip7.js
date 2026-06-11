@@ -86,8 +86,10 @@
     if(anchor)anchor.style.visibility=prevVis||'';
     discard.classList.remove('land');void discard.offsetWidth;discard.classList.add('land');
   }
-  function captureF7Layout(){ const m=new Map(); document.querySelectorAll('.f7-focus-board [data-card-reg]').forEach(el=>m.set(el.dataset.cardReg,el.getBoundingClientRect())); return m; }
-  function animateF7Layout(before){ document.querySelectorAll('.f7-focus-board [data-card-reg]').forEach(anchor=>{ const a=before.get(anchor.dataset.cardReg); if(!a)return; const b=anchor.getBoundingClientRect(); const dx=a.left-b.left,dy=a.top-b.top; if(Math.abs(dx)+Math.abs(dy)<3)return; const card=Kit.CardManager.get(anchor.dataset.cardReg)?.overlayEl; if(!card)return; card.style.transition='none'; card.style.transform=`translate(${dx}px,${dy}px)`; card.offsetHeight; card.style.transition='transform .34s var(--spring-soft)'; requestAnimationFrame(()=>{card.style.transform='';}); setTimeout(()=>{card.style.transition='';card.style.transform='';},390); }); }
+  // Card-row reflow (a new card pushes siblings over): now uses the shared fly API
+  // primitive Kit.CardBoard.snapshot/playReflow instead of hand-rolled getBoundingClientRect math.
+  function captureF7Layout(){ return Kit.CardBoard.snapshot('flip7:table:'); }
+  function animateF7Layout(before){ Kit.CardBoard.playReflow(before,{duration:340}); }
 
   function actionVfx(kind){
     const o=document.createElement('div');
@@ -134,7 +136,10 @@
     // permanent CardManager card); it's "played" into the target, then destroyed.
     const permId=actionCardPermId(e.actor,kind);
     if(permId){
-      await Kit.CardManager.moveTo(permId,toEl,{duration:SPEED.actionFly,spin:true,land:false,hideTarget:false,toLocation:{zone:'transit'}});
+      // Route through the unified fly API (Kit.CardBoard.fly) — same flight Schotten
+      // uses. No fromEl/fromRect → it flies the REAL card from its current overlay
+      // position (the actor's board) to the target slot, then we destroy it.
+      await Kit.CardBoard.fly(permId,{to:toEl,duration:SPEED.actionFly,spin:true,land:false,hideTarget:false,toLocation:{zone:'transit'}});
       Kit.CardManager.destroy(permId);
     }else{
       await flyF7Card(actionCardSourceEl(e.actor,kind),toEl,card,{startFaceDown:false,spin:true,duration:SPEED.actionFly});
