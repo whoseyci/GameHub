@@ -130,14 +130,10 @@ function shouldRotateBoards(view){
   try{if(window.matchMedia('(prefers-reduced-motion: reduce)').matches)return false;}catch(_){ }
   return true;
 }
-function syncOverlaysFor(ms){
-  // keep card overlays glued to the (transforming) anchors for the duration.
-  const end=performance.now()+ms;
-  (function loop(){
-    if(typeof Kit!=='undefined'&&Kit.CardManager)Kit.CardManager.sync();
-    if(performance.now()<end)requestAnimationFrame(loop);
-  })();
-}
+// (removed syncOverlaysFor: per-frame CardManager.sync() during a 3D rotateY made the
+//  transition choppy — every frame re-measured each card's projected getBoundingClientRect
+//  and rewrote inline styles. The card overlays are now carried by the SAME CSS transform
+//  as the board via a rotation layer, so the GPU interpolates them with zero per-frame JS.)
 // Play the rotate-in (and a brief rotate-out flourish) WITHOUT blocking the
 // render or the game's own animations: we render immediately (so any per-game
 // deal/move flights run on time), then swing the freshly-built board into view,
@@ -145,12 +141,24 @@ function syncOverlaysFor(ms){
 function playBoardRotation(){
   const board=document.getElementById('mainBoardsContainer');
   if(!board)return;
-  board.classList.remove('board-rotate-in','board-rotate-out');void board.offsetWidth;
+  // Carry the body-level card overlays in a fixed "rotation layer" so the SAME CSS
+  // transform that swings the board in also swings the cards in — one GPU-composited
+  // animation, no per-frame measuring (which was the choppiness). Anchors live in the
+  // board (rotates natively); overlays live in the layer (rotates identically).
+  let layer=document.getElementById('cardRotateLayer');
+  if(!layer){ layer=document.createElement('div'); layer.id='cardRotateLayer'; layer.style.cssText='position:fixed;inset:0;pointer-events:none;z-index:80'; document.body.appendChild(layer); }
+  const overlays=[...document.querySelectorAll('.kit-card-registered[data-cm-id]')];
+  // skip cards mid-flight (they manage their own transform)
+  const moved=overlays.filter(o=>!o.classList.contains('kit-card-moving'));
+  moved.forEach(o=>layer.appendChild(o));
+
   if(typeof SFX!=='undefined'&&SFX.swap)SFX.swap();
-  board.classList.add('board-rotate-in');
-  syncOverlaysFor(360);
+  [board,layer].forEach(el=>{ el.classList.remove('board-rotate-in'); void el.offsetWidth; el.classList.add('board-rotate-in'); });
+
   setTimeout(()=>{
-    board.classList.remove('board-rotate-in');
+    [board,layer].forEach(el=>el.classList.remove('board-rotate-in'));
+    // return overlays to the body and re-pin to the freshly-rendered anchors.
+    moved.forEach(o=>{ if(o.parentElement===layer) document.body.appendChild(o); });
     if(typeof Kit!=='undefined'&&Kit.CardManager)Kit.CardManager.sync();
   },360);
 }

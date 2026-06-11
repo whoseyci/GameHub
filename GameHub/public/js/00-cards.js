@@ -177,6 +177,10 @@
     return e;
   }
   function drop(target, opts){ if(!target) return target; target.classList.add('kc-drop'); if(opts&&opts.onClick) target.onclick=opts.onClick; return target; }
+  // slot(): an EMPTY, card-shaped placeholder (an empty grid/stone cell). Card-sized
+  // via --kc-w + the canonical card aspect, so a row of slots + cards lines up. Games
+  // add their own class for any extra look. (Replaces hand-rolled empty-cell divs.)
+  function slot(opts){ opts=opts||{}; const e=document.createElement('div'); e.className='kc-slot'+(opts.size&&opts.size!=='md'&&SIZES[opts.size]?(' '+SIZES[opts.size]):'')+(opts.classes?' '+opts.classes:''); if(opts.onClick){e.classList.add('kc-clickable');e.onclick=opts.onClick;} return e; }
 
   // ---- MOVEMENT (all flights go through CardManager via CardBoard.fly) ----------
   // deal:   deck → slot, face-down with mid-flip reveal (the canonical deal).
@@ -308,5 +312,5 @@
   }
   Kit.MiniBoard = miniBoard;
 
-  Kit.Cards = { el, anchor, board, snapshot, hand, grid, deck, discard, drop, deal, move, toPile, paint, _decodeSpec:decodeSpec };
+  Kit.Cards = { el, anchor, board, snapshot, hand, grid, deck, discard, drop, slot, deal, move, toPile, paint, _decodeSpec:decodeSpec };
 })();

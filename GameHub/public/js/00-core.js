@@ -8,7 +8,7 @@
    shape as Skyjo below. The hub never needs to change.
    ==================================================================== */
 const PARTYKIT_HOST = location.host; // served by the same Worker
-const BUILD_VERSION = "v67-kit-dice3d-webgl"; // bump on each change; shown on the menu
+const BUILD_VERSION = "v68-dice-blend-card-aspect-lock-slot"; // bump on each change; shown on the menu
 
 const $=id=>document.getElementById(id);
 function esc(v){return String(v ?? '').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));}
@@ -191,6 +191,18 @@ const Kit=(()=>{
       return r;
     }
 
+    // Card height/width ratio from the canonical --kc-aspect ("W / H"). Returns
+    // H/W (≈1.4 for 5/7). Cached fallback keeps a card card-shaped even if the var
+    // can't be read (so the fly API never produces a stretched "pill").
+    let _kcAspectH=7/5;
+    function readCardAspectH(el){
+      try{
+        const v=getComputedStyle(el).getPropertyValue('--kc-aspect').trim();
+        const m=v && v.match(/([\d.]+)\s*\/\s*([\d.]+)/);
+        if(m){const w=parseFloat(m[1]),h=parseFloat(m[2]); if(w>0&&h>0){_kcAspectH=h/w; return _kcAspectH;}}
+      }catch(_){}
+      return _kcAspectH;
+    }
     function positionOverlay(overlayEl,anchor){
       if(!overlayEl||!anchor)return;
       const r=stableRect(anchor);if(!r)return;
@@ -202,6 +214,13 @@ const Kit=(()=>{
       // calc(--kc-w*…)) does the rest. Do NOT copy a fixed radius or clamp the font.
       if(overlayEl.classList.contains('kc')){
         overlayEl.style.setProperty('--kc-w', r.width+'px');
+        // Aspect-LOCK: a card must always stay card-shaped. If the anchor was measured
+        // with a non-card box (e.g. a transient ghost stretched in a flex row, or a
+        // not-yet-laid-out slot), trusting its raw height produces a "wide pill" in
+        // flight. Force height from width × the canonical card aspect (5:7) so a flying
+        // card can never become a pill, regardless of how the anchor was sized.
+        const aspectH = readCardAspectH(overlayEl); // height/width ratio (≈1.4)
+        if(aspectH>0) overlayEl.style.height = (r.width*aspectH)+'px';
       } else {
         // legacy non-framework cards: copy the anchor's resolved box styling.
         Object.assign(overlayEl.style,{borderRadius:cs.borderRadius,borderWidth:cs.borderWidth,borderStyle:cs.borderStyle,boxShadow:cs.boxShadow});

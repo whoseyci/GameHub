@@ -58,10 +58,19 @@
   // CardManager animation API: face-down on the deck, a Y-axis FLIP (so it lands
   // face-up & upright — no upside-down text), revealing its face edge-on midway.
   async function flyDealCard(permId,seat,slot){
-    const cmCard=Kit.CardManager.get(permId);
-    const deck=$('f7Deck');
-    const destAnchor=document.querySelector(`[data-card-reg="${permId}"]`);
-    if(!cmCard||!deck||!destAnchor)return;
+    // The destination anchor / deck may not be in the DOM the very first frame after
+    // a re-render (esp. the first deal on entering a game) — previously this bailed
+    // silently, so the deck wiggled but the card never flew. Wait a frame or two for
+    // them to exist before giving up.
+    let cmCard=Kit.CardManager.get(permId), deck=$('f7Deck');
+    let destAnchor=document.querySelector(`[data-card-reg="${permId}"]`);
+    for(let tries=0; (!deck||!destAnchor) && tries<3; tries++){
+      await new Promise(r=>requestAnimationFrame(r));
+      deck=$('f7Deck'); destAnchor=document.querySelector(`[data-card-reg="${permId}"]`);
+      cmCard=Kit.CardManager.get(permId);
+    }
+    if(!cmCard||!destAnchor) return;               // card genuinely not on board — nothing to fly
+    if(!deck){ Kit.CardManager.sync(); return; }    // no deck to fly FROM: just settle the card in place
     // The canonical deal flight (Kit.Cards.deal): deck → slot, face-down with a
     // mid-flip reveal, card-sized source, canonical geometry the whole way.
     await Kit.Cards.deal(permId,deck,destAnchor,{
@@ -125,6 +134,11 @@
     const row=rowOf(targetSeat); if(!row)return null;
     const ghost=cardEl(card?.kind||'act',card?.v||'flip3');
     ghost.classList.add('registry-anchor');ghost.style.visibility='hidden';
+    // Match the destination row's card width so the flight lands at a real card size
+    // (and never reads a stretched flex box → no "wide pill"). The aspect-lock in the
+    // fly API is the safety net; this keeps the target geometry correct too.
+    const sibling=row.querySelector('.kc');
+    if(sibling){ const w=getComputedStyle(sibling).getPropertyValue('--kc-w'); if(w&&w.trim()) ghost.style.setProperty('--kc-w', w.trim()); }
     row.appendChild(ghost);
     return ghost;
   }

@@ -102,7 +102,7 @@
       for (let slot = 0; slot < 3; slot++) {
         const card = st.sides[opp][slot];
         if (card) top.appendChild(clanAnchor(card, { small:true, loc:{ zone:'stone', player:opp, slot:i*10+slot } }));
-        else { const ph = document.createElement('div'); ph.className = 'st-slot-empty'; top.appendChild(ph); }
+        else { top.appendChild(Kit.Cards.slot({ classes: 'st-slot-empty' })); }
       }
 
       // stone marker (center)
@@ -125,7 +125,7 @@
       for (let slot = 0; slot < 3; slot++) {
         const card = st.sides[me][slot];
         if (card) bottom.appendChild(clanAnchor(card, { small:true, loc:{ zone:'stone', player:me, slot:i*10+slot } }));
-        else { const ph = document.createElement('div'); ph.className = 'st-slot-empty'; bottom.appendChild(ph); }
+        else { bottom.appendChild(Kit.Cards.slot({ classes: 'st-slot-empty' })); }
       }
       // drop target: a selected hand card may be placed on a stone with room
       if (myTurn && !s.placedThisTurn && selectedHand != null && claimed < 0 && st.sides[me].length < 3) {

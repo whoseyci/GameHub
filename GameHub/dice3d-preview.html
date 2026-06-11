@@ -1,3 +1,23 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Kit.Dice3D preview</title>
+<style>
+  body{margin:0;background:radial-gradient(circle at 30% 0,#22324f 0,transparent 40%),linear-gradient(180deg,#0b1020,#070a16);color:#e8eefc;font-family:system-ui,sans-serif;min-height:100vh;display:flex;flex-direction:column;align-items:center;gap:14px;padding:20px}
+  :root{--qwixx-red:#e74c3c;--qwixx-yellow:#f1c40f;--qwixx-green:#2ecc71;--qwixx-blue:#3498db}
+  button{border:0;border-radius:12px;padding:11px 18px;font-weight:800;background:linear-gradient(135deg,#7c5cff,#9d8fff);color:#fff;cursor:pointer}
+  .stage{width:min(560px,94vw);background:linear-gradient(180deg,rgba(124,92,255,.05),transparent);border-radius:18px;padding:8px}
+  .qwixx-kit-dice{margin:0 auto} .out{font-weight:800;color:#a5b4fc}
+  .qwixx-kit-dice.kit-dice3d{display:block;min-height:clamp(180px,46vh,320px);width:min(100%,520px);border:0;background:none;overflow:visible}
+  .kit-dice3d canvas{width:100%;height:100%;display:block;background:transparent}
+</style></head><body>
+  <h2>Kit.Dice3D — blended-into-scene preview (soft contact shadows, no boxed window)</h2>
+  <div class="stage"><div id="tray" class="qwixx-kit-dice"></div></div>
+  <div><button onclick="go()">\u{1F3B2} Roll</button></div>
+  <div class="out" id="out">rolling…</div>
+<script>
+  window.SFX={tap(){},draw(){},reveal(){},flip(){}};
+  window.Kit={ rollDice(c,d){ c.textContent='[CSS fallback] '+d.map(x=>x.color+':'+x.value).join(' '); return Promise.resolve(); } };
+</script>
+<script>
 /* ============================================================================
    Kit.Dice3D — shared WebGL 3D dice rolling API (for ALL dice games)
    --------------------------------------------------------------------------
@@ -242,3 +262,18 @@
 
   Kit.Dice3D = { roll, supported };
 })();
+
+</script>
+<script>
+  function go(){
+    const dice=[{color:'white',value:1+(Math.random()*6|0)},{color:'white',value:1+(Math.random()*6|0)},
+      {color:'red',value:1+(Math.random()*6|0)},{color:'yellow',value:1+(Math.random()*6|0)},
+      {color:'green',value:1+(Math.random()*6|0)},{color:'blue',value:1+(Math.random()*6|0)}];
+    document.getElementById('out').textContent='supported='+Kit.Dice3D.supported()+' \u00b7 rolling '+dice.map(d=>d.color+'='+d.value).join(' ');
+    Kit.Dice3D.roll(document.getElementById('tray'),dice,{}).then(()=>{
+      document.getElementById('out').textContent='settled \u00b7 '+dice.map(d=>d.color+'='+d.value).join(' ');
+    });
+  }
+  setTimeout(go,300);
+</script>
+</body></html>
