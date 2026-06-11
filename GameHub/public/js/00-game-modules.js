@@ -1130,6 +1130,9 @@
     const isWhitePhase = s.phase === "WHITE_PHASE";
     return {
       currentSeat: isWhitePhase ? -1 : s.activeSeat,
+      // The active "roller" — the UI centers the main board here even in the
+      // simultaneous white phase, so focus follows whose turn it is to roll/lead.
+      focusSeat: s.activeSeat,
       pendingAction: isWhitePhase ? s.activeColorUsed ? "finishTurn" : "white_choice" : s.phase === "COLOR_PHASE" ? "color_choice" : null,
       players: s.players.map((p, i) => ({
         seat: i,
@@ -1604,6 +1607,8 @@
         const v = module.viewFor(state, -1);
         const cs = v.state?.currentSeat ?? 0;
         if (cs >= 0) return cs;
+        const fs = v.state?.focusSeat;
+        if (typeof fs === "number" && fs >= 0) return fs;
         const active = v.state?.players?.find((p) => p.status === "active");
         return active ? active.seat : 0;
       } catch {

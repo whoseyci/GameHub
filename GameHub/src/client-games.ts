@@ -33,12 +33,14 @@ function makeLocalEngine(module: GameModule, names: string[]) {
     try {
       const v = module.viewFor(state, -1);
       const cs = v.state?.currentSeat ?? 0;
+      if (cs >= 0) return cs;
       // Simultaneous-turn games (e.g. Qwixx white phase) report currentSeat = -1
       // because no single seat "owns" the turn. The local UI still needs a concrete
-      // seat to focus, so fall back to the first player the view marks as "active"
-      // (someone who can still act). This mirrors the old per-game local engines'
-      // bespoke actor() logic, but generically from the standardized view.state.
-      if (cs >= 0) return cs;
+      // seat to focus. Prefer the game's explicit focusSeat hint (the "roller"), so
+      // focus follows whose turn it is to lead — NOT just the first pending seat
+      // (which was always seat 0, so the display never rotated to the other player).
+      const fs = v.state?.focusSeat;
+      if (typeof fs === "number" && fs >= 0) return fs;
       const active = v.state?.players?.find((p) => p.status === "active");
       return active ? active.seat : 0;
     } catch {

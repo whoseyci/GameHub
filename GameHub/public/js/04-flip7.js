@@ -15,7 +15,7 @@
   // Theming = bg/border/content tokens; sizing context = zone:'f7'; states via tokens.
   function f7Spec(kind,val,{busted=false,cause=false}={}){
     let spec;
-    if(kind==='num') spec={ bg:numFace(val), content:{ text:val, color:'#0b1020' } };
+    if(kind==='num') spec={ bg:numFace(val), content:{ text:val, color:'#fff' } };
     else if(kind==='mod') spec= val==='x2'
       ? { bg:'#1f2937', border:'#f472b6', content:{ text:'×2', color:'#f472b6' } }
       : { bg:{gradient:['#fef3c7','#fcd34d']}, border:'#d97706', content:{ text:modText(val), color:'#7c4a03' } };

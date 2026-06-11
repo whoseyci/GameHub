@@ -509,7 +509,7 @@ html,body,#app{min-height:100%;height:auto;max-height:none;overflow-x:hidden;ove
 .kc-content{position:relative;z-index:1;display:flex;align-items:center;justify-content:center;
   width:100%;height:100%;font-weight:1000;line-height:1;text-align:center;
   font-size:var(--kc-fs,calc(var(--kc-w,56px)*.5));
-  color:var(--kc-fg,#fff);transform:rotate(var(--kc-rot,0deg));text-shadow:0 1px 2px rgba(0,0,0,.35)}
+  color:var(--kc-fg,#fff);transform:rotate(var(--kc-rot,0deg))}
 .kc-content.kc-tl{align-items:flex-start;justify-content:flex-start;padding:6%}
 .kc-content.kc-tr{align-items:flex-start;justify-content:flex-end;padding:6%}
 .kc-content.kc-bl{align-items:flex-end;justify-content:flex-start;padding:6%}
@@ -521,7 +521,7 @@ html,body,#app{min-height:100%;height:auto;max-height:none;overflow-x:hidden;ove
 .kc.kc-back{background:var(--card-back);border-color:#818cf8;color:transparent}
 .kc.kc-back .kc-content,.kc.kc-back .kc-pip{visibility:hidden}
 .kc.kc-back::after{content:'✦';position:absolute;z-index:1;color:rgba(199,210,254,.92);
-  font-size:calc(var(--kc-w,56px)*.42);text-shadow:0 1px 4px rgba(0,0,0,.45)}
+  font-size:calc(var(--kc-w,56px)*.42)}
 /* sizes — width-driven ONLY; aspect + radius + border + font all derive from --kc-w,
    so every size is the SAME design at a different scale (no per-size radius/border). */
 .kc{--kc-w:clamp(40px,9vw,60px)}
@@ -542,7 +542,7 @@ html,body,#app{min-height:100%;height:auto;max-height:none;overflow-x:hidden;ove
 /* faint centred emblem/watermark behind content (declarative spec.emblem) */
 .kc-emblem{position:absolute;inset:0;z-index:0;display:flex;align-items:center;justify-content:center;
   font-size:calc(var(--kc-w,56px)*.9);font-weight:1000;line-height:1;color:rgba(255,255,255,.14);
-  pointer-events:none;text-shadow:0 1px 2px rgba(0,0,0,.2)}
+  pointer-events:none}
 /* WATER-TIGHT: the registered overlay (idle) AND the moving overlay (flying) must
    keep the canonical corners/aspect — no game/legacy rule can flatten a flying card
    into a pointy rectangle. These win because they target the framework classes. */

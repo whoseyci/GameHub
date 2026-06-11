@@ -53,7 +53,7 @@
   const CLAN = {
     red:    { bg:{gradient:['#f87171','#dc2626']}, border:'#fca5a5', fg:'#fff' },
     orange: { bg:{gradient:['#fb923c','#ea580c']}, border:'#fdba74', fg:'#fff' },
-    yellow: { bg:{gradient:['#facc15','#ca8a04']}, border:'#fde68a', fg:'#3b2f00' },
+    yellow: { bg:{gradient:['#eab308','#a16207']}, border:'#fde68a', fg:'#fff' },
     green:  { bg:{gradient:['#4ade80','#16a34a']}, border:'#86efac', fg:'#fff' },
     blue:   { bg:{gradient:['#60a5fa','#2563eb']}, border:'#93c5fd', fg:'#fff' },
     purple: { bg:{gradient:['#c084fc','#9333ea']}, border:'#d8b4fe', fg:'#fff' },

@@ -218,6 +218,17 @@ async function smokeQwixx(window, document) {
   const after = localView(window, 0).qwixx.pendingWhiteDecisions.length;
   assert(after < before, 'Qwixx: skip action did not advance white-phase decisions');
 
+  // Focus must follow the ACTIVE ROLLER (focusSeat), not stay pinned to seat 0 —
+  // otherwise in pass-and-play seat 1's player never sees seat 0's board as a mini.
+  // Resolve BOTH white decisions, then the roller (seat 0) finishes its turn; the
+  // turn passes to seat 1 and the display must rotate to seat 1.
+  window.localAct(1, { action: 'skip' });        // seat 1 resolves its white decision
+  await sleep(50);
+  window.localAct(0, { action: 'finishTurn' });  // roller finishes → active becomes seat 1
+  await sleep(200);
+  assert(localView(window, -1).qwixx.activeSeat === 1, 'Qwixx: turn did not pass to seat 1');
+  assert(window._renderView.yourSeat === 1, 'Qwixx: focus did not rotate to the next roller (stuck on seat 0) — focusSeat broken');
+
   window.quitLocal();
   await sleep(50);
 }

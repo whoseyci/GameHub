@@ -105,6 +105,10 @@ export interface GameViewState {
   }>;
   /** Number of players who can currently act (for simultaneous-turn games) */
   actingCount?: number;
+  /** Optional UI focus hint: the seat the client should center the "main" board on,
+   *  even during simultaneous phases where currentSeat is -1 (e.g. Qwixx's active
+   *  roller during the white phase). The hub ignores this; only the client uses it. */
+  focusSeat?: number;
   /** Estimated ms before the game auto-advances (for RESOLVING phases) */
   autoAdvanceMs?: number;
 }

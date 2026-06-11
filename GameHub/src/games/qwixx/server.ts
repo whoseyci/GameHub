@@ -108,6 +108,9 @@ function buildQwixxViewState(s: QwixxState): GameViewState {
   const isWhitePhase = s.phase === "WHITE_PHASE";
   return {
     currentSeat: isWhitePhase ? -1 : s.activeSeat,
+    // The active "roller" — the UI centers the main board here even in the
+    // simultaneous white phase, so focus follows whose turn it is to roll/lead.
+    focusSeat: s.activeSeat,
     pendingAction: isWhitePhase
       ? (s.activeColorUsed ? "finishTurn" : "white_choice")
       : (s.phase === "COLOR_PHASE" ? "color_choice" : null),
