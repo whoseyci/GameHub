@@ -80,9 +80,13 @@ describe("shared game shell", () => {
     expect(skyjo).not.toContain("Kit.CardManager.flyTransient"); // no transient discards
     expect(skyjo).not.toContain("Kit.Card.move");
     expect(skyjo).not.toContain("Kit.CardEffects");
-    // Skyjo uses CardManager directly for permanent cards
+    // Skyjo uses CardManager directly for the held/transit/discard permanent cards,
+    // and drives its BOARD GRID through the shared Kit.Cards.board loop (Gap A) —
+    // which owns reconcile internally (CardBoard.sync), so Skyjo no longer calls
+    // Kit.CardManager.reconcile itself.
     expect(skyjo).toContain("Kit.CardManager.pin");
-    expect(skyjo).toContain("Kit.CardManager.reconcile");
+    expect(skyjo).toContain("Kit.Cards.board('skyjo:table:'");
+    expect(skyjo).not.toContain("Kit.CardManager.reconcile");
     expect(skyjo).toContain("Kit.CardManager.has");
     // Flip 7 uses CardManager for permanent card lifecycle
     expect(flip7).toContain("Kit.CardManager.get(permId)");

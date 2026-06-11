@@ -379,7 +379,7 @@ describe("Animation Pipeline Invariants", () => {
     // card (number included) is visible the instant it lands, with no hidden anchor
     // left behind.
     expect(skyjoSource).toContain("Kit.CardManager.destroy('skyjo:held')");
-    expect(skyjoSource).toContain("syncSkyjoCards(s)");
+    expect(skyjoSource).toContain("syncSkyjoCards()");
     expect(skyjoSource).toContain("Kit.CardManager.pin('skyjo:held'");
     expect(skyjoSource).toContain("Kit.CardManager.has('skyjo:held')");
   });
@@ -467,8 +467,11 @@ describe("CardManager: permanent card system invariants", () => {
     // After landing, the held overlay is destroyed and the slot/discard is rendered
     // by the game (syncSkyjoCards / drawPiles) — no overlay left covering a slot.
     expect(skyjoSource).toContain("Kit.CardManager.destroy('skyjo:held')");
-    // Board cards pinned via syncSkyjoCards
-    expect(skyjoSource).toContain("Kit.CardManager.pin(id,anchor");
-    expect(skyjoSource).toContain("Kit.CardManager.reconcile('skyjo:table:'");
+    // Board grid cards are now driven through the SHARED board loop (Gap A): one
+    // Kit.Cards.board('skyjo:table:') call owns create/pin/reconcile/sync — no
+    // bespoke per-card loop. (Reconcile still happens, inside CardBoard.sync.)
+    expect(skyjoSource).toContain("Kit.Cards.board('skyjo:table:'");
+    const coreSrc = readFileSync(new URL("../public/js/00-core.js", import.meta.url), "utf8");
+    expect(coreSrc).toContain("CardManager.reconcile(prefix,active)");
   });
 });

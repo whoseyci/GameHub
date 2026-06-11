@@ -85,16 +85,17 @@
     await sleep(210);
     return true;
   }
-  function syncSkyjoCards(s){const active=[];s.players.forEach((p,pi)=>p.board.forEach((c,ci)=>{const id=skyjoCardId(s,pi,ci),anchor=document.querySelector(`[data-card-reg="${id}"]`);if(anchor){active.push(id);
-    // Use CardManager: create if new, update renderer + pin
-    const makeRenderer=()=>()=>skyjoVisual(c);
-    if(!Kit.CardManager.has(id)){
-      Kit.CardManager.create({kind:'skyjo',value:c.value},{zone:'grid',player:pi,slot:ci},{id,renderer:makeRenderer(),faceUp:c.revealed});
-    }else{
-      const card=Kit.CardManager.get(id);if(card)card.renderer=makeRenderer();
-    }
-    Kit.CardManager.pin(id,anchor,{hideAnchor:false,updateContent:true});
-  }}));Kit.CardManager.reconcile('skyjo:table:',active);requestAnimationFrame(()=>Kit.CardManager.sync());}
+  // Drive every Skyjo grid card through the shared board loop: Kit.Cards.board reads
+  // all [data-card-reg^='skyjo:table:'] anchors, rebuilds each overlay from the
+  // anchor's embedded skyjoSpec, reconciles away stale ids, and syncs positions —
+  // the same single primitive Schotten/Flip 7 use. The location is parsed back from
+  // the id (…:p<pi>:c<ci>) so the flight code's {zone:'grid',player,slot} contract
+  // is preserved for column-clears / swaps / discards.
+  function syncSkyjoCards(){
+    Kit.Cards.board('skyjo:table:', {
+      location: (a)=>{ const m=/:p(\d+):c(\d+)/.exec(a.dataset.cardReg||''); return m?{zone:'grid',player:+m[1],slot:+m[2]}:{zone:'grid'}; },
+    });
+  }
 
   let renderCtx=null;
   function render(view,ctx={}){
@@ -212,7 +213,7 @@
       (isMain?mainFrag:miniFrag).appendChild(dom);
     });
     GameShell.renderTable({game:'skyjo',opponents:miniFrag,focus:mainFrag,topMode:'piles',status:null});
-    syncSkyjoCards(s);
+    syncSkyjoCards();
   }
 
   function boardDOM(s,p,pi,isMain,interactive,viewer){
@@ -220,10 +221,14 @@
     const live=p.board.filter(c=>c.revealed&&!c.cleared).reduce((a,c)=>a+c.value,0);
     // the 4×3 grid of card anchors (the overlay sync pins onto these .board-card .kc).
     const grid=document.createElement('div');grid.className='board-grid';
-    p.board.forEach((c,ci)=>{const card=document.createElement('div');
-      // anchor carries the canonical geometry (.kc) + the Skyjo sizing zone so the
-      // overlay sizes to it; .board-card stays purely as a DOM query/click hook.
-      card.className='kc kc-zone-skyjo board-card registry-anchor';card.dataset.cardReg=skyjoCardId(s,pi,ci);
+    p.board.forEach((c,ci)=>{
+      // Framework anchor: an empty .kc placeholder carrying the canonical geometry +
+      // the card's declarative spec (data-kcSpec). Kit.Cards.board() rebuilds the
+      // permanent overlay from that spec — so the whole face (revealed value /
+      // face-down back / cleared) is described in ONE place (skyjoSpec) and the
+      // shared board loop owns create/pin/reconcile/sync (no bespoke loop).
+      const card=Kit.Cards.anchor(skyjoCardId(s,pi,ci), skyjoSpec(c), {placeholder:true});
+      card.classList.add('kc-zone-skyjo','board-card','registry-anchor');
       if(interactive&&isMain&&!c.cleared&&canClick(s,pi,ci,c,viewer)){card.classList.add('clickable');card.onclick=()=>cardClick(s,pi,ci,c);}
       grid.appendChild(card);});
 
@@ -316,7 +321,7 @@
         // visible the instant it lands — not only after the discard flies.
         Kit.CardManager.destroy('skyjo:held');
         target.style.visibility='';
-        syncSkyjoCards(s);
+        syncSkyjoCards();
       }
       if(Kit.CardManager.has(oldMovingId)) await flyCardToDiscard(oldMovingId,a.oldVal,{startFaceDown:!a.wasRevealed,revealMidway:!a.wasRevealed,spin:a.wasRevealed,duration:520});
       if(a.diff!=null&&a.diff!==0){const sg=a.diff>0?'+':'';Kit.floatText(boardEl(a.player),sg+a.diff,a.diff>0?'#10b981':'#ef4444');(a.diff>0?SFX.good:SFX.bad)();}
