@@ -16,4 +16,5 @@ export const Flip7Meta: GameMeta = {
     minDurationSec: 180,
     maxDurationSec: 900,
   },
+  actionTypes: ["hit","stay","target","give_second","next_round"] as const,
 };

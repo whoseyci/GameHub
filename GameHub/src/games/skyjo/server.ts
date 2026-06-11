@@ -69,6 +69,7 @@ export const Skyjo: GameModule = {
     description: "Flip, swap and dump cards to get the lowest score.",
     emoji: "🃏",
     features: SkyjoFeatures,
+    actionTypes: ["draw_deck","take_discard","discard_drawn","swap","reveal","reveal_after_discard","tiebreaker","next_round"] as const,
   },
 
   create(names) {
@@ -125,6 +126,9 @@ export const Skyjo: GameModule = {
     g.writeInto(state);
   },
 
+  // State migration (Proposal 3): schema is current — no-op. Future schema bumps
+  // (e.g. adding a field) would back-fill it here so in-progress rooms survive a deploy.
+  migrate(_state: any) { /* schemaVersion 1 — current */ },
   isOver(state) {
     return state.phase === "GAME_OVER";
   },

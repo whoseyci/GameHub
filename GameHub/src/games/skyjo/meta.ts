@@ -18,4 +18,5 @@ export const SkyjoMeta: GameMeta = {
   description: "Flip, swap and dump cards to get the lowest score.",
   emoji: "🃏",
   features: SkyjoFeatures,
+  actionTypes: ["draw_deck","take_discard","discard_drawn","swap","reveal","reveal_after_discard","tiebreaker","next_round"] as const,
 };

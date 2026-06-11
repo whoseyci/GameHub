@@ -83,6 +83,8 @@
       __publicField(this, "drawnCard", null);
       __publicField(this, "turnAction", null);
       __publicField(this, "tiebreakerPlayers", []);
+      __publicField(this, "actionSeq", 0);
+      // monotonic action counter (deterministic stand-in for wall-clock; makes each lastAction unique for client change-detection)
       __publicField(this, "lastAction", null);
       __publicField(this, "pendingTransition", null);
       this.players = names.map((n) => ({
@@ -172,7 +174,7 @@
       if (!c || c.revealed || c.cleared) return false;
       c.revealed = true;
       p.revealCount++;
-      this.lastAction = { type: "reveal", player: pi, card: ci, value: c.value, t: Date.now() };
+      this.lastAction = { type: "reveal", player: pi, card: ci, value: c.value, t: ++this.actionSeq };
       if (this.players.every((pl) => pl.revealCount >= 2)) this.determineStarter();
       return true;
     }
@@ -194,7 +196,7 @@
       if (!c || c.revealed || c.cleared) return false;
       c.revealed = true;
       p.revealCount++;
-      this.lastAction = { type: "reveal", player: pi, card: ci, value: c.value, t: Date.now() };
+      this.lastAction = { type: "reveal", player: pi, card: ci, value: c.value, t: ++this.actionSeq };
       if (this.tiebreakerPlayers.every((i) => this.players[i].revealCount >= 2)) {
         const sums = this.tiebreakerPlayers.map((i) => ({
           i,
@@ -217,7 +219,7 @@
       }
       this.drawnCard = this.deck.pop();
       this.turnAction = "deck";
-      this.lastAction = { type: "draw_deck", player: pi, t: Date.now() };
+      this.lastAction = { type: "draw_deck", player: pi, t: ++this.actionSeq };
       return this.drawnCard;
     }
     takeDiscard(pi) {
@@ -226,7 +228,7 @@
       if (this.discard.length === 0) return false;
       this.drawnCard = this.discard.pop();
       this.turnAction = "discard";
-      this.lastAction = { type: "take_discard", player: pi, value: this.drawnCard, t: Date.now() };
+      this.lastAction = { type: "take_discard", player: pi, value: this.drawnCard, t: ++this.actionSeq };
       return true;
     }
     swap(pi, bi) {
@@ -249,7 +251,7 @@
         oldVal,
         wasRevealed,
         newVal: this.drawnCard,
-        t: Date.now()
+        t: ++this.actionSeq
       };
       this.endTurn();
       return true;
@@ -261,7 +263,7 @@
       this.discard.push(val);
       this.drawnCard = null;
       this.turnAction = "must_reveal";
-      this.lastAction = { type: "discard_drawn", player: pi, value: val, t: Date.now() };
+      this.lastAction = { type: "discard_drawn", player: pi, value: val, t: ++this.actionSeq };
       return true;
     }
     revealAfterDiscard(pi, bi) {
@@ -271,7 +273,7 @@
       const t = p.board[bi];
       if (!t || t.revealed || t.cleared) return false;
       t.revealed = true;
-      this.lastAction = { type: "reveal_after_discard", player: pi, index: bi, value: t.value, t: Date.now() };
+      this.lastAction = { type: "reveal_after_discard", player: pi, index: bi, value: t.value, t: ++this.actionSeq };
       this.endTurn();
       return true;
     }
@@ -288,7 +290,7 @@
           if (this.lastAction && this.lastAction.type === "swap") {
             this.lastAction.triplet = { value: cards[0].value, indices: idxs };
           } else {
-            this.lastAction = { type: "triplet", player: pi, value: cards[0].value, indices: idxs, t: Date.now() };
+            this.lastAction = { type: "triplet", player: pi, value: cards[0].value, indices: idxs, t: ++this.actionSeq };
           }
         }
       }
@@ -307,7 +309,7 @@
         if (tied.length === 1) {
           this.currentPlayer = tied[0];
           this.phase = "PLAY";
-          this.lastAction = { type: "starter", player: tied[0], t: Date.now() };
+          this.lastAction = { type: "starter", player: tied[0], t: ++this.actionSeq };
           this.tiebreakerPlayers = [];
         } else {
           this.tiebreakerPlayers = tied;
@@ -348,7 +350,7 @@
       this.lastAction = {
         type: this.phase === "GAME_OVER" ? "game_over" : "round_end",
         winners: this.players.map((p, i) => p.totalScore === min ? i : -1).filter((i) => i >= 0),
-        t: Date.now()
+        t: ++this.actionSeq
       };
     }
     getStateFor(viewerIndex) {
@@ -399,7 +401,8 @@
     "turnAction",
     "tiebreakerPlayers",
     "lastAction",
-    "pendingTransition"
+    "pendingTransition",
+    "actionSeq"
   ]);
   var GameEngine = _GameEngine;
 
@@ -440,7 +443,8 @@
       maxPlayers: 8,
       description: "Flip, swap and dump cards to get the lowest score.",
       emoji: "\u{1F0CF}",
-      features: SkyjoFeatures
+      features: SkyjoFeatures,
+      actionTypes: ["draw_deck", "take_discard", "discard_drawn", "swap", "reveal", "reveal_after_discard", "tiebreaker", "next_round"]
     },
     create(names) {
       const g = new GameEngine(names);
@@ -490,6 +494,10 @@
       const g = load(state);
       g.completeTurnEnd();
       g.writeInto(state);
+    },
+    // State migration (Proposal 3): schema is current — no-op. Future schema bumps
+    // (e.g. adding a field) would back-fill it here so in-progress rooms survive a deploy.
+    migrate(_state) {
     },
     isOver(state) {
       return state.phase === "GAME_OVER";
@@ -932,7 +940,8 @@
         canSpectate: true,
         minDurationSec: 180,
         maxDurationSec: 900
-      }
+      },
+      actionTypes: ["hit", "stay", "target", "give_second", "next_round"]
     },
     create(names) {
       return fresh(names, names.map(() => 0));
@@ -995,6 +1004,10 @@
         }
         endTurnAdvance(state);
       }
+    },
+    // State migration (Proposal 3): schema is current — no-op. Future schema bumps
+    // (e.g. adding a field) would back-fill it here so in-progress rooms survive a deploy.
+    migrate(_state) {
     },
     isOver(state) {
       return state.phase === "GAME_OVER";
@@ -1170,7 +1183,8 @@
         canSpectate: false,
         minDurationSec: 90,
         maxDurationSec: 300
-      }
+      },
+      actionTypes: ["mark", "skip", "finishTurn", "next_round"]
     },
     create(names) {
       const rng = { rngState: makeSeed() };
@@ -1309,6 +1323,10 @@
         }
       };
     },
+    // State migration (Proposal 3): schema is current — no-op. Future schema bumps
+    // (e.g. adding a field) would back-fill it here so in-progress rooms survive a deploy.
+    migrate(_state) {
+    },
     isOver(state) {
       return state.phase === "GAME_OVER";
     },
@@ -1333,7 +1351,8 @@
       canSpectate: true,
       minDurationSec: 300,
       maxDurationSec: 900
-    }
+    },
+    actionTypes: ["place", "claim", "end", "next_round"]
   };
 
   // src/games/schotten/server.ts
@@ -1560,6 +1579,10 @@
           }))
         }
       };
+    },
+    // State migration (Proposal 3): schema is current — no-op. Future schema bumps
+    // (e.g. adding a field) would back-fill it here so in-progress rooms survive a deploy.
+    migrate(_state) {
     },
     isOver(state) {
       return state.phase === "GAME_OVER";

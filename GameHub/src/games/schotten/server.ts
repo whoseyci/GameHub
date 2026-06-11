@@ -300,6 +300,9 @@ export const Schotten: GameModule = {
     };
   },
 
+  // State migration (Proposal 3): schema is current — no-op. Future schema bumps
+  // (e.g. adding a field) would back-fill it here so in-progress rooms survive a deploy.
+  migrate(_state: any) { /* schemaVersion 1 — current */ },
   isOver(state: SchottenState): boolean { return state.phase === "GAME_OVER"; },
 
   summarize(state: SchottenState) {

@@ -356,6 +356,7 @@ export const Flip7: GameModule = {
       minDurationSec: 180,
       maxDurationSec: 900,
     },
+    actionTypes: ["hit","stay","target","give_second","next_round"] as const,
   },
 
   create(names) { return fresh(names, names.map(() => 0)); },
@@ -427,6 +428,9 @@ export const Flip7: GameModule = {
     }
   },
 
+  // State migration (Proposal 3): schema is current — no-op. Future schema bumps
+  // (e.g. adding a field) would back-fill it here so in-progress rooms survive a deploy.
+  migrate(_state: any) { /* schemaVersion 1 — current */ },
   isOver(state: State) { return state.phase === "GAME_OVER"; },
   summarize(state: State) { return { round: state.round, current: state.current, pendingAction: state.pendingAction }; },
   joinScore(state: State) { return Math.round(state.players.reduce((a, p) => a + p.banked, 0) / Math.max(1, state.players.length)); },

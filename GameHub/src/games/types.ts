@@ -75,7 +75,27 @@ export interface GameMeta {
   description: string;
   emoji: string;         // shown in the hub picker
   features?: GameFeatures; // optional capability manifest
+  /** The action strings this game's applyAction() recognises. Used by the
+   *  replay-determinism test (and useful as living documentation). Optional. */
+  actionTypes?: readonly string[];
 }
+
+// ─── Structured error / event protocol (Proposal 10) ───────────────────
+export type ErrorCode =
+  | "ROOM_FULL"
+  | "INVALID_ACTION"
+  | "NOT_YOUR_TURN"
+  | "GAME_NOT_FOUND"
+  | "NOT_HOST"
+  | "RATE_LIMITED"
+  | "INTERNAL";
+
+export interface ServerError { type: "error"; code: ErrorCode; message: string; recoverable: boolean; }
+export interface ActionRejected { type: "action_rejected"; reason: string; originalAction: string; }
+
+/** A validated inbound player action. Field types are `any` because the protocol
+ *  layer validates them before they reach the game module. */
+export interface GameAction { action: string; [k: string]: any; }
 
 /**
  * Standardized game state view that the hub uses for:
@@ -133,9 +153,13 @@ export interface SummaryRow { seat: number; name: string; score: number; delta?:
 export interface GameModule {
   meta: GameMeta;
   create(playerNames: string[]): any;
-  applyAction(state: any, seat: number, msg: any): void;
+  applyAction(state: any, seat: number, msg: GameAction): void;
   viewFor(state: any, seat: number): GameView;
   isOver(state: any): boolean;
+  // ─── State migration (Proposal 3) ───────────────────────────────────
+  /** Migrate an older persisted state to the current schema. Called once on
+   *  load from DO storage so in-progress rooms survive a deploy. Optional. */
+  migrate?(state: any): void;
   // Optional server-driven advance. Return ms until the next tick, or null for none.
   // The hub schedules an alarm after the returned delay and then calls completeTick().
   tick?(state: any): number | null;

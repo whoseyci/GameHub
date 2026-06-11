@@ -27,6 +27,8 @@ function quickPlay(gameId,shard=1){ensureName();connectRoom('quick-'+gameId+'-'+
 function handleNet(m){
   if(m.type==='hello')return;
   if(m.type==='error'){toast(m.message);return;}
+  // Structured action rejection (Proposal 10): surface why a move was ignored.
+  if(m.type==='action_rejected'){toast(m.reason||'Move not allowed.',2200);return;}
   if(m.type==='room_full'){
     if(_joinAttempt&&_joinAttempt.shard){ // quick play: try the next shard
       const next=_joinAttempt.shard+1;

@@ -39,6 +39,7 @@ export class GameEngine {
   drawnCard: number | null = null;
   turnAction: TurnAction = null;
   tiebreakerPlayers: number[] = [];
+  actionSeq = 0; // monotonic action counter (deterministic stand-in for wall-clock; makes each lastAction unique for client change-detection)
   lastAction: any = null;
   pendingTransition: any = null;
 
@@ -57,7 +58,7 @@ export class GameEngine {
   static readonly STATE_KEYS = [
     "schemaVersion", "rngState", "players", "deck", "discard", "phase", "round",
     "currentPlayer", "roundEnder", "finalTurnsLeft", "drawnCard", "turnAction",
-    "tiebreakerPlayers", "lastAction", "pendingTransition",
+    "tiebreakerPlayers", "lastAction", "pendingTransition", "actionSeq",
   ] as const;
 
   // Rehydrate from a stored plain object.
@@ -121,7 +122,7 @@ export class GameEngine {
     const p = this.players[pi]; if (!p || p.revealCount >= 2) return false;
     const c = p.board[ci]; if (!c || c.revealed || c.cleared) return false;
     c.revealed = true; p.revealCount++;
-    this.lastAction = { type: "reveal", player: pi, card: ci, value: c.value, t: Date.now() };
+    this.lastAction = { type: "reveal", player: pi, card: ci, value: c.value, t: ++this.actionSeq };
     if (this.players.every((pl) => pl.revealCount >= 2)) this.determineStarter();
     return true;
   }
@@ -139,7 +140,7 @@ export class GameEngine {
     const p = this.players[pi]; if (p.revealCount >= 2) return false;
     const c = p.board[ci]; if (!c || c.revealed || c.cleared) return false;
     c.revealed = true; p.revealCount++;
-    this.lastAction = { type: "reveal", player: pi, card: ci, value: c.value, t: Date.now() };
+    this.lastAction = { type: "reveal", player: pi, card: ci, value: c.value, t: ++this.actionSeq };
     if (this.tiebreakerPlayers.every((i) => this.players[i].revealCount >= 2)) {
       const sums = this.tiebreakerPlayers.map((i) => ({
         i, sum: this.players[i].board.filter((c) => c.revealed && !c.cleared).reduce((a, c) => a + c.value, 0),
@@ -161,7 +162,7 @@ export class GameEngine {
     }
     this.drawnCard = this.deck.pop()!;
     this.turnAction = "deck";
-    this.lastAction = { type: "draw_deck", player: pi, t: Date.now() };
+    this.lastAction = { type: "draw_deck", player: pi, t: ++this.actionSeq };
     return this.drawnCard;
   }
   takeDiscard(pi: number): boolean {
@@ -170,7 +171,7 @@ export class GameEngine {
     if (this.discard.length === 0) return false;
     this.drawnCard = this.discard.pop()!;
     this.turnAction = "discard";
-    this.lastAction = { type: "take_discard", player: pi, value: this.drawnCard, t: Date.now() };
+    this.lastAction = { type: "take_discard", player: pi, value: this.drawnCard, t: ++this.actionSeq };
     return true;
   }
   swap(pi: number, bi: number): boolean {
@@ -185,7 +186,7 @@ export class GameEngine {
     this.lastAction = {
       type: "swap", player: pi, index: bi,
       good: wasRevealed ? diff! > 0 : null, diff, oldVal, wasRevealed,
-      newVal: this.drawnCard, t: Date.now(),
+      newVal: this.drawnCard, t: ++this.actionSeq,
     };
     this.endTurn();
     return true;
@@ -197,7 +198,7 @@ export class GameEngine {
     this.discard.push(val);
     this.drawnCard = null;
     this.turnAction = "must_reveal";
-    this.lastAction = { type: "discard_drawn", player: pi, value: val, t: Date.now() };
+    this.lastAction = { type: "discard_drawn", player: pi, value: val, t: ++this.actionSeq };
     return true;
   }
   revealAfterDiscard(pi: number, bi: number): boolean {
@@ -206,7 +207,7 @@ export class GameEngine {
     const p = this.players[pi]; const t = p.board[bi];
     if (!t || t.revealed || t.cleared) return false;
     t.revealed = true;
-    this.lastAction = { type: "reveal_after_discard", player: pi, index: bi, value: t.value, t: Date.now() };
+    this.lastAction = { type: "reveal_after_discard", player: pi, index: bi, value: t.value, t: ++this.actionSeq };
     this.endTurn();
     return true;
   }
@@ -225,7 +226,7 @@ export class GameEngine {
         if (this.lastAction && this.lastAction.type === "swap") {
           this.lastAction.triplet = { value: cards[0].value, indices: idxs };
         } else {
-          this.lastAction = { type: "triplet", player: pi, value: cards[0].value, indices: idxs, t: Date.now() };
+          this.lastAction = { type: "triplet", player: pi, value: cards[0].value, indices: idxs, t: ++this.actionSeq };
         }
       }
     }
@@ -243,7 +244,7 @@ export class GameEngine {
       const tied = this.pendingTransition.tied;
       if (tied.length === 1) {
         this.currentPlayer = tied[0]; this.phase = "PLAY";
-        this.lastAction = { type: "starter", player: tied[0], t: Date.now() };
+        this.lastAction = { type: "starter", player: tied[0], t: ++this.actionSeq };
         this.tiebreakerPlayers = [];
       } else {
         this.tiebreakerPlayers = tied;
@@ -281,7 +282,7 @@ export class GameEngine {
     this.lastAction = {
       type: this.phase === "GAME_OVER" ? "game_over" : "round_end",
       winners: this.players.map((p, i) => (p.totalScore === min ? i : -1)).filter((i) => i >= 0),
-      t: Date.now(),
+      t: ++this.actionSeq,
     };
   }
   getStateFor(viewerIndex: number) {

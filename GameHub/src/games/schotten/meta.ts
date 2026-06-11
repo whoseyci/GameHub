@@ -16,4 +16,5 @@ export const SchottenMeta: GameMeta = {
     minDurationSec: 300,
     maxDurationSec: 900,
   },
+  actionTypes: ["place","claim","end","next_round"] as const,
 };

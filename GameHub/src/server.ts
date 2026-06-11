@@ -18,6 +18,17 @@ import {
 import { getGame, GAME_CATALOGUE } from "./games/registry";
 import { cleanId, cleanInt, cleanName, parseClientMessage } from "./protocol";
 import { appendReplay, summarizeGameState, type ReplayEntry } from "./replay";
+import type { ErrorCode, ServerError, ActionRejected } from "./games/types";
+
+// ─── Structured error / event protocol (Proposal 10) ───────────────────
+// One shape for every server-sent error so the client can branch on a code
+// (and know whether it can recover) instead of parsing free-text strings.
+function serverError(code: ErrorCode, message: string, recoverable = false): ServerError {
+  return { type: "error", code, message, recoverable };
+}
+function actionRejected(reason: string, originalAction: string): ActionRejected {
+  return { type: "action_rejected", reason, originalAction };
+}
 
 export interface Env {
   Room: DurableObjectNamespace<Room>;
@@ -82,6 +93,14 @@ export class Room extends Server<Env> {
       this.tickAt = m.tickAt ?? null;
     }
     this.gameState = (await this.ctx.storage.get<any>("gameState")) ?? null;
+    // State migration (Proposal 3): an in-progress game persisted by an OLDER deploy
+    // may have a stale schema. Run the game's migrate() once on load so a deploy can't
+    // crash live rooms. Failures are logged, never thrown (a bad migrate shouldn't
+    // brick room startup).
+    if (this.gameId && this.gameState) {
+      const g = getGame(this.gameId);
+      if (g?.migrate) { try { g.migrate(this.gameState); } catch (e) { console.error("migrate() failed for", this.gameId, e); } }
+    }
     // Auto-reply to pings without waking us for heavy work.
     try { this.ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair("ping", "pong")); } catch {}
   }
@@ -466,7 +485,7 @@ export class Room extends Server<Env> {
       if (msg.seat != null) {
         const requested = msg.seat | 0;
         if (this.controlledSeats(conn).includes(requested)) actSeat = requested;
-        else return;
+        else { conn.send(JSON.stringify(actionRejected("You don't control that seat.", String(msg.action ?? "")))); return; }
       }
       if (msg.botSeat != null && isHost) {
         const bi = msg.botSeat | 0;
@@ -474,9 +493,9 @@ export class Room extends Server<Env> {
         // bot's turn to act (S1). This stops a malicious/modified host from
         // firing arbitrary out-of-turn moves on behalf of bot seats.
         if (this.members[bi] && this.members[bi].bot && this.isSeatActable(bi)) actSeat = bi;
-        else return;
+        else { conn.send(JSON.stringify(actionRejected("Not that bot's turn.", String(msg.action ?? "")))); return; }
       }
-      if (actSeat < 0) return;
+      if (actSeat < 0) { conn.send(JSON.stringify(actionRejected("You are spectating.", String(msg.action ?? "")))); return; }
       this.touch();
       const g = getGame(this.gameId)!;
       g.applyAction(this.gameState, actSeat, msg);

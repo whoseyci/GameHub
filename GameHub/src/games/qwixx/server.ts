@@ -160,6 +160,7 @@ export const Qwixx: GameModule = {
       minDurationSec: 90,
       maxDurationSec: 300,
     },
+    actionTypes: ["mark","skip","finishTurn","next_round"] as const,
   },
 
   create(names: string[]) {
@@ -311,6 +312,9 @@ export const Qwixx: GameModule = {
     };
   },
 
+  // State migration (Proposal 3): schema is current — no-op. Future schema bumps
+  // (e.g. adding a field) would back-fill it here so in-progress rooms survive a deploy.
+  migrate(_state: any) { /* schemaVersion 1 — current */ },
   isOver(state: any) { return state.phase === "GAME_OVER"; },
   summarize(state: QwixxState) { return { round: state.round, activeSeat: state.activeSeat, locked: state.locked }; },
 };

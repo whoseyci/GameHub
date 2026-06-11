@@ -16,4 +16,5 @@ export const QwixxMeta: GameMeta = {
     minDurationSec: 90,
     maxDurationSec: 300,
   },
+  actionTypes: ["mark","skip","finishTurn","next_round"] as const,
 };
