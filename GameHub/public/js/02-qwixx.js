@@ -194,7 +194,11 @@ window.GameClients = window.GameClients || {};
           cls += hasWhite ? ' hint-glow-white' : (' hint-glow-' + color);
         }
         const firstAction = cellHints.find(h => h.actionable);
-        const click = legal ? `onclick="window.GameClients['qwixx'].act('mark',{c:'${color}',i:${i},use:'${firstAction?.use||firstAction?.kind||'white'}'})"` : '';
+        // Brief satisfaction-tap: add .just-marked before sending the action so
+        // the ink-in animation fires synchronously with the click. The re-render
+        // that follows the server response repaints the cell as .x but the
+        // animation already played, so the perceived feedback is instant.
+        const click = legal ? `onclick="this.classList.add('just-marked');window.GameClients['qwixx'].act('mark',{c:'${color}',i:${i},use:'${firstAction?.use||firstAction?.kind||'white'}'})"` : '';
         html += `<div class="${cls}" ${click}><span class="qwixx-num">${marked ? '✕' : n}</span>${hintHtml}</div>`;
       });
       const count = row.marks.length + (row.marks.includes(row.nums.length - 1) ? 1 : 0);
@@ -344,6 +348,36 @@ window.GameClients = window.GameClients || {};
       }
     }
 
+    // Score-bump animation: any row-score that changed since the last render
+    // gets a quick yellow upward bump so the player's eye is drawn to the
+    // points they just earned. Pure UX nicety; never gates affordances.
+    try {
+      const prevScores = window._qwixxLastScores || {};
+      const nextScores = {};
+      const focusedSeat = focused.seat;
+      const focusedPlayer = s.allPlayers.find(p => p.seat === focusedSeat);
+      if (focusedPlayer) {
+        COLORS.forEach((c) => {
+          const row = focusedPlayer.rows[c];
+          const pts = rowPoints(row);
+          const key = `${focusedSeat}:${c}`;
+          nextScores[key] = pts;
+          if (prevScores[key] != null && prevScores[key] !== pts) {
+            // Find the row-score in the focused board and flash it.
+            const rowEls = document.querySelectorAll('.qwixx-focus-card .qwixx-row-score');
+            const idx = COLORS.indexOf(c);
+            const el = rowEls[idx];
+            if (el) {
+              el.classList.remove('just-changed');
+              void el.offsetWidth; // restart animation
+              el.classList.add('just-changed');
+            }
+          }
+        });
+      }
+      window._qwixxLastScores = nextScores;
+    } catch {}
+
     if(s.phase === 'GAME_OVER') showSummary(view);
   }
 
@@ -360,7 +394,7 @@ window.GameClients = window.GameClients || {};
     GameActions.send(action, msg, view?.yourSeat ?? 0);
   }
 
-  function unmount(){removeQwixxUi();}
+  function unmount(){removeQwixxUi();window._qwixxLastScores=null;window._qwixxDiceSig=null;}
   window.GameClients['qwixx'] = { render, act, inspect, unmount };
 
 })();

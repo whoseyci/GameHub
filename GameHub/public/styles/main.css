@@ -22,6 +22,26 @@
   .qwixx-cell.good{animation:activeGlow 1.5s ease-in-out infinite;color:var(--accent)}
   .qwixx-cell.bad{opacity:.3;cursor:not-allowed}
   .qwixx-cell.lock{background:rgba(0,0,0,0.3);cursor:not-allowed;text-decoration:line-through}
+  /* Satisfying ink-in when a cell becomes marked: punchy scale-down with a
+     ring flash, then settle. The animation is JS-triggered by adding
+     .qwixx-cell.just-marked for one frame on click. */
+  .qwixx-cell.just-marked{animation:qwixxMarkInk .42s cubic-bezier(.2,1.4,.3,1) both}
+  @keyframes qwixxMarkInk{
+    0%  {transform:scale(.7);  box-shadow:0 0 0 0   rgba(255,255,255,.45) inset, 0 0 0 0   rgba(255,255,255,.35)}
+    45% {transform:scale(1.14);box-shadow:0 0 0 10px rgba(255,255,255,.05) inset, 0 0 0 8px rgba(255,255,255,.18)}
+    100%{transform:scale(1);   box-shadow:0 0 0 0   rgba(255,255,255,0)   inset, 0 0 0 0   rgba(255,255,255,0)}
+  }
+  /* The row-score number that updates after a mark: a brief upward bump so the
+     player's eye is drawn to "your score went up" without being noisy. */
+  .qwixx-row-score.just-changed{animation:qwixxScoreBump .5s cubic-bezier(.2,1.4,.3,1) both}
+  @keyframes qwixxScoreBump{
+    0%  {transform:translateY(0)    scale(1);   color:var(--text)}
+    40% {transform:translateY(-3px) scale(1.18);color:#fbbf24}
+    100%{transform:translateY(0)    scale(1);   color:var(--text)}
+  }
+  @media (prefers-reduced-motion: reduce){
+    .qwixx-cell.just-marked,.qwixx-row-score.just-changed{animation:none}
+  }
   .qwixx-controls{display:flex;justify-content:center;gap:12px;margin:10px 0}
   .qwixx-ctrl-btn{padding:12px 24px;border-radius:12px;border:2px solid var(--border);background:var(--surface);color:var(--text);font-weight:800;cursor:pointer;transition:all .2s}
   .qwixx-ctrl-btn:hover:not(:disabled){border-color:var(--accent);background:var(--surface-light)}
