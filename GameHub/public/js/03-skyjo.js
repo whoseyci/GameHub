@@ -248,12 +248,29 @@
       grid.appendChild(card);});
 
     // MINI/opponent board → shared Kit.MiniBoard (frame + header + inspect click).
-    // The card grid is the body. We keep id='mini-board-N' so boardEl() can find it.
+    // W1: declare the essentials manifest so the platform's tier system keeps
+    // critical info (live score + total) legible at every scale, even when the
+    // card grid body gets clipped on the smallest tier.
     if(!isMain){
+      const revealedCount = p.board.filter((c) => c.revealed || c.cleared).length;
       const mb=Kit.MiniBoard({
-        name:p.name+(pi===viewer?' (You)':''), badge:'Now '+live+' · '+p.totalScore,
-        you:pi===viewer, seat:pi, variant:'skyjo', body:grid,
-        onClick:()=>investigate(s,pi,viewer),
+        name: p.name + (pi===viewer ? ' (You)' : ''),
+        you: pi===viewer,
+        active: s.currentPlayer===pi && (s.phase==='PLAY' || s.phase==='FINAL_TURNS'),
+        seat: pi,
+        variant: 'skyjo',
+        pulse: (s.currentPlayer===pi && (s.phase==='PLAY'||s.phase==='FINAL_TURNS')) ? 'live' : null,
+        // Score-first: total is the primary number that drives strategy.
+        // 'Now' (live unhidden score) is the second-most-glanced number.
+        // Revealed count gives a sense of how close they are to triggering
+        // the final turns (12 = fully revealed = closes the round).
+        essentials: [
+          { label: 'Total', value: p.totalScore },
+          { label: 'Now',   value: live },
+          { label: 'Open',  value: `${revealedCount}/12` },
+        ],
+        body: grid,
+        onClick: () => investigate(s, pi, viewer),
       });
       mb.id='mini-board-'+pi;
       mb.classList.add('board-mini'); // keep the legacy Skyjo mini SIZING selectors working

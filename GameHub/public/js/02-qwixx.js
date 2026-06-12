@@ -259,14 +259,31 @@ window.GameClients = window.GameClients || {};
     // wrapper looked fine but hid the minis from the strip's :nth-child(N) column
     // rules — which made rows past the first CLIP under overflow:hidden, so only the
     // first 1–2 opponents showed their crossed-off marks. Fragment fixes that.)
+    // W1: essentials manifest — score is the strategic anchor; penalty count
+    // is the time-to-game-over signal (4 penalties ends the game for that
+    // player); locked-row count is the second time-to-end signal (2 locked
+    // rows ends the whole game). Body remains the dot grid for the lg/md/sm
+    // tiers; xs tier hides body and shows initials + score badge.
     const opponents = document.createDocumentFragment();
-    others.forEach(player => opponents.appendChild(Kit.MiniBoard({
-      name: player.name, badge: player.score,
-      active: !!player.active, you: player.seat === view.yourSeat,
-      seat: player.seat, variant: 'qwixx',
-      body: renderMiniBoard(player, displayState, view.yourSeat),
-      onClick: () => window.GameClients['qwixx'].inspect(player.seat),
-    })));
+    others.forEach(player => {
+      const lockedRows = COLORS.reduce((n, c) => n + (displayState.locked.includes(c) ? 1 : 0), 0);
+      opponents.appendChild(Kit.MiniBoard({
+        name: player.name,
+        badge: player.score,
+        active: !!player.active,
+        you: player.seat === view.yourSeat,
+        seat: player.seat,
+        variant: 'qwixx',
+        pulse: player.active ? 'live' : null,
+        essentials: [
+          { label: 'Score',  value: player.score },
+          { label: 'Locked', value: `${lockedRows}/4` },
+          { label: 'Pen',    value: `${player.penalties}/4` },
+        ],
+        body: renderMiniBoard(player, displayState, view.yourSeat),
+        onClick: () => window.GameClients['qwixx'].inspect(player.seat),
+      }));
+    });
     // Active-vs-passive header: the active seat sees a stronger call-to-action
     // ("Your throw" / "Your color phase"); everyone else sees who they're
     // waiting on. Round badge moves to the right so the head reads left-to

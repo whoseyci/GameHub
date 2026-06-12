@@ -674,6 +674,61 @@ button.kc-mini:hover{transform:translateY(-2px);box-shadow:0 6px 14px rgba(0,0,0
 .kc-mini-name{font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 .kc-mini-badge{flex:0 0 auto;font-weight:700;color:var(--text-dim);font-size:.55rem}
 .kc-mini-headx{flex-basis:100%;color:var(--text-dim);font-size:.52rem}
+
+/* W1: legibility-tier system. The platform sets one of these classes on each
+   .kc-mini via ResizeObserver. Stylesheet rules ALWAYS prefer ESSENTIAL info:
+   smaller tiers hide the body, then the essentials labels, then collapse the
+   full name to initials — but score + initials + active-state pip ALWAYS stay.
+   Pulse pip + initials guarantee a glanceable identity at every scale. */
+.kc-mini-name-wrap{display:inline-flex;align-items:center;gap:4px;min-width:0;font-weight:800;overflow:hidden}
+.kc-mini-name-full{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.kc-mini-name-init{display:none;font-weight:900;letter-spacing:.04em}
+.kc-mini-pulse{width:7px;height:7px;border-radius:50%;flex:0 0 auto;background:#6b7280;box-shadow:0 0 0 1px rgba(255,255,255,.15)}
+.kc-mini-pulse-live{background:#10b981;box-shadow:0 0 0 1px rgba(16,185,129,.4),0 0 6px rgba(16,185,129,.5);animation:kcMiniPulse 1.6s ease-in-out infinite}
+.kc-mini-pulse-bust{background:#ef4444;box-shadow:0 0 0 1px rgba(239,68,68,.4)}
+.kc-mini-pulse-win{background:#fbbf24;box-shadow:0 0 0 1px rgba(251,191,36,.5),0 0 6px rgba(251,191,36,.4)}
+@keyframes kcMiniPulse{50%{box-shadow:0 0 0 1px rgba(16,185,129,.4),0 0 12px rgba(16,185,129,.6)}}
+@media (prefers-reduced-motion: reduce){.kc-mini-pulse-live{animation:none}}
+
+.kc-mini-essentials{display:flex;gap:6px;font-size:.55rem;line-height:1.05;color:var(--text-dim)}
+.kc-mini-essential{display:inline-flex;flex-direction:column;align-items:flex-start;min-width:0;overflow:hidden}
+.kc-mini-essential-value{color:var(--text);font-weight:900;font-size:.78rem;line-height:1;font-style:normal}
+.kc-mini-essential-label{font-style:normal;font-size:.5rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+
+.kc-mini-status{display:inline-block;align-self:flex-start;font-size:.5rem;font-weight:900;letter-spacing:.08em;text-transform:uppercase;padding:1px 5px;border-radius:6px;background:rgba(255,255,255,.08);color:var(--text-dim)}
+.kc-mini-active .kc-mini-status{background:rgba(16,185,129,.15);color:#a7f3d0}
+
+/* — TIER: lg (≥160px) — show everything full-sized */
+.kc-mini-tier-lg .kc-mini-name-init{display:none}
+.kc-mini-tier-lg .kc-mini-name-full{display:inline}
+
+/* — TIER: md (96–159px) — keep full name, smaller essentials */
+.kc-mini-tier-md .kc-mini-name-init{display:none}
+.kc-mini-tier-md .kc-mini-essential-value{font-size:.7rem}
+.kc-mini-tier-md .kc-mini-essential:nth-child(n+3){display:none}
+.kc-mini-tier-md .kc-mini-status{font-size:.46rem;padding:1px 4px}
+
+/* — TIER: sm (72–95px) — name → initials, only first essential, badge in head */
+.kc-mini-tier-sm .kc-mini-name-full{display:none}
+.kc-mini-tier-sm .kc-mini-name-init{display:inline}
+.kc-mini-tier-sm .kc-mini-essential:nth-child(n+2){display:none}
+.kc-mini-tier-sm .kc-mini-essential-label{display:none}
+.kc-mini-tier-sm .kc-mini-essential-value{font-size:.7rem}
+.kc-mini-tier-sm .kc-mini-essentials{gap:0}
+.kc-mini-tier-sm .kc-mini-status{display:none}
+.kc-mini-tier-sm .kc-mini-headx{display:none}
+
+/* — TIER: xs (<72px) — initials + score badge only, body hidden */
+.kc-mini-tier-xs .kc-mini-name-full{display:none}
+.kc-mini-tier-xs .kc-mini-name-init{display:inline;font-size:.62rem}
+.kc-mini-tier-xs .kc-mini-essentials,
+.kc-mini-tier-xs .kc-mini-body,
+.kc-mini-tier-xs .kc-mini-status,
+.kc-mini-tier-xs .kc-mini-headx{display:none}
+.kc-mini-tier-xs{padding:3px 4px;gap:2px}
+.kc-mini-tier-xs .kc-mini-head{font-size:.5rem}
+.kc-mini-tier-xs .kc-mini-badge{font-size:.55rem;font-weight:900;color:var(--text)}
+
 /* the body is the GAME's own content — don't impose a layout on it (each game's
    body root manages its own: f7-row is flex, board-grid is grid, qwixx grid+pens
    stack as blocks). A flex-wrap here squished multi-child bodies (Qwixx stripes). */

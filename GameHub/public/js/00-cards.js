@@ -286,6 +286,42 @@
   //     variant,                     // optional extra class (e.g. 'strip'|'investigate')
   //     headExtra,                   // optional extra header markup (string)
   //   }) -> Element
+  // ─── W1: legibility-at-any-scale contract ────────────────────────────
+  // The "essentials manifest" lets a game DECLARE the three pieces of info
+  // every mini-board must show, in priority order — and the platform owns
+  // the rendering so size-aware adaptation is consistent across games.
+  //
+  // Manifest shape (all fields optional except `name`):
+  //   {
+  //     name:      'Alice',                  // shown verbatim at large sizes,
+  //                                          // collapses to initials at small
+  //     score:     14,                       // total/banked score (numeric)
+  //     status:    'BUST' | 'STAYED' | ...,  // optional one-word state
+  //     pulse:     'live' | 'bust' | 'win' | null, // optional state colour
+  //                                          //  pip beside the name
+  //     essentials: [                        // 0–3 game-specific essentials
+  //       { label: 'Now', value: 7 },        //  each renders as a 2-line
+  //       { label: 'Bust risk', value: '12%' }, //  micro-stat that scales down
+  //     ],
+  //   }
+  //
+  // Tier classes the platform applies via container queries:
+  //   .kc-mini-tier-lg  ≥ 160px wide  → name + status + all 3 essentials + body
+  //   .kc-mini-tier-md   96–159px     → name + status + first 2 essentials + body
+  //   .kc-mini-tier-sm   72–95px      → initials + first essential + body (clipped)
+  //   .kc-mini-tier-xs    <72px       → initials + score only (body hidden)
+  //
+  // The optional `body` (Element OR HTML string) is still supported as the
+  // ESCAPE HATCH for game-specific visualisations (Qwixx's row dots, Skyjo's
+  // card grid, etc). Body is hidden at xs tier; games are encouraged to
+  // promote critical glance-info to essentials[] instead.
+  function initialsOf(name) {
+    const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
+    if (!parts.length) return '?';
+    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  }
+
   function miniBoard(opts){
     opts = opts || {};
     const tag = opts.onClick ? 'button' : 'div';
@@ -297,26 +333,135 @@
       + (opts.variant ? ' kc-mini-' + opts.variant : '');
     if (opts.seat != null) el.dataset.seat = opts.seat;
     if (opts.onClick) { el.type = 'button'; el.onclick = opts.onClick; }
+    // The manifest, stashed for re-render on resize.
+    el.dataset.miniInitials = initialsOf(opts.name);
 
+    // ── Header: name (collapses to initials at sm/xs), score-pulse pip, badge.
     const head = document.createElement('div'); head.className = 'kc-mini-head';
-    const nm = document.createElement('span'); nm.className = 'kc-mini-name';
-    nm.textContent = (opts.active ? '▶ ' : '') + (opts.name != null ? opts.name : '');
-    head.appendChild(nm);
+    const nameWrap = document.createElement('span'); nameWrap.className = 'kc-mini-name-wrap';
+    if (opts.pulse) {
+      const pip = document.createElement('span');
+      pip.className = 'kc-mini-pulse kc-mini-pulse-' + opts.pulse;
+      pip.setAttribute('aria-hidden', 'true');
+      nameWrap.appendChild(pip);
+    }
+    const nmFull = document.createElement('span'); nmFull.className = 'kc-mini-name-full';
+    nmFull.textContent = (opts.active ? '\u25b8 ' : '') + (opts.name != null ? opts.name : '');
+    const nmInit = document.createElement('span'); nmInit.className = 'kc-mini-name-init';
+    nmInit.textContent = (opts.active ? '\u25b8' : '') + initialsOf(opts.name);
+    nameWrap.appendChild(nmFull); nameWrap.appendChild(nmInit);
+    head.appendChild(nameWrap);
+
     if (opts.badge != null) {
       const bd = document.createElement('span'); bd.className = 'kc-mini-badge';
       if (opts.badge instanceof Element) bd.appendChild(opts.badge); else bd.textContent = String(opts.badge);
       head.appendChild(bd);
     }
-    if (opts.headExtra) { const ex = document.createElement('span'); ex.className = 'kc-mini-headx'; ex.textContent = String(opts.headExtra); head.appendChild(ex); }
+    if (opts.headExtra) {
+      const ex = document.createElement('span'); ex.className = 'kc-mini-headx';
+      ex.textContent = String(opts.headExtra);
+      head.appendChild(ex);
+    }
     el.appendChild(head);
 
-    const body = document.createElement('div'); body.className = 'kc-mini-body';
-    if (opts.body instanceof Element) body.appendChild(opts.body);
-    else if (opts.body != null) body.innerHTML = String(opts.body); // game-built guts (its own markup)
-    el.appendChild(body);
+    // ── Essentials row: 0–3 micro-stats the platform renders consistently.
+    if (Array.isArray(opts.essentials) && opts.essentials.length) {
+      const row = document.createElement('div'); row.className = 'kc-mini-essentials';
+      opts.essentials.slice(0, 3).forEach((e, i) => {
+        const cell = document.createElement('span');
+        cell.className = 'kc-mini-essential kc-mini-essential-' + i;
+        const val = document.createElement('b'); val.className = 'kc-mini-essential-value';
+        val.textContent = String(e.value != null ? e.value : '');
+        const lab = document.createElement('em'); lab.className = 'kc-mini-essential-label';
+        lab.textContent = String(e.label || '');
+        cell.appendChild(val); cell.appendChild(lab);
+        row.appendChild(cell);
+      });
+      el.appendChild(row);
+    }
+
+    // ── Body (game-specific escape hatch). Hidden by CSS at xs tier.
+    if (opts.body != null) {
+      const body = document.createElement('div'); body.className = 'kc-mini-body';
+      if (opts.body instanceof Element) body.appendChild(opts.body);
+      else body.innerHTML = String(opts.body);
+      el.appendChild(body);
+    }
+
+    // ── Status one-liner. At xs tier the badge already shows the score,
+    // so status text duplicates and is hidden. At sm+ it appears as a chip.
+    if (opts.status) {
+      const st = document.createElement('span'); st.className = 'kc-mini-status';
+      st.textContent = String(opts.status);
+      el.appendChild(st);
+    }
+
     return el;
   }
-  Kit.MiniBoard = miniBoard;
+
+  // Observe width to apply the correct tier class. We use a single shared
+  // ResizeObserver for efficiency; the per-element subscribe is automatic
+  // when the mini is appended to the DOM (we hook MutationObserver on the
+  // gameScreen). For browsers without ResizeObserver we tier on first paint
+  // only via getBoundingClientRect.
+  const TIER_BREAKS = [
+    { name: 'xs', max: 71 },
+    { name: 'sm', max: 95 },
+    { name: 'md', max: 159 },
+    { name: 'lg', max: Infinity },
+  ];
+  function tierFor(width) {
+    for (const t of TIER_BREAKS) if (width <= t.max) return t.name;
+    return 'lg';
+  }
+  function setTier(el, width) {
+    const tier = tierFor(width);
+    if (el.dataset.miniTier === tier) return;
+    el.dataset.miniTier = tier;
+    // Remove every old tier class then add the active one.
+    el.classList.remove('kc-mini-tier-xs', 'kc-mini-tier-sm', 'kc-mini-tier-md', 'kc-mini-tier-lg');
+    el.classList.add('kc-mini-tier-' + tier);
+  }
+  // Single shared ResizeObserver — installed lazily.
+  let _miniRO = null;
+  function ensureRO() {
+    if (_miniRO || typeof ResizeObserver === 'undefined') return _miniRO;
+    _miniRO = new ResizeObserver((entries) => {
+      for (const e of entries) setTier(e.target, e.contentRect.width);
+    });
+    // Watch the document for new .kc-mini elements and auto-subscribe.
+    const mo = new MutationObserver((muts) => {
+      for (const m of muts) for (const node of m.addedNodes) {
+        if (!(node instanceof Element)) continue;
+        if (node.classList?.contains('kc-mini')) _miniRO.observe(node);
+        node.querySelectorAll?.('.kc-mini').forEach((mn) => _miniRO.observe(mn));
+      }
+    });
+    mo.observe(document.body || document.documentElement, { childList: true, subtree: true });
+    // First-paint sweep for any minis already in the DOM.
+    document.querySelectorAll('.kc-mini').forEach((mn) => _miniRO.observe(mn));
+    return _miniRO;
+  }
+  // Boot lazily on first miniBoard call so tests in a clean jsdom don't pay
+  // the MutationObserver setup cost unless they actually use minis.
+  const _origMiniBoard = miniBoard;
+  function miniBoardWithObserver(opts) {
+    ensureRO();
+    const el = _origMiniBoard(opts);
+    // Set an initial tier guess from the parent if we can measure it.
+    queueMicrotask(() => {
+      try {
+        const w = el.getBoundingClientRect().width || (el.offsetWidth || 0);
+        if (w > 0) setTier(el, w);
+        else setTier(el, 132); // assume default md tier; ResizeObserver will correct
+      } catch { setTier(el, 132); }
+    });
+    return el;
+  }
+  Kit.MiniBoard = miniBoardWithObserver;
+  // Expose helpers for tests + downstream tools.
+  Kit.MiniBoard.initialsOf = initialsOf;
+  Kit.MiniBoard.tierFor = tierFor;
 
   // ─── API-11: legality-hint helper ─────────────────────────────────────
   // Consume the server-emitted view.state.legal (API-8) into a normalized

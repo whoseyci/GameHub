@@ -229,11 +229,25 @@
     // API-11: server-emitted legality (same as the main board path).
     const viewerLegal=(view?.yourSeat===viewer && view?.state?.legal) ? view.state.legal : [];
     const canTarget=viewerLegal.some(a=>a.action==='target'&&a.target===i);
+    // W1: essentials manifest — banked score is the strategic anchor, live
+    // round-points is the tactical pressure, unique-count is how close they
+    // are to FLIP 7 (round-ending). Status pill ('busted' / 'stayed' /
+    // 'active') gives at-a-glance state across all tiers above xs.
+    const pulse = busted ? 'bust' : (s.current===i && p.status==='active' ? 'live' : null);
     const b=Kit.MiniBoard({
-      name:p.name, badge:(busted?'BUST':'Now '+p.live)+' · '+p.banked,
-      headExtra:p.status, active:s.current===i, dim:busted,
-      seat:i, variant:'f7', body:row,
-      onClick:()=>canTarget?(net.spectating?null:act(viewer,{action:'target',target:i})):inspect(i),
+      name: p.name,
+      active: s.current===i,
+      dim: busted,
+      seat: i, variant: 'f7',
+      pulse,
+      status: p.status && p.status !== 'active' ? p.status : (s.current===i ? 'turn' : null),
+      essentials: [
+        { label: 'Banked', value: p.banked },
+        { label: busted ? 'Bust' : 'Now', value: busted ? 0 : p.live },
+        { label: 'Unique', value: `${p.unique}/7` },
+      ],
+      body: row,
+      onClick: () => canTarget ? (net.spectating ? null : act(viewer,{action:'target',target:i})) : inspect(i),
     });
     b.dataset.f7Seat=i;                 // wrapper also carries the seat (board lookups)
     if(canTarget)b.classList.add('targetable');
