@@ -614,26 +614,43 @@ async function smokeBoardRotation(window, document) {
   await sleep(50);
 }
 
+/**
+ * API-10 live-path animation invariant gate: after each per-game smoke runs,
+ * verify the CardManager has no orphan overlays, zone collisions, or detached
+ * overlays. This pulls the same guard the replay smoke already runs into the
+ * live-play path too, so a new game that leaks cards during normal play fails
+ * CI here, not just in replay.
+ */
+function assertAnimationInvariants(window, label) {
+  const verify = window.Kit?.CardManager?.verifyInvariants;
+  if (typeof verify !== 'function') return; // Kit not loaded; nothing to check
+  const r = verify();
+  if (!r.ok) {
+    throw new Error(`Animation invariants failed after ${label}: ${r.errors.join('; ')}`);
+  }
+}
+
 async function main() {
   const { window, document, errors } = await loadApp();
 
   assert(activeScreen(document) === 'menuScreen', 'App did not boot into menu screen');
   assert(document.querySelectorAll('#quickTiles .game-tile').length >= 3, 'Quick play tiles did not render');
 
-  await smokeSkyjo(window, document);
-  await smokeQwixx(window, document);
-  await smokeFlip7(window, document);
-  await smokeSchotten(window, document);
+  await smokeSkyjo(window, document);    assertAnimationInvariants(window, 'Skyjo');
+  await smokeQwixx(window, document);    assertAnimationInvariants(window, 'Qwixx');
+  await smokeFlip7(window, document);    assertAnimationInvariants(window, 'Flip 7');
+  await smokeSchotten(window, document); assertAnimationInvariants(window, 'Schotten');
   await smokeBoardRotation(window, document);
-  await smokeBotFlows(window, document);
+  await smokeBotFlows(window, document); assertAnimationInvariants(window, 'BotFlows');
   await smokeMidAnimationQuit(window, document);
+  assertAnimationInvariants(window, 'MidAnimationQuit (post-cleanup)');
 
   await sleep(50);
   if (errors.length) {
     throw new Error(`Smoke test captured browser errors:\n${errors.join('\n')}`);
   }
 
-  console.log('Client smoke passed: local games, bot flows, and cross-game cleanup look healthy.');
+  console.log('Client smoke passed: local games, bot flows, cross-game cleanup, and animation invariants look healthy.');
 }
 
 main().catch((err) => {
