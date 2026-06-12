@@ -70,15 +70,29 @@ const BotDriver = (() => {
    */
   function choose(view, botSeat, difficulty) {
     const strategy = strategies[view.game];
-    if (!strategy) return null;
-    try {
-      // Build an observation-correct view for this bot seat
-      const botView = buildBotObservation(view, botSeat);
-      return strategy.choose(botView, botSeat, difficulty);
-    } catch (e) {
-      console.warn(`BotDriver.choose error for ${view.game} seat ${botSeat}:`, e);
-      return null;
+    let pick = null;
+    if (strategy) {
+      try {
+        // Build an observation-correct view for this bot seat
+        const botView = buildBotObservation(view, botSeat);
+        pick = strategy.choose(botView, botSeat, difficulty);
+      } catch (e) {
+        console.warn(`BotDriver.choose error for ${view.game} seat ${botSeat}:`, e);
+      }
     }
+    // API-8 fallback: if the strategy returned no move (or none is registered
+    // at all yet — common during early development of a new game) AND the
+    // server attached legality hints for this seat, play a random legal
+    // action. Means every game that opts in to legalActions() has a working
+    // bot day-one, with zero strategy code.
+    if (!pick) {
+      const legal = view?.state?.legal;
+      if (Array.isArray(legal) && legal.length) {
+        const choice = legal[Math.floor(Math.random() * legal.length)];
+        return JSON.parse(JSON.stringify(choice));
+      }
+    }
+    return pick;
   }
 
   /**

@@ -16,6 +16,7 @@ import {
   Server, Connection, ConnectionContext, routePartykitRequest, getServerByName,
 } from "partyserver";
 import { getGame, GAME_CATALOGUE } from "./games/registry";
+import { MAX_LEGAL_ACTIONS } from "./games/types";
 import { cleanId, cleanInt, cleanName, parseClientMessage } from "./protocol";
 import { appendReplay, summarizeGameState, type ReplayEntry } from "./replay";
 import {
@@ -360,7 +361,22 @@ export class Room extends Server<Env> {
     const g = this.gameId && this.gameState ? getGame(this.gameId)! : null;
     const viewOf = (s: number) => {
       if (!g) return undefined;
-      if (!viewCache.has(s)) viewCache.set(s, g.viewFor(this.gameState, s));
+      if (!viewCache.has(s)) {
+        const view: any = g.viewFor(this.gameState, s);
+        // API-8: auto-attach legality hints for the viewer's seat when the
+        // game opts in. Spectators (-1) get nothing. Capped so a buggy
+        // legalActions() can never blow up the view payload.
+        if (s >= 0 && g.legalActions && view && view.state) {
+          try {
+            const legal = g.legalActions(this.gameState, s) || [];
+            view.state.legal = Array.isArray(legal) ? legal.slice(0, MAX_LEGAL_ACTIONS) : [];
+          } catch (e) {
+            console.warn(`legalActions(${this.gameId}, ${s}) threw:`, e);
+            view.state.legal = [];
+          }
+        }
+        viewCache.set(s, view);
+      }
       return viewCache.get(s);
     };
     // The bot manifest is identical for every connection; build it once.

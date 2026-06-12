@@ -268,19 +268,23 @@ describe("${name}", () => {
 `);
 
 // Bot strategy stub (registered with BotDriver). hasBots ⇒ a strategy MUST exist
-// (enforced by the parity test). This stub plays the first legal-looking action and
-// reads the namespaced game view (view.${id}); flesh out chooseFor() for real play.
+// (enforced by the parity test). When the server module implements legalActions
+// (API-8), returning null here makes the BotDriver fall back to a random legal
+// move — so this stub plays a *valid* (if weak) game day-one.
 writeFileSync(botPath, `/**
  * ${name} bot strategies — registered with BotDriver.
  * The driver calls choose() for the acting seat; reads the namespaced view.${id}.
- * TODO: implement real easy/medium/hard logic. This stub just ends the turn / passes.
+ *
+ * Returning null from chooseFor() makes the driver fall back to view.state.legal
+ * (if your server module implements legalActions, API-8) and play a random legal
+ * move. That gives you a *correct* bot for free while you build the real strategy.
+ * Replace the body of chooseFor() with easy/medium/hard heuristics when ready.
  */
 const ${pascal}Bots = (() => {
   function chooseFor(view, seat, difficulty) {
     const s = view['${id}'];
     if (!s || view.over) return null;
-    // TODO: return a valid action object, e.g. { action: 'play', index: 0, target: 0 }.
-    // Returning null means "no move" — replace this with the game's first legal action.
+    // TODO: implement real strategy. Returning null falls back to legalActions().
     return null;
   }
 

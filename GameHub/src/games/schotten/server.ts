@@ -305,6 +305,37 @@ export const Schotten: GameModule = {
   migrate(_state: any) { /* schemaVersion 1 — current */ },
   isOver(state: SchottenState): boolean { return state.phase === "GAME_OVER"; },
 
+  // API-8: enumerate every legal action `seat` could take now. Drives the
+  // client's "valid drop-target" highlights and the BotDriver's random-legal
+  // fallback. Pure read; never mutates. Returns [] when it isn't `seat`'s turn.
+  legalActions(state: SchottenState, seat: number) {
+    if (state.phase !== "PLAY") return [];
+    if (seat !== state.current) return [];
+    const out: any[] = [];
+    const p = state.players[seat];
+    if (!p) return out;
+    if (!state.placedThisTurn) {
+      // Every (handCard × valid stone) pair.
+      for (let h = 0; h < p.hand.length; h++) {
+        for (let s = 0; s < state.stones.length; s++) {
+          const st = state.stones[s];
+          if (st.claimedBy >= 0) continue;
+          if (st.sides[seat].length >= 3) continue;
+          out.push({ action: "place", index: h, target: s });
+        }
+      }
+    }
+    // Claim — only stones we can prove won.
+    for (let s = 0; s < state.stones.length; s++) {
+      if (canClaim(state, s, seat)) out.push({ action: "claim", target: s });
+    }
+    // End the turn (legal once placed, or when no placement is possible).
+    if (state.placedThisTurn || !canPlaceAny(state, seat)) {
+      out.push({ action: "end" });
+    }
+    return out;
+  },
+
   summarize(state: SchottenState) {
     return { current: state.current, winner: state.winner,
       claimed: state.stones.map((st) => st.claimedBy) };

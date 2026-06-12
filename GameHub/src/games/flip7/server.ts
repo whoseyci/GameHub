@@ -432,6 +432,28 @@ export const Flip7: GameModule = {
   // (e.g. adding a field) would back-fill it here so in-progress rooms survive a deploy.
   migrate(_state: any) { /* schemaVersion 1 — current */ },
   isOver(state: State) { return state.phase === "GAME_OVER"; },
+
+  // API-8: enumerate legal actions for `seat`. Flip 7 has two modes:
+  //   1) Normal — the active seat may hit or stay.
+  //   2) Pending action — a "freeze"/"flip3"/"second chance" card must pick
+  //      a target before the turn can advance.
+  legalActions(state: State, seat) {
+    if (state.phase !== "PLAY") return [];
+    if (state.pendingAction) {
+      if (state.pendingAction.from !== seat) return [];
+      const out: any[] = [];
+      const isSecond = state.pendingAction.kind === "give_second";
+      for (let t = 0; t < state.players.length; t++) {
+        if (state.players[t].status !== "active") continue;
+        if (isSecond && t === seat) continue; // can't give a Second Chance to yourself
+        out.push({ action: "target", target: t });
+      }
+      return out;
+    }
+    if (seat !== state.current) return [];
+    if (state.players[seat]?.status !== "active") return [];
+    return [{ action: "hit" }, { action: "stay" }];
+  },
   summarize(state: State) { return { round: state.round, current: state.current, pendingAction: state.pendingAction }; },
   joinScore(state: State) { return Math.round(state.players.reduce((a, p) => a + p.banked, 0) / Math.max(1, state.players.length)); },
   addPlayer(state: State, name, startScore) {

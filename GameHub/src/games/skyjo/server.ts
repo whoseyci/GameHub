@@ -133,6 +133,50 @@ export const Skyjo: GameModule = {
     return state.phase === "GAME_OVER";
   },
 
+  // API-8: enumerate legal actions for `seat` given current state. Drives client
+  // hint highlights (which cells are revealable, which piles are tap-targets)
+  // and gives the BotDriver a "random legal move" fallback. Pure read.
+  legalActions(state, seat) {
+    const out: any[] = [];
+    if (state.phase === "REVEAL") {
+      // Each player flips 2 face-down cards to start; both seats may act in
+      // parallel until they've each revealed 2. Returning hints only for
+      // unrevealed cells lets the client paint them as drop targets.
+      const p = state.players?.[seat]; if (!p) return out;
+      const revealed = (p.cards || []).filter((c: any) => c.revealed).length;
+      if (revealed >= 2) return out;
+      (p.cards || []).forEach((c: any, idx: number) => {
+        if (!c.revealed) out.push({ action: "reveal", index: idx });
+      });
+      return out;
+    }
+    if (state.phase === "PLAY" || state.phase === "FINAL_TURNS") {
+      if (state.currentPlayer !== seat) return out;
+      const me: any = state.players?.[seat]; if (!me) return out;
+      const ta = state.turnAction;
+      if (ta === null) {
+        out.push({ action: "draw_deck" });
+        if (state.discardTop !== null && state.discardTop !== undefined) {
+          out.push({ action: "take_discard" });
+        }
+      } else if (ta === "deck") {
+        out.push({ action: "discard_drawn" });
+        (me.cards || []).forEach((_: any, idx: number) => out.push({ action: "swap", index: idx }));
+      } else if (ta === "discard") {
+        // Took from discard — must swap onto a board cell.
+        (me.cards || []).forEach((_: any, idx: number) => out.push({ action: "swap", index: idx }));
+      } else if (ta === "must_reveal") {
+        (me.cards || []).forEach((c: any, idx: number) => {
+          if (!c.revealed && !c.cleared) out.push({ action: "reveal_after_discard", index: idx });
+        });
+      }
+      return out;
+    }
+    // Tiebreaker phase, ROUND_END, GAME_OVER — no per-seat actions exposed
+    // here (next_round is host-only and the hub gates it separately).
+    return out;
+  },
+
   // Compact, game-agnostic summary for replay/debug snapshots.
   summarize(state) {
     return {

@@ -131,6 +131,17 @@ export interface GameViewState {
   focusSeat?: number;
   /** Estimated ms before the game auto-advances (for RESOLVING phases) */
   autoAdvanceMs?: number;
+  /**
+   * Optional legality hints for the viewer's seat (API-8). When a game
+   * implements `legalActions(state, seat)`, the hub auto-attaches the result
+   * here so client renderers can highlight playable cards / valid drop
+   * targets *without re-encoding the rules*. Each entry is a complete action
+   * payload — the same shape applyAction() would accept.
+   *
+   * Absent or [] when it is not the viewer's turn (or the game doesn't opt
+   * in). Bot driver may consume it as a fallback for "any legal move" play.
+   */
+  legal?: GameAction[];
 }
 
 // A personalized snapshot for one viewer. `phase` drives shared hub UI:
@@ -173,4 +184,21 @@ export interface GameModule {
   joinScore?(state: any): number;
   // Optional: add a player between games/rounds.
   addPlayer?(state: any, name: string, startScore: number): void;
+  /**
+   * Optional (API-8): enumerate every action `seat` could legally take right
+   * now. The hub injects the result into view.state.legal for the seat that
+   *'s viewing — game clients render highlights from it (no rule duplication),
+   * the BotDriver may use it as a "random legal move" fallback, and the
+   * replay scrubber uses it for the "what moves were possible here?" overlay.
+   *
+   * Contract:
+   *   • Return [] when it is not `seat`'s turn (instead of "all moves").
+   *   • Every entry must be a complete payload applyAction() would accept.
+   *   • Must be a PURE READ of state — never mutate.
+   *   • Cap is enforced by the hub (MAX_LEGAL_ACTIONS) to bound view size.
+   */
+  legalActions?(state: any, seat: number): GameAction[];
 }
+
+/** Hub-enforced upper bound on view.state.legal[] (keeps view payloads small). */
+export const MAX_LEGAL_ACTIONS = 256;

@@ -317,4 +317,60 @@ export const Qwixx: GameModule = {
   migrate(_state: any) { /* schemaVersion 1 — current */ },
   isOver(state: any) { return state.phase === "GAME_OVER"; },
   summarize(state: QwixxState) { return { round: state.round, activeSeat: state.activeSeat, locked: state.locked }; },
+
+  // API-8: enumerate every legal mark/skip/finishTurn the seat could take right
+  // now. Pure read. Qwixx has simultaneous turns so this returns hints for
+  // *any* seat with pending white decisions, plus active-only color marks.
+  legalActions(state: any, seat: number) {
+    const s = state as QwixxState;
+    if (s.phase === "GAME_OVER" || !s.dice) return [];
+    const p = s.players[seat]; if (!p) return [];
+    const isActive = seat === s.activeSeat;
+
+    const out: any[] = [];
+    const whiteSum = s.dice.w[0] + s.dice.w[1];
+    const inWhitePhase = s.phase === "WHITE_PHASE" && s.pendingWhiteDecisions.includes(seat);
+
+    // White marks (any seat with a pending white decision).
+    if (inWhitePhase) {
+      for (const color of COLORS) {
+        const row = p.rows[color];
+        for (let i = 0; i < row.nums.length; i++) {
+          if (!canMarkIndex(s, color, row, i)) continue;
+          if (row.nums[i] !== whiteSum) continue;
+          if (isActive && s.activeColorUsed && s.activeColorRow === color) continue;
+          out.push({ action: "mark", c: color, i, use: "white" });
+        }
+      }
+    }
+
+    // Color marks (active seat only, color phase or while still in white phase).
+    if (isActive && !s.activeColorUsed) {
+      for (const color of COLORS) {
+        const row = p.rows[color];
+        const dieKey = COLOR_KEY[color];
+        if (s.dice[dieKey] <= 0) continue;
+        for (let i = 0; i < row.nums.length; i++) {
+          if (!canMarkIndex(s, color, row, i)) continue;
+          const matches = row.nums[i] === s.dice.w[0] + s.dice[dieKey]
+                       || row.nums[i] === s.dice.w[1] + s.dice[dieKey];
+          if (!matches) continue;
+          if (s.activeWhiteRow === color && s.activeWhiteIndex != null && i <= s.activeWhiteIndex) continue;
+          out.push({ action: "mark", c: color, i, use: "color" });
+        }
+      }
+    }
+
+    // Skip white decision.
+    if (inWhitePhase) out.push({ action: "skip" });
+
+    // Finish turn (active seat, when their white decision is resolved).
+    if (isActive && s.phase === "WHITE_PHASE" && !s.pendingWhiteDecisions.includes(seat)) {
+      out.push({ action: "finishTurn" });
+    }
+    if (isActive && s.phase === "COLOR_PHASE") {
+      out.push({ action: "finishTurn" });
+    }
+    return out;
+  },
 };

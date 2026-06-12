@@ -502,6 +502,45 @@
     isOver(state) {
       return state.phase === "GAME_OVER";
     },
+    // API-8: enumerate legal actions for `seat` given current state. Drives client
+    // hint highlights (which cells are revealable, which piles are tap-targets)
+    // and gives the BotDriver a "random legal move" fallback. Pure read.
+    legalActions(state, seat) {
+      const out = [];
+      if (state.phase === "REVEAL") {
+        const p = state.players?.[seat];
+        if (!p) return out;
+        const revealed = (p.cards || []).filter((c) => c.revealed).length;
+        if (revealed >= 2) return out;
+        (p.cards || []).forEach((c, idx) => {
+          if (!c.revealed) out.push({ action: "reveal", index: idx });
+        });
+        return out;
+      }
+      if (state.phase === "PLAY" || state.phase === "FINAL_TURNS") {
+        if (state.currentPlayer !== seat) return out;
+        const me = state.players?.[seat];
+        if (!me) return out;
+        const ta = state.turnAction;
+        if (ta === null) {
+          out.push({ action: "draw_deck" });
+          if (state.discardTop !== null && state.discardTop !== void 0) {
+            out.push({ action: "take_discard" });
+          }
+        } else if (ta === "deck") {
+          out.push({ action: "discard_drawn" });
+          (me.cards || []).forEach((_, idx) => out.push({ action: "swap", index: idx }));
+        } else if (ta === "discard") {
+          (me.cards || []).forEach((_, idx) => out.push({ action: "swap", index: idx }));
+        } else if (ta === "must_reveal") {
+          (me.cards || []).forEach((c, idx) => {
+            if (!c.revealed && !c.cleared) out.push({ action: "reveal_after_discard", index: idx });
+          });
+        }
+        return out;
+      }
+      return out;
+    },
     // Compact, game-agnostic summary for replay/debug snapshots.
     summarize(state) {
       return {
@@ -1012,6 +1051,27 @@
     isOver(state) {
       return state.phase === "GAME_OVER";
     },
+    // API-8: enumerate legal actions for `seat`. Flip 7 has two modes:
+    //   1) Normal — the active seat may hit or stay.
+    //   2) Pending action — a "freeze"/"flip3"/"second chance" card must pick
+    //      a target before the turn can advance.
+    legalActions(state, seat) {
+      if (state.phase !== "PLAY") return [];
+      if (state.pendingAction) {
+        if (state.pendingAction.from !== seat) return [];
+        const out = [];
+        const isSecond = state.pendingAction.kind === "give_second";
+        for (let t = 0; t < state.players.length; t++) {
+          if (state.players[t].status !== "active") continue;
+          if (isSecond && t === seat) continue;
+          out.push({ action: "target", target: t });
+        }
+        return out;
+      }
+      if (seat !== state.current) return [];
+      if (state.players[seat]?.status !== "active") return [];
+      return [{ action: "hit" }, { action: "stay" }];
+    },
     summarize(state) {
       return { round: state.round, current: state.current, pendingAction: state.pendingAction };
     },
@@ -1332,6 +1392,52 @@
     },
     summarize(state) {
       return { round: state.round, activeSeat: state.activeSeat, locked: state.locked };
+    },
+    // API-8: enumerate every legal mark/skip/finishTurn the seat could take right
+    // now. Pure read. Qwixx has simultaneous turns so this returns hints for
+    // *any* seat with pending white decisions, plus active-only color marks.
+    legalActions(state, seat) {
+      const s = state;
+      if (s.phase === "GAME_OVER" || !s.dice) return [];
+      const p = s.players[seat];
+      if (!p) return [];
+      const isActive = seat === s.activeSeat;
+      const out = [];
+      const whiteSum = s.dice.w[0] + s.dice.w[1];
+      const inWhitePhase = s.phase === "WHITE_PHASE" && s.pendingWhiteDecisions.includes(seat);
+      if (inWhitePhase) {
+        for (const color of COLORS) {
+          const row = p.rows[color];
+          for (let i = 0; i < row.nums.length; i++) {
+            if (!canMarkIndex(s, color, row, i)) continue;
+            if (row.nums[i] !== whiteSum) continue;
+            if (isActive && s.activeColorUsed && s.activeColorRow === color) continue;
+            out.push({ action: "mark", c: color, i, use: "white" });
+          }
+        }
+      }
+      if (isActive && !s.activeColorUsed) {
+        for (const color of COLORS) {
+          const row = p.rows[color];
+          const dieKey = COLOR_KEY[color];
+          if (s.dice[dieKey] <= 0) continue;
+          for (let i = 0; i < row.nums.length; i++) {
+            if (!canMarkIndex(s, color, row, i)) continue;
+            const matches = row.nums[i] === s.dice.w[0] + s.dice[dieKey] || row.nums[i] === s.dice.w[1] + s.dice[dieKey];
+            if (!matches) continue;
+            if (s.activeWhiteRow === color && s.activeWhiteIndex != null && i <= s.activeWhiteIndex) continue;
+            out.push({ action: "mark", c: color, i, use: "color" });
+          }
+        }
+      }
+      if (inWhitePhase) out.push({ action: "skip" });
+      if (isActive && s.phase === "WHITE_PHASE" && !s.pendingWhiteDecisions.includes(seat)) {
+        out.push({ action: "finishTurn" });
+      }
+      if (isActive && s.phase === "COLOR_PHASE") {
+        out.push({ action: "finishTurn" });
+      }
+      return out;
     }
   };
 
@@ -1586,6 +1692,33 @@
     },
     isOver(state) {
       return state.phase === "GAME_OVER";
+    },
+    // API-8: enumerate every legal action `seat` could take now. Drives the
+    // client's "valid drop-target" highlights and the BotDriver's random-legal
+    // fallback. Pure read; never mutates. Returns [] when it isn't `seat`'s turn.
+    legalActions(state, seat) {
+      if (state.phase !== "PLAY") return [];
+      if (seat !== state.current) return [];
+      const out = [];
+      const p = state.players[seat];
+      if (!p) return out;
+      if (!state.placedThisTurn) {
+        for (let h = 0; h < p.hand.length; h++) {
+          for (let s = 0; s < state.stones.length; s++) {
+            const st = state.stones[s];
+            if (st.claimedBy >= 0) continue;
+            if (st.sides[seat].length >= 3) continue;
+            out.push({ action: "place", index: h, target: s });
+          }
+        }
+      }
+      for (let s = 0; s < state.stones.length; s++) {
+        if (canClaim(state, s, seat)) out.push({ action: "claim", target: s });
+      }
+      if (state.placedThisTurn || !canPlaceAny(state, seat)) {
+        out.push({ action: "end" });
+      }
+      return out;
     },
     summarize(state) {
       return {
