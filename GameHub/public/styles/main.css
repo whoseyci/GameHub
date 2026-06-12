@@ -283,6 +283,17 @@
 .qwixx-dice-line{display:flex;gap:.6rem;align-items:center;justify-content:center;flex-wrap:wrap}.qwixx-dice-label{font-size:.7rem;color:var(--text-dim);font-weight:900;text-transform:uppercase;letter-spacing:.06em;min-width:44px;text-align:right}
 /* (legacy .qwixx-die CSS dice removed — all dice now go through Kit.Dice3D
    which renders WebGL when available and .kit-die-static otherwise.) */
+
+/* ─── Kit.Icon — inline-SVG icon system (Phosphor) ────────────────────── */
+.kit-icon{display:inline-block;vertical-align:-.18em;flex-shrink:0;line-height:1;color:currentColor}
+.kit-icon-inline{vertical-align:middle;margin-right:6px}
+/* When an icon sits inside a button, align it with the text baseline. */
+button .kit-icon,.btn .kit-icon{vertical-align:-.16em;margin-right:6px}
+.btn .kit-icon:last-child{margin-right:0;margin-left:6px}
+/* Status-bar icons get a touch of color personality from .tone modifiers. */
+.kit-icon-spinner{animation:kitIconSpin .9s linear infinite}
+@keyframes kitIconSpin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion: reduce){.kit-icon-spinner{animation:none}}
 .qwixx-combos{display:flex;gap:6px;flex-wrap:wrap;justify-content:center}.qwixx-combo{font-size:.72rem;font-weight:900;border:1px solid var(--border);border-radius:999px;padding:4px 8px;background:rgba(255,255,255,.06)}.qwixx-combo.white{background:#fff;color:#111827}.qwixx-combo.red{color:#fecaca}.qwixx-combo.yellow{color:#fde68a}.qwixx-combo.green{color:#bbf7d0}.qwixx-combo.blue{color:#bfdbfe}
 .qwixx-boards{display:flex;flex-direction:column;gap:16px;width:min(980px,100%);align-items:stretch}.qwixx-player-board.active{border-color:#f59e0b;box-shadow:0 0 0 2px rgba(245,158,11,.25),0 18px 40px rgba(0,0,0,.35)}
 .qwixx-scorecard{min-width:0;width:100%;max-width:900px}.qwixx-scorecard.active{border-color:#f59e0b}.qwixx-score-row{grid-template-columns:46px minmax(0,1fr) 52px}.qwixx-row-cells{min-width:0}.qwixx-cell{min-width:0;min-height:48px;padding:4px 1px;gap:2px}.qwixx-cell.hintable{background:rgba(16,185,129,.12);outline:2px solid rgba(16,185,129,.55);z-index:1}.qwixx-cell.hintable:hover{transform:translateY(-2px);background:rgba(16,185,129,.22)}.qwixx-num{font-weight:1000}.qwixx-hint{display:block;border-radius:999px;padding:1px 4px;font-size:.56rem;line-height:1.1;font-weight:1000;white-space:nowrap;box-shadow:0 1px 5px rgba(0,0,0,.25)}.qwixx-hint.white{background:#fff;color:#111827}.qwixx-hint.red{background:var(--qwixx-red);color:white}.qwixx-hint.yellow{background:var(--qwixx-yellow);color:#241800}.qwixx-hint.green{background:var(--qwixx-green);color:white}.qwixx-hint.blue{background:var(--qwixx-blue);color:white}.qwixx-row-score{display:flex;align-items:center;justify-content:center;font-weight:900;font-size:.78rem}.qwixx-player-foot{text-align:right;color:var(--text-dim);font-size:.78rem;font-weight:900;margin-top:4px}.qwixx-player-foot.you{color:#93c5fd}

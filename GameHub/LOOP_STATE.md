@@ -214,24 +214,45 @@ Components:
 
 ## Round log
 
-### Round 0 — contract setup (this round)
+### Round 0 — contract setup
 - Wrote LOOP_STATE.md.
-- Ran baseline validation to capture pre-state:
-  - 226 tests passing
-  - 3 JSDOM smokes passing
-  - typecheck clean
-  - GH Actions CI green on `main` (commit `04bb0ef`)
-- No code changes; next round begins workstream W1 OR W5 (smallest first
-  to validate the loop discipline).
-- **Next: Round 1 — W5 (emoji → icon swap).** Reasoning: it's the most
-  mechanical, exercises the test+commit+verify discipline, and visually
-  proves the loop is real before I tackle the bigger ones.
+- Baseline: 226 tests, 3 JSDOM smokes, typecheck — all green.
+- GH Actions CI green on `main` (commit `04bb0ef`).
+
+### Round 1 — W5 (emoji → Phosphor icon system) ✅
+**Evidence cited this round:**
+- `tests/no-ui-emojis.test.ts` — 28 tests (one per public/ file), all pass.
+- Verified the lint catches a fake regression (injected emoji into 00-core.js,
+  test failed; restored, test passes).
+- Full validation: typecheck + 254 tests + 3 smokes — all green.
+- Audit reran: zero non-allowlisted UI emojis remain.
+
+**What landed:**
+- `public/js/00-icons.js` — Kit.Icon('name') + Kit.Icon.html('name') +
+  data-icon="..." auto-mount on showScreen. Phosphor SVG paths inlined for
+  ~30 icons (zero external deps).
+- `public/styles/main.css` — .kit-icon alignment + spinner keyframes.
+- `public/js/00-cards.js` — Kit.Status.set now accepts an html: variant so
+  status text can include Kit.Icon SVG strings.
+- Every UI surface emoji-swapped: index.html buttons, replay.html toolbar,
+  Qwixx/Skyjo/Flip 7/Schotten renderers, identity panel, landing tiles, sound
+  toggle, rules overlay, summary screen, inspect overlays, replay scrubber
+  buttons. Game-identity glyphs in GameRules.title and card-face glyphs in
+  Flip 7 (❄/♥) are intentionally kept — they're content, not UI chrome.
+- Landing hero drifting icons replaced with Kit.Icon SVGs.
+
+**Test count: 226 → 254 (+28 lint cases).**
+
+### Next round
+**Round 2: W4 (dice — fix zoom, add throwStyles, rounded edges).**
+Reasoning: visible upgrade the user explicitly called out; testable with
+real measurements; doesn't require new infrastructure.
 
 ---
 
 ## Current status snapshot
 
-| Workstream | Status | Evidence link |
+| Workstream | Status | Evidence |
 |---|---|---|
 | W1 mini boards | pending | — |
 | W2 pass-play rotation | pending | — |
@@ -239,5 +260,5 @@ Components:
 | W4a dice no-zoom | pending | — |
 | W4b throwStyles | pending | — |
 | W4c rounded edges | pending | — |
-| W5 emoji → icon | pending | — |
+| **W5 emoji → icon** | **✅ Round 1** | 28-test lint + 254 total green |
 | W6 front-door + groups | pending | — |

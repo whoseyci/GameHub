@@ -125,7 +125,7 @@ window.GameClients = window.GameClients || {};
   // torn out + replaced with a CSS-3D fallback on every Qwixx state update,
   // which is what caused the "2D dice flash after the 3D roll" bug).
   function renderDice(){
-    return `<div class="qwixx-dice-rows"><button id="qwixxThrowBtn" class="qwixx-throw-btn">🎲 Throw dice</button><div data-persist-slot="qwixx:dice" class="qwixx-kit-dice"></div></div>`;
+    return `<div class="qwixx-dice-rows"><button id="qwixxThrowBtn" class="qwixx-throw-btn">${Kit.Icon.html('dice',{size:16,cls:'kit-icon-inline'})}Throw dice</button><div data-persist-slot="qwixx:dice" class="qwixx-kit-dice"></div></div>`;
   }
 
   // API-11: server-emitted legality. Replaces the old canMarkIndex + actionable
@@ -155,7 +155,7 @@ window.GameClients = window.GameClients || {};
       }).join('');
       return `<div class="qwixx-mini-row"><span class="qwixx-mini-row-key ${color}"></span>${dots}<span class="qwixx-mini-row-pts">${rowPoints(row)}</span></div>`;
     }).join('');
-    const pens = Array.from({length:4}, (_, i) => `<span class="qwixx-mini-pen ${player.penalties > i ? 'on' : ''}">⚠</span>`).join('');
+    const pens = Array.from({length:4}, (_, i) => `<span class="qwixx-mini-pen ${player.penalties > i ? 'on' : ''}">${Kit.Icon.html('warning',{size:10})}</span>`).join('');
     // BODY only — the dot grid + penalty pips. The shared Kit.MiniBoard provides the
     // frame, active/you states, header (name + score) and the inspect click.
     return `<div class="qwixx-mini-grid">${rows}</div><div class="qwixx-mini-pens">${pens}</div>`;
@@ -203,10 +203,10 @@ window.GameClients = window.GameClients || {};
       });
       const count = row.marks.length + (row.marks.includes(row.nums.length - 1) ? 1 : 0);
       const pts = rowPoints(row);
-      html += `</div><div class="qwixx-row-score">${locked || pendingLock ? '🔒' : `${count}<small>${pts}</small>`}</div></div>`;
+      html += `</div><div class="qwixx-row-score">${locked || pendingLock ? Kit.Icon.html('lock',{size:14}) : `${count}<small>${pts}</small>`}</div></div>`;
     });
     const you = player.seat === viewerSeat ? ' you' : '';
-    const pens = Array.from({length:4},(_,i)=>`<span class="qwixx-full-pen ${player.penalties>i?'on':''}">⚠</span>`).join('');
+    const pens = Array.from({length:4},(_,i)=>`<span class="qwixx-full-pen ${player.penalties>i?'on':''}">${Kit.Icon.html('warning',{size:12})}</span>`).join('');
     html += `</div><div class="qwixx-player-foot${you}"><span>Score ${scoreRows(player.rows, player.penalties)}</span><span class="qwixx-full-pens">${pens}</span></div>`;
     return html;
   }
@@ -272,8 +272,12 @@ window.GameClients = window.GameClients || {};
     // waiting on. Round badge moves to the right so the head reads left-to
     // -right as a sentence.
     const headLeft = !diceRevealed
-      ? (isAct ? '🎲 Your throw' : `🎲 Waiting for ${esc(activeName)} to throw`)
-      : (isWhite ? '🎲 White phase — everyone may mark' : `🎯 ${esc(activeName)}'s color phase`);
+      ? (isAct
+          ? `${Kit.Icon.html('dice',{size:14,cls:'kit-icon-inline'})}Your throw`
+          : `${Kit.Icon.html('dice',{size:14,cls:'kit-icon-inline'})}Waiting for ${esc(activeName)} to throw`)
+      : (isWhite
+          ? `${Kit.Icon.html('dice',{size:14,cls:'kit-icon-inline'})}White phase — everyone may mark`
+          : `${Kit.Icon.html('target',{size:14,cls:'kit-icon-inline'})}${esc(activeName)}'s color phase`);
     const center = `<div class="qwixx-dice-zone${diceRevealed?' is-revealed':' awaiting-throw'}${isAct?' is-active-seat':''}">
       <div class="qwixx-turn-head">
         <span>${headLeft}</span>
@@ -286,9 +290,9 @@ window.GameClients = window.GameClients || {};
       </div>` : ''}
       <div class="qwixx-controls">${controlsHtml}</div>
     </div>`;
-    const rec = focused.seat === s.activeSeat ? `<div class="qwixx-reco">💡 ${diceRevealed ? recommendedMove(s, focused) : 'Throw dice to reveal options.'}</div>` : '';
+    const rec = focused.seat === s.activeSeat ? `<div class="qwixx-reco" style="display:flex;align-items:center;gap:6px">${Kit.Icon.html('lightbulb',{size:14})}${diceRevealed ? recommendedMove(s, focused) : 'Throw dice to reveal options.'}</div>` : '';
     const focus = `<div class="qwixx-table"><div class="qwixx-focus-card player-board${focused.active ? ' active' : ''}">
-      <div class="board-header"><span>${focused.active ? '🎲 ' : ''}${esc(focused.name)}${focused.seat === view.yourSeat ? ' (you)' : ''}</span><span class="score-badge">Active: ${esc(activeName)} · total ${esc(focused.score)}</span></div>
+      <div class="board-header"><span style="display:inline-flex;align-items:center;gap:6px">${focused.active ? Kit.Icon.html('dice',{size:14}) : ''}${esc(focused.name)}${focused.seat === view.yourSeat ? ' (you)' : ''}</span><span class="score-badge">Active: ${esc(activeName)} · total ${esc(focused.score)}</span></div>
       ${rec}
       ${renderScorecard(focused, displayState, view.yourSeat, false)}
     </div></div>`;
@@ -386,7 +390,7 @@ window.GameClients = window.GameClients || {};
     const s=view.qwixx||view.state;const player=s.allPlayers.find(p=>p.seat===seat);if(!player)return;
     const seats=s.allPlayers.filter(p=>p.seat!==view.yourSeat).map(p=>p.seat);
     const idx=seats.indexOf(seat),prev=seats[(idx-1+seats.length)%seats.length],next=seats[(idx+1)%seats.length];
-    GameShell.inspect(`<div class="inspect-head"><button class="icon-btn" onclick="window.GameClients['qwixx'].inspect(${prev})">‹</button><b>${esc(player.name)}${player.active?' 🎲':''}</b><button class="icon-btn" onclick="window.GameClients['qwixx'].inspect(${next})">›</button><button class="icon-btn" onclick="GameShell.closeInspect()">✕</button></div><div class="player-board qwixx-focus-card">${renderScorecard(player,s,view.yourSeat,false)}</div>`);
+    GameShell.inspect(`<div class="inspect-head"><button class="icon-btn" onclick="window.GameClients['qwixx'].inspect(${prev})">‹</button><b style="display:inline-flex;align-items:center;gap:6px">${esc(player.name)}${player.active?Kit.Icon.html('dice',{size:14}):''}</b><button class="icon-btn" onclick="window.GameClients['qwixx'].inspect(${next})">›</button><button class="icon-btn" onclick="GameShell.closeInspect()">${Kit.Icon.html('x',{size:14})}</button></div><div class="player-board qwixx-focus-card">${renderScorecard(player,s,view.yourSeat,false)}</div>`);
   }
 
   function act(action, msg = {}){

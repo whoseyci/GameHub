@@ -22,11 +22,8 @@
       <!-- HERO -->
       <div class="landing-hero">
         <div class="landing-hero-bg" aria-hidden="true">
-          <div class="float-card fc1">🃏</div>
-          <div class="float-card fc2">🎲</div>
-          <div class="float-card fc3">🎴</div>
-          <div class="float-card fc4">🔥</div>
-          <div class="float-card fc5">⚔️</div>
+          <!-- Decorative drifting icons (populated by /js/00-landing.js bootDecor()
+               using Kit.Icon at a large size — keeps the entire site emoji-free.) -->
         </div>
         <h1 class="landing-logo">GAME HUB</h1>
         <p class="landing-tag">
@@ -38,9 +35,9 @@
           <span id="landingStatLive">Connecting…</span>
         </div>
         <div class="landing-cta-row">
-          <button class="btn purple" style="margin:0" onclick="goOnline()">▶ Play Online</button>
-          <button class="btn secondary" style="margin:0" onclick="showScreen('localPick')">📱 Pass &amp; Play</button>
-          <button class="btn secondary" style="margin:0;background:transparent;box-shadow:none;border:2px solid var(--border)" onclick="showRulesMenu()">📖 Rules</button>
+          <button class="btn purple" style="margin:0" onclick="goOnline()" data-icon="play">Play Online</button>
+          <button class="btn secondary" style="margin:0" onclick="showScreen('localPick')" data-icon="phone">Pass &amp; Play</button>
+          <button class="btn secondary" style="margin:0;background:transparent;box-shadow:none;border:2px solid var(--border)" onclick="showRulesMenu()" data-icon="book">Rules</button>
         </div>
       </div>
 
@@ -83,8 +80,8 @@
       <div id="onlineDevicePlayers" style="margin-bottom:8px"></div>
       <button class="btn secondary" style="font-size:.9rem;padding:8px;margin:0 0 12px" onclick="addOnlineDevicePlayer()">+ Add same-device player</button>
       <div style="display:flex;gap:10px">
-        <button class="btn green" style="margin-top:0" onclick="showScreen('quickPick')">⚡ Quick Play</button>
-        <button class="btn purple" style="margin-top:0" onclick="showScreen('hostSetup')">Make a Room</button>
+        <button class="btn green" style="margin-top:0" onclick="showScreen('quickPick')" data-icon="rocket">Quick Play</button>
+        <button class="btn purple" style="margin-top:0" onclick="showScreen('hostSetup')" data-icon="users">Make a Room</button>
       </div>
       <button class="btn" onclick="showScreen('joinSetup')">Join a Room</button>
     </div>
@@ -94,7 +91,7 @@
   <div id="quickPick" class="screen">
     <div class="menu-card">
       <button class="btn secondary backbtn" onclick="showScreen('onlineSetup')">←</button>
-      <h2 style="margin-top:0">⚡ Quick Play</h2>
+      <h2 style="margin-top:0" data-icon="rocket" data-icon-size="22">Quick Play</h2>
       <p class="muted" style="margin:0 0 8px">Pick a game — we'll drop you in with others waiting to play.</p>
       <div id="quickTiles" class="game-tiles"></div>
     </div>
@@ -108,8 +105,8 @@
       <p class="muted" style="margin:0 0 12px">Create a lasting room for your group — play game after game without rejoining.</p>
       <label class="label">Visibility</label>
       <div class="seg" id="visSeg">
-        <button class="on" data-vis="public" onclick="setVis('public')">🌍 Public</button>
-        <button data-vis="private" onclick="setVis('private')">🔒 Private</button>
+        <button class="on" data-vis="public" onclick="setVis('public')" data-icon="globe">Public</button>
+        <button data-vis="private" onclick="setVis('private')" data-icon="lock">Private</button>
       </div>
       <label class="label">Max players <span class="muted" style="font-weight:600">(4 is a sweet spot)</span></label>
       <div style="display:flex;align-items:center;gap:12px;margin:0 0 16px;justify-content:center">
@@ -120,7 +117,7 @@
       <label class="label">Room Code</label>
       <div style="display:flex;gap:8px">
         <input type="text" id="hostRoom" class="input" placeholder="e.g. CREW" style="margin-bottom:0">
-        <button class="btn secondary" style="width:auto;margin:8px 0 18px;padding:14px 16px" onclick="randomCode()">🎲</button>
+        <button class="btn secondary" style="width:auto;margin:8px 0 18px;padding:14px 16px" onclick="randomCode()" data-icon="dice" data-icon-mode="replace" data-icon-size="20" data-icon-title="Random room code"></button>
       </div>
       <button class="btn green" onclick="hostRoom()">Create Room</button>
     </div>
@@ -149,13 +146,13 @@
       <div id="localTiles" class="game-tiles"></div>
       <div id="localPlayers" style="margin-top:8px"></div>
       <div class="seg" id="localBotDiff" style="margin:6px 0">
-        <button data-d="easy" onclick="setLocalBotDiff('easy')">😊 Easy</button>
-        <button data-d="medium" class="on" onclick="setLocalBotDiff('medium')">🙂 Medium</button>
-        <button data-d="hard" onclick="setLocalBotDiff('hard')">🤖 Hard</button>
+        <button data-d="easy" onclick="setLocalBotDiff('easy')" data-icon="smile">Easy</button>
+        <button data-d="medium" class="on" onclick="setLocalBotDiff('medium')" data-icon="happy">Medium</button>
+        <button data-d="hard" onclick="setLocalBotDiff('hard')" data-icon="robot">Hard</button>
       </div>
       <div style="display:flex;gap:8px">
-        <button class="btn secondary" onclick="addLocalPlayer()" style="font-size:1rem;padding:10px;margin:0">+ Player</button>
-        <button class="btn secondary" onclick="addLocalBot()" style="font-size:1rem;padding:10px;margin:0">+ Bot 🤖</button>
+        <button class="btn secondary" onclick="addLocalPlayer()" style="font-size:1rem;padding:10px;margin:0" data-icon="plus">Player</button>
+        <button class="btn secondary" onclick="addLocalBot()" style="font-size:1rem;padding:10px;margin:0" data-icon="robot">Bot</button>
       </div>
       <button class="btn" onclick="startLocalGame()" style="margin-top:16px">Start</button>
     </div>
@@ -182,9 +179,9 @@
       <button class="icon-btn" onclick="leaveGameToRoom()" title="Back to room">←</button>
       <div id="gameRoomTag" class="room-tag hidden"></div>
       <div class="topbar-spacer"></div>
-      <div id="spectateTag" class="spectate-tag hidden">👁 Spectating</div>
-      <button id="rulesBtn" class="icon-btn" onclick="openRules(curView&&curView.game)" title="Rules">📖</button>
-      <button id="soundBtn" class="icon-btn" onclick="toggleSound()" title="Sound">🔊</button>
+      <div id="spectateTag" class="spectate-tag hidden" data-icon="eye">Spectating</div>
+      <button id="rulesBtn" class="icon-btn" onclick="openRules(curView&&curView.game)" title="Rules" data-icon="book" data-icon-mode="replace" data-icon-size="20"></button>
+      <button id="soundBtn" class="icon-btn" onclick="toggleSound()" title="Sound" data-icon="sound-on" data-icon-mode="replace" data-icon-size="20"></button>
     </div>
     <div id="miniBoardsContainer" class="mini-boards-container"></div>
     <div id="topArea" class="top-area">
@@ -219,6 +216,7 @@
 <script src="/js/00-game-modules.js"></script>
 <script src="/js/00-identity.js"></script>
 <script src="/js/00-core.js"></script>
+<script src="/js/00-icons.js"></script>
 <script src="/js/00-kit-turn.js"></script>
 <script src="/js/00-cards.js"></script>
 <script src="/js/00-dice3d.js"></script>

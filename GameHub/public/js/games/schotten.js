@@ -116,8 +116,8 @@
         + (claimed === me ? ' st-mine' : claimed === opp ? ' st-theirs' : '');
       stone.dataset.stone = i;
       stone.innerHTML = claimed >= 0
-        ? `<span class="st-stone-flag">${claimed === me ? '✓' : '✕'}</span>`
-        : `<span class="st-stone-rock">🪨</span>`;
+        ? `<span class="st-stone-flag">${claimed === me ? Kit.Icon.html('check',{size:18}) : Kit.Icon.html('x',{size:16})}</span>`
+        : `<span class="st-stone-rock">${Kit.Icon.html('rock',{size:18})}</span>`;
       // Claim affordance: ANY stone the server says is provably claimable.
       // (Used to be: "if I've placed && stone unclaimed" — but the server
       // also enforces the formation-proof; let it own the rule.)
@@ -180,9 +180,9 @@
     const myWon = s.players[me]?.stonesWon || 0;
     const oppWon = s.players[opp]?.stonesWon || 0;
     const scoreMe = document.createElement('div'); scoreMe.className = 'st-scorebox st-scorebox-me';
-    scoreMe.innerHTML = `<span class="st-pname">${esc(s.players[me]?.name || 'You')}</span><span class="st-stonecount">🪨 ${myWon}</span>`;
+    scoreMe.innerHTML = `<span class="st-pname">${esc(s.players[me]?.name || 'You')}</span><span class="st-stonecount">${Kit.Icon.html('rock',{size:12,cls:'kit-icon-inline'})}${myWon}</span>`;
     const scoreOpp = document.createElement('div'); scoreOpp.className = 'st-scorebox st-scorebox-opp';
-    scoreOpp.innerHTML = `<span class="st-pname">${esc(s.players[opp]?.name || 'Opponent')}</span><span class="st-stonecount">🪨 ${oppWon}</span>`;
+    scoreOpp.innerHTML = `<span class="st-pname">${esc(s.players[opp]?.name || 'Opponent')}</span><span class="st-stonecount">${Kit.Icon.html('rock',{size:12,cls:'kit-icon-inline'})}${oppWon}</span>`;
     const deckRail = document.createElement('div'); deckRail.className = 'st-deckrail';
     deckRail.appendChild(Kit.Cards.deck({ id: 'stDeck', count: s.deckCount, label: 'deck ' + s.deckCount }));
     head.append(scoreMe, deckRail, scoreOpp);
@@ -191,11 +191,17 @@
 
     // status line
     let status;
-    if (view.over) status = (s.winner === me ? '🏆 You win the border!' : s.winner < 0 ? '🤝 Draw' : 'You lose — better luck next time.');
+    if (view.over) status = (s.winner === me
+      ? Kit.Icon.html('trophy',{size:14,cls:'kit-icon-inline'}) + 'You win the border!'
+      : s.winner < 0
+        ? Kit.Icon.html('handshake',{size:14,cls:'kit-icon-inline'}) + 'Draw'
+        : 'You lose — better luck next time.');
     else if (viewer < 0) status = 'Spectating';
     else if (!myTurn) status = `Waiting for ${esc(s.players[opp]?.name || 'opponent')}…`;
-    else if (!s.placedThisTurn) status = selectedHand != null ? '📍 Tap a stone to place your card' : '🎴 Your turn — pick a card to play';
-    else status = '⚖️ Claim a stone you’ve won, or end your turn';
+    else if (!s.placedThisTurn) status = selectedHand != null
+      ? Kit.Icon.html('pin',{size:14,cls:'kit-icon-inline'}) + 'Tap a stone to place your card'
+      : Kit.Icon.html('cards',{size:14,cls:'kit-icon-inline'}) + 'Your turn — pick a card to play';
+    else status = Kit.Icon.html('scales',{size:14,cls:'kit-icon-inline'}) + 'Claim a stone you’ve won, or end your turn';
 
     // Capture where every card sits NOW (pre-rebuild) so a card that changed zones
     // can fly from its true previous spot. (Unified: Kit.Cards.snapshot.)

@@ -47,7 +47,7 @@
         </div>
         <div style="text-align:right">
           <div title="Your shareable friend code" style="font-family:'SF Mono',Menlo,monospace;font-size:1.05rem;font-weight:900;letter-spacing:.06em;color:var(--accent)">${esc(me.friendCode)}</div>
-          <button class="ghost-mini" onclick="window.Identity._copyFriend()" style="margin-top:2px;background:transparent;color:var(--text-dim);border:none;padding:2px 0;font-size:.72rem;cursor:pointer;font-weight:700">🔗 copy</button>
+          <button class="ghost-mini" onclick="window.Identity._copyFriend()" style="margin-top:2px;background:transparent;color:var(--text-dim);border:none;padding:2px 0;font-size:.72rem;cursor:pointer;font-weight:700;display:inline-flex;align-items:center;gap:4px">${Kit.Icon.html('link',{size:12})}copy</button>
         </div>
       </div>
       ${winRate != null ? `<div style="font-size:.78rem;color:var(--text-dim);margin-bottom:10px">Tracked: <b style="color:var(--text)">${totalW}W–${totalL}L</b> (${winRate}%)</div>` : ''}
@@ -60,7 +60,10 @@
         const cat = window.GameCatalogue || [];
         const cells = keys.map((id) => {
           const meta = cat.find((g) => g.id === id);
-          const emoji = meta?.emoji || '🎲';
+          // Per-game emoji from catalog (game-identity glyph stays as
+          // declared by the game module). Empty fallback for unknowns —
+          // shows the rating only, no glyph.
+          const emoji = meta?.emoji || '';
           const name = meta?.name || id;
           const rating = Math.round(elos[id]);
           return `<span class="elo-chip" title="${esc(name)} rating"><span style="opacity:.8;margin-right:4px">${esc(emoji)}</span><b>${rating}</b></span>`;
@@ -105,7 +108,10 @@
     const toast = $('toast');
     const finish = (ok) => {
       if (!toast) return;
-      toast.textContent = ok ? `🔗 ${code} copied` : 'Copy failed';
+      if (ok) {
+        const k = (window.Kit && Kit.Icon && Kit.Icon.html('link', { size: 14, cls: 'kit-icon-inline' })) || '';
+        toast.innerHTML = `${k}${esc(code)} copied`;
+      } else { toast.textContent = 'Copy failed'; }
       toast.classList.remove('hidden');
       setTimeout(() => toast.classList.add('hidden'), 1600);
     };

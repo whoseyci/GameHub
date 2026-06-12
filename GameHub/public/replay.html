@@ -182,7 +182,7 @@
     <div class="title"><span class="pill">REPLAY</span> <span id="replayTitle">Loading…</span></div>
     <div class="meta" id="replayMeta"></div>
     <div class="spacer"></div>
-    <button class="ghost-btn" id="copyShareBtn" onclick="copyShare()">🔗 Share</button>
+    <button class="ghost-btn" id="copyShareBtn" onclick="copyShare()" data-icon="link">Share</button>
     <button class="ghost-btn primary" onclick="location.href='/'">Play Now</button>
   </div>
 
@@ -223,7 +223,7 @@
     <div class="replay-bar-row">
       <span class="frame" id="frameLabel">0 / 0</span>
       <span class="action" id="actionLabel"></span>
-      <button class="ghost-btn" id="hlBtn" onclick="jumpHighlight(1)" title="Jump to next highlight (H)" style="font-size:.74rem;padding:4px 8px">✨ Next</button>
+      <button class="ghost-btn" id="hlBtn" onclick="jumpHighlight(1)" title="Jump to next highlight (H)" style="font-size:.74rem;padding:4px 8px" data-icon="sparkle" data-icon-size="12">Next</button>
       <select class="speed" id="speedSelect" onchange="setSpeed(this.value)">
         <option value="2000">0.5×</option>
         <option value="1000" selected>1×</option>
@@ -244,7 +244,7 @@
     <!-- What-if simulator: pops up a per-seat win-probability bar after running
          N random-legal playouts in a Web Worker from the current frame. -->
     <div class="whatif-wrap">
-      <button class="ghost-btn" id="whatifBtn" onclick="runWhatIf()" title="Simulate the rest from here (W)">🎲 What-if?</button>
+      <button class="ghost-btn" id="whatifBtn" onclick="runWhatIf()" title="Simulate the rest from here (W)" data-icon="dice" data-icon-size="14">What-if?</button>
       <div id="whatifResult" class="whatif-result" style="display:none"></div>
     </div>
   </div>
@@ -286,6 +286,7 @@
 <!-- Same scripts as live play; replay uses the very same engines + renderers. -->
 <script src="/js/00-game-modules.js"></script>
 <script src="/js/00-core.js"></script>
+<script src="/js/00-icons.js"></script>
 <script src="/js/00-kit-turn.js"></script>
 <script src="/js/00-cards.js"></script>
 <script src="/js/00-dice3d.js"></script>

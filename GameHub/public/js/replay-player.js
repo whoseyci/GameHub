@@ -139,7 +139,12 @@
     const here = highlights.find((h) => h.frame === cursor);
     const lbl = $('hlLabel');
     if (lbl) {
-      if (here) { lbl.textContent = `✨ ${here.label}`; lbl.style.display = ''; }
+      if (here) {
+        // Sparkle icon + label. Build via innerHTML so the SVG renders.
+        const k = (window.Kit && Kit.Icon && Kit.Icon.html('sparkle',{size:14,cls:'kit-icon-inline'})) || '';
+        lbl.innerHTML = `${k}${escapeHtml(here.label)}`;
+        lbl.style.display = '';
+      }
       else { lbl.style.display = 'none'; }
     }
     const btn = $('hlBtn');
@@ -164,6 +169,12 @@
 
   // ─── What-if simulator ────────────────────────────────────────────────
   let whatifWorker = null;
+  // Helper: HTML-stringify a small icon + label for the what-if button so we
+  // can swap labels easily across the worker lifecycle without re-laying out.
+  function whatifBtnLabel(text) {
+    const k = (window.Kit && Kit.Icon && Kit.Icon.html('dice',{size:14,cls:'kit-icon-inline'})) || '';
+    return `${k}${escapeHtml(text)}`;
+  }
   window.runWhatIf = function () {
     if (!bundle || !state) return;
     const btn = $('whatifBtn');
@@ -171,32 +182,32 @@
     if (!btn || !resultEl) return;
     if (whatifWorker) { try { whatifWorker.terminate(); } catch {} whatifWorker = null; }
     btn.disabled = true;
-    btn.textContent = '🎲 Simulating…';
+    btn.innerHTML = whatifBtnLabel('Simulating…');
     resultEl.style.display = 'none';
     try {
       whatifWorker = new Worker('/js/whatif-worker.js');
     } catch (e) {
-      btn.disabled = false; btn.textContent = '🎲 What-if?';
+      btn.disabled = false; btn.innerHTML = whatifBtnLabel('What-if?');
       console.warn('Worker unavailable', e);
       return;
     }
     whatifWorker.onmessage = (e) => {
       const m = e.data || {};
       if (m.type === 'progress') {
-        btn.textContent = `🎲 ${m.done}/${m.total}`;
+        btn.innerHTML = whatifBtnLabel(`${m.done}/${m.total}`);
       } else if (m.type === 'done') {
-        btn.disabled = false; btn.textContent = '🎲 What-if?';
+        btn.disabled = false; btn.innerHTML = whatifBtnLabel('What-if?');
         renderWhatIf(m);
         whatifWorker.terminate(); whatifWorker = null;
       } else if (m.type === 'error') {
-        btn.disabled = false; btn.textContent = '🎲 What-if?';
+        btn.disabled = false; btn.innerHTML = whatifBtnLabel('What-if?');
         resultEl.style.display = '';
         resultEl.innerHTML = `<div class="wf-head">What-if</div><div style="color:#fca5a5">${escapeHtml(m.message)}</div>`;
         whatifWorker.terminate(); whatifWorker = null;
       }
     };
     whatifWorker.onerror = (e) => {
-      btn.disabled = false; btn.textContent = '🎲 What-if?';
+      btn.disabled = false; btn.innerHTML = whatifBtnLabel('What-if?');
       console.warn('whatif worker error', e);
     };
     // Send a JSON-cloneable snapshot of current state.
@@ -306,7 +317,10 @@
     const finish = (ok) => {
       const t = $('toast');
       if (!t) return;
-      t.textContent = ok ? '🔗 Link copied!' : 'Copy failed';
+      if (ok) {
+        const k = (window.Kit && Kit.Icon && Kit.Icon.html('link',{size:14,cls:'kit-icon-inline'})) || '';
+        t.innerHTML = `${k}Link copied!`;
+      } else { t.textContent = 'Copy failed'; }
       t.className = 'toast replay-toast';
       t.classList.remove('hidden');
       setTimeout(() => t.classList.add('hidden'), 1800);
@@ -372,7 +386,10 @@
 
     // Header
     const meta = window.GameCatalogue?.find?.((g) => g.id === bundle.gameId);
-    const emoji = meta?.emoji || '🎮';
+    // Per-game emoji from catalog (legacy game-identity glyph); cards icon
+    // as fallback for unknown games. Game-identity glyphs are allowlisted
+    // because they're declared on GameModule.meta itself.
+    const emoji = meta?.emoji || '';
     const title = `${emoji} ${meta?.name || bundle.gameId}`;
     $('replayTitle').textContent = title;
     const live = !bundle.endedAt ? ' • LIVE' : '';

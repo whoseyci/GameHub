@@ -260,7 +260,13 @@
     }
     const span = document.createElement('span');
     span.style.color = TONE[opts.tone] || TONE.info;
-    span.textContent = opts.text != null ? String(opts.text) : '';
+    span.style.display = 'inline-flex';
+    span.style.alignItems = 'center';
+    span.style.gap = '6px';
+    // opts.html lets games include Kit.Icon SVG strings inline; opts.text stays
+    // safe-text-only for everything else. Use one or the other, never both.
+    if (opts.html != null) span.innerHTML = String(opts.html);
+    else span.textContent = opts.text != null ? String(opts.text) : '';
     sb.replaceChildren(span);
   }
   Kit.Status = { set: statusSet, TONE };

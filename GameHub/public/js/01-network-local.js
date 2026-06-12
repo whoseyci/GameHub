@@ -5,7 +5,7 @@ let onlineDevicePlayers=[];
 function getSeatPid(i){let p=localStorage.getItem('hub_pid_'+i);if(!p){p='p_'+Math.random().toString(36).slice(2,10)+Date.now().toString(36)+'_'+i;localStorage.setItem('hub_pid_'+i,p);}return p;}
 function syncOnlinePrimaryName(){const n=($('onlineName')?.value||'').trim();if(!onlineDevicePlayers.length)onlineDevicePlayers=[{name:n||'Player'}];else onlineDevicePlayers[0].name=n||onlineDevicePlayers[0].name||'Player';}
 function onlineSeatsPayload(){syncOnlinePrimaryName();return onlineDevicePlayers.map((p,i)=>({pid:getSeatPid(i),name:(p.name||('Player '+(i+1))).slice(0,20)}));}
-function renderOnlineDevicePlayers(){syncOnlinePrimaryName();const box=$('onlineDevicePlayers');if(!box)return;box.innerHTML=onlineDevicePlayers.map((p,i)=>`<div style="display:flex;gap:6px;align-items:center;margin-bottom:5px"><input class="input" style="margin:0;padding:8px" value="${p.name.replace(/"/g,'&quot;')}" ${i===0?'placeholder="Main player"':'placeholder="Same-device player"'} oninput="onlineDevicePlayers[${i}].name=this.value; if(${i}===0)$('onlineName').value=this.value"><button class="icon-btn" ${i===0?'disabled style="opacity:.3"':''} onclick="onlineDevicePlayers.splice(${i},1);renderOnlineDevicePlayers()">✕</button></div>`).join('');}
+function renderOnlineDevicePlayers(){syncOnlinePrimaryName();const box=$('onlineDevicePlayers');if(!box)return;box.innerHTML=onlineDevicePlayers.map((p,i)=>`<div style="display:flex;gap:6px;align-items:center;margin-bottom:5px"><input class="input" style="margin:0;padding:8px" value="${p.name.replace(/"/g,'&quot;')}" ${i===0?'placeholder="Main player"':'placeholder="Same-device player"'} oninput="onlineDevicePlayers[${i}].name=this.value; if(${i}===0)$('onlineName').value=this.value"><button class="icon-btn" ${i===0?'disabled style="opacity:.3"':''} onclick="onlineDevicePlayers.splice(${i},1);renderOnlineDevicePlayers()">${Kit.Icon.html('x',{size:14})}</button></div>`).join('');}
 function addOnlineDevicePlayer(){syncOnlinePrimaryName();if(onlineDevicePlayers.length>=8)return;onlineDevicePlayers.push({name:'Player '+(onlineDevicePlayers.length+1)});renderOnlineDevicePlayers();}
 function connectRoom(code,{isPublic=false,quickGame=null,maxPlayers=8,shard=null}={}){
   mode='online';net.room=code;net.isHost=false;net.spectating=false;
@@ -36,7 +36,7 @@ function handleNet(m){
     }
     toast('That room is full.');leaveOnline();return;
   }
-  if(m.type==='spectating'){net.spectating=true;toast('👁 '+m.message,3600);return;}
+  if(m.type==='spectating'){net.spectating=true;toast(m.message,3600);return;}
   if(m.type==='room'){
     net.isHost=m.isHost;net.spectating=false;
     if(m.catalogue&&m.catalogue.length)catalogue=m.catalogue;
@@ -81,7 +81,8 @@ function addBot(){net.send({type:'add_bot',difficulty:_botDiff});}
 function removeBot(){net.send({type:'remove_bot'});}
 function renderRoom(m){
   $('roomCode').textContent=m.code;
-  $('roomVis').textContent=(m.quickGame?'⚡ Quick Play · ':'')+(m.isPublic?'🌍 Public room':'🔒 Private room');
+  // Visibility line: icon + text via innerHTML (Kit.Icon returns SVG strings).
+  $('roomVis').innerHTML=(m.quickGame?Kit.Icon.html('rocket',{size:12,cls:'kit-icon-inline'})+'Quick Play &middot; ':'')+(m.isPublic?Kit.Icon.html('globe',{size:12,cls:'kit-icon-inline'})+'Public room':Kit.Icon.html('lock',{size:12,cls:'kit-icon-inline'})+'Private room');
   // Identity: record every human in the room as a "recent" so they appear on
   // the menu next time. Bots and ourselves are skipped inside recordEncounter.
   if(window.Identity){ for(const p of (m.members||[])){ if(!p.bot && p.id && p.name) Identity.recordEncounter({pid:p.id,name:p.name}); } }
@@ -96,9 +97,9 @@ function renderRoom(m){
     const nBots=m.members.filter(x=>x.bot).length;
     const full=m.members.length>=(m.maxPlayers||8);
     botBox.innerHTML=`<div class="seg" id="botDiffSeg" style="margin-bottom:8px">
-        <button data-d="easy" class="${_botDiff==='easy'?'on':''}" onclick="setBotDiff('easy')">😊 Easy</button>
-        <button data-d="medium" class="${_botDiff==='medium'?'on':''}" onclick="setBotDiff('medium')">🙂 Medium</button>
-        <button data-d="hard" class="${_botDiff==='hard'?'on':''}" onclick="setBotDiff('hard')">🤖 Hard</button>
+        <button data-d="easy" class="${_botDiff==='easy'?'on':''}" onclick="setBotDiff('easy')">${Kit.Icon.html('smile',{size:14,cls:'kit-icon-inline'})}Easy</button>
+        <button data-d="medium" class="${_botDiff==='medium'?'on':''}" onclick="setBotDiff('medium')">${Kit.Icon.html('happy',{size:14,cls:'kit-icon-inline'})}Medium</button>
+        <button data-d="hard" class="${_botDiff==='hard'?'on':''}" onclick="setBotDiff('hard')">${Kit.Icon.html('robot',{size:14,cls:'kit-icon-inline'})}Hard</button>
       </div>
       <div style="display:flex;gap:8px">
         <button class="btn secondary" style="margin:0" onclick="addBot()" ${full?'disabled':''}>+ Add Bot</button>
@@ -127,8 +128,16 @@ function renderPublic(rooms){
   if(!rooms||!rooms.length){el.innerHTML='<div class="muted">No open public rooms right now.</div>';return;}
   el.innerHTML=rooms.map((r,idx)=>{
     const live=r.inGame,label=live?'Spectate':'Join';
-    const status=live?'<span style="color:#f59e0b">🎮 '+esc(gameName(r.gameId))+'</span>':(r.gameId?'<span style="color:#10b981">⚡ '+esc(gameName(r.gameId))+' lobby</span>':'<span style="color:#10b981">⏳ Waiting</span>');
-    const shown=String(r.code||'').replace(/^quick-/,'⚡ ');
+    const status=live
+      ? '<span style="color:#f59e0b;display:inline-flex;align-items:center;gap:4px">'+Kit.Icon.html('target',{size:12})+esc(gameName(r.gameId))+'</span>'
+      : (r.gameId
+          ? '<span style="color:#10b981;display:inline-flex;align-items:center;gap:4px">'+Kit.Icon.html('rocket',{size:12})+esc(gameName(r.gameId))+' lobby</span>'
+          : '<span style="color:#10b981;display:inline-flex;align-items:center;gap:4px">'+Kit.Icon.html('spinner',{size:12})+'Waiting</span>');
+    // Quick-play room codes have a "quick-" prefix; render the rocket icon
+    // inline in place of the prefix for visual distinction.
+    const isQuick=String(r.code||'').startsWith('quick-');
+    const codeRest=String(r.code||'').replace(/^quick-/,'');
+    const shown=isQuick?Kit.Icon.html('rocket',{size:12,cls:'kit-icon-inline'})+codeRest:codeRest;
     return `<div class="room-row"><div><div class="rc">${esc(shown)}</div><div class="rm">${esc(r.hostName)} · ${esc(r.players)}/${esc(r.maxPlayers)} · ${status}</div></div><button data-room-idx="${idx}">${label}</button></div>`;
   }).join('');
   el.querySelectorAll('[data-room-idx]').forEach(btn=>btn.onclick=()=>joinPublic(rooms[Number(btn.dataset.roomIdx)].code));
@@ -210,9 +219,9 @@ function showSummary(view){
   const isOver=view.over;
   const hasDelta=sm.rows.some(r=>r.delta!=null);
   const head=`<tr><th>Player</th>${hasDelta?'<th>Round</th>':''}<th>Total</th></tr>`;
-  const rows=sm.rows.map(r=>{const w=isOver&&sm.winners.includes(r.seat);const d=r.delta!=null?`<td>${r.delta>=0?'+':''}${r.delta}</td>`:'';return `<tr class="${w?'winner-row':''}"><td>${esc(r.name)}${w?' <span class="crown">🏆</span>':''}</td>${d}<td>${esc(r.score)}</td></tr>`;}).join('');
+  const rows=sm.rows.map(r=>{const w=isOver&&sm.winners.includes(r.seat);const d=r.delta!=null?`<td>${r.delta>=0?'+':''}${r.delta}</td>`:'';return `<tr class="${w?'winner-row':''}"><td>${esc(r.name)}${w?' <span class="crown">'+Kit.Icon.html('crown',{size:14})+'</span>':''}</td>${d}<td>${esc(r.score)}</td></tr>`;}).join('');
   const wn=sm.winners.map(i=>{const r=sm.rows.find(x=>x.seat===i);return r?esc(r.name):'';}).join(' & ');
-  let foot=isOver?`<div style="font-size:1.4rem;font-weight:900;margin:16px 0;color:#10b981"><span class="crown">🏆</span> ${wn} ${sm.winners.length>1?'win':'wins'}!</div>`:'';
+  let foot=isOver?`<div style="font-size:1.4rem;font-weight:900;margin:16px 0;color:#10b981;display:flex;align-items:center;gap:8px;justify-content:center"><span class="crown">${Kit.Icon.html('trophy',{size:24})}</span><span>${wn} ${sm.winners.length>1?'win':'wins'}!</span></div>`:'';
   let btns;
   if(mode==='local'){btns=isOver?`<button class="btn green" onclick="localNext()">Play Again</button><button class="btn secondary" onclick="quitLocal()">Menu</button>`:`<button class="btn" onclick="localNext()">Next Round</button>`;}
   else if(net.isHost){btns=`<div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center">${isOver?`<button class="btn green" onclick="net.send({type:'next_round'})">New Game</button><button class="btn secondary" onclick="net.send({type:'to_room'})">Back to Room</button>`:`<button class="btn" onclick="net.send({type:'next_round'})">Next Round</button>`}</div>`;}
@@ -225,10 +234,10 @@ function showSummary(view){
     const r=window._currentReplay;
     const url=location.origin+`/replay.html?room=${encodeURIComponent(r.roomCode)}&id=${encodeURIComponent(r.id)}`;
     replayUi=`<div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">
-      <div style="font-size:.78rem;color:var(--text-dim);margin-bottom:8px;font-weight:700;letter-spacing:.04em">📺 SHARE THIS GAME</div>
+      <div style="font-size:.78rem;color:var(--text-dim);margin-bottom:8px;font-weight:700;letter-spacing:.04em;display:flex;align-items:center;gap:6px">${Kit.Icon.html('tv',{size:12})}SHARE THIS GAME</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center">
-        <a class="btn" style="margin:0;text-decoration:none;display:inline-block" href="${esc(url)}" target="_blank" rel="noopener">▶ Watch Replay</a>
-        <button class="btn secondary" style="margin:0" onclick="(async()=>{try{await navigator.clipboard.writeText(${JSON.stringify(url)});this.textContent='✓ Copied!';setTimeout(()=>this.textContent='🔗 Copy Link',1800);}catch{this.textContent='Copy failed'}})()">🔗 Copy Link</button>
+        <a class="btn" style="margin:0;text-decoration:none;display:inline-flex;align-items:center;gap:6px" href="${esc(url)}" target="_blank" rel="noopener">${Kit.Icon.html('play',{size:14})}Watch Replay</a>
+        <button class="btn secondary" style="margin:0;display:inline-flex;align-items:center;gap:6px" onclick="(async()=>{try{await navigator.clipboard.writeText(${JSON.stringify(url)});this.innerHTML=${JSON.stringify(Kit.Icon.html('check',{size:14}))}+'Copied!';setTimeout(()=>this.innerHTML=${JSON.stringify(Kit.Icon.html('link',{size:14}))}+'Copy Link',1800);}catch{this.textContent='Copy failed'}})()">${Kit.Icon.html('link',{size:14})}Copy Link</button>
       </div>
     </div>`;
   }
@@ -261,13 +270,13 @@ function renderLocalSeats(){
     const inp=document.createElement('input');inp.type='text';inp.className='input';inp.style.margin='0';inp.value=seat.name;
     inp.disabled=!!seat.bot;inp.oninput=()=>{localSeats[i].name=inp.value;};
     if(seat.bot)inp.style.opacity='.7';
-    const del=document.createElement('button');del.className='icon-btn';del.textContent='✕';del.onclick=()=>{localSeats.splice(i,1);renderLocalSeats();refreshLocalTiles();};
+    const del=document.createElement('button');del.className='icon-btn';del.appendChild(Kit.Icon('x',{size:14}));del.onclick=()=>{localSeats.splice(i,1);renderLocalSeats();refreshLocalTiles();};
     row.appendChild(inp);if(localSeats.length>2||seat.bot)row.appendChild(del);
     box.appendChild(row);
   });
 }
 function localCount(){return localSeats.length;}
-function addLocalBot(){if(localSeats.length>=8)return;const names=['Botley','Chip','Ada','Turing','Pixel','Nova'];const n=localSeats.filter(s=>s.bot).length;localSeats.push({name:(names[n]||'Bot')+' 🤖',bot:true,difficulty:_localBotDiff});renderLocalSeats();refreshLocalTiles();}
+function addLocalBot(){if(localSeats.length>=8)return;const names=['Botley','Chip','Ada','Turing','Pixel','Nova'];const n=localSeats.filter(s=>s.bot).length;localSeats.push({name:names[n]||'Bot',bot:true,difficulty:_localBotDiff});renderLocalSeats();refreshLocalTiles();}
 function refreshLocalTiles(){
   renderTiles('localTiles',gid=>{_localPick=gid;markLocalPick();},localCount());
   markLocalPick();

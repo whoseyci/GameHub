@@ -141,5 +141,8 @@ renderTiles('quickTiles', quickPlay);
 renderLocalSeats();
 refreshLocalTiles();
 if (typeof syncOnlinePrimaryName === 'function') { syncOnlinePrimaryName(); renderOnlineDevicePlayers(); }
-if (SFX.muted) { const b = $('soundBtn'); if (b) { b.textContent = '🔇'; b.classList.add('off'); } }
+if (SFX.muted) {
+  const b = $('soundBtn');
+  if (b) { b.innerHTML = ''; b.appendChild(Kit.Icon('sound-off', { size: 20 })); b.classList.add('off'); }
+}
 document.addEventListener('keydown', e => { if (e.key === 'Escape') { if (typeof GameShell !== 'undefined') GameShell.closeInspect(); else $('investigateOverlay')?.classList.add('hidden'); } });

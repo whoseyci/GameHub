@@ -113,7 +113,7 @@
     const ta=s.turnAction;
 
     // last round popup
-    if(s.phase==='FINAL_TURNS'&&!lastRoundShown){lastRoundShown=true;const e=s.players[s.roundEnder]?.name||'A player';toast('🚨 LAST ROUND! '+e+' closed it out',3200);SFX.lastRound();}
+    if(s.phase==='FINAL_TURNS'&&!lastRoundShown){lastRoundShown=true;const e=s.players[s.roundEnder]?.name||'A player';toast('LAST ROUND! '+e+' closed it out',3200);SFX.lastRound();}
     if(s.phase==='REVEAL'||s.phase==='PLAY')lastRoundShown=false;
 
     // Turn banner is handled by Kit.Turn (called automatically by GameShell.render
@@ -192,7 +192,7 @@
     }
 
     // status bar
-    if(net.spectating){Kit.Status.set({text:'👁 Spectating — you\'ll join next round',tone:'warn'});}
+    if(net.spectating){Kit.Status.set({html:Kit.Icon.html('eye',{size:14,cls:'kit-icon-inline'})+'Spectating — you\'ll join next round',tone:'warn'});}
     else if(s.phase==='REVEAL'){
       if(s.tiebreakerPlayers&&s.tiebreakerPlayers.length){const inTb=s.tiebreakerPlayers.includes(viewer);Kit.Status.set({text:mode==='local'?'Tie! Tied players flip 1 more card.':(inTb?'Tie! Flip 1 more card.':'Waiting for tiebreaker…'),tone:(mode==='local'||inTb)?'go':'info'});}
       else Kit.Status.set({text:mode==='local'?'Everyone: flip 2 cards to begin.':'Flip 2 cards to begin.',tone:'info'});
@@ -387,7 +387,7 @@
   function investigate(s,pi,viewer){
     const seats=s.players.map((_,i)=>i).filter(i=>i!==viewer);
     const idx=seats.indexOf(pi),prev=seats[(idx-1+seats.length)%seats.length],next=seats[(idx+1)%seats.length];
-    const box=GameShell.inspect(`<div class="inspect-head"><button class="icon-btn" onclick="window._skyjoInspect(${prev})">‹</button><b>${esc(s.players[pi].name)}</b><button class="icon-btn" onclick="window._skyjoInspect(${next})">›</button><button class="icon-btn" onclick="GameShell.closeInspect()">✕</button></div>`);
+    const box=GameShell.inspect(`<div class="inspect-head"><button class="icon-btn" onclick="window._skyjoInspect(${prev})">‹</button><b>${esc(s.players[pi].name)}</b><button class="icon-btn" onclick="window._skyjoInspect(${next})">›</button><button class="icon-btn" onclick="GameShell.closeInspect()">${Kit.Icon.html('x',{size:14})}</button></div>`);
     box.appendChild(staticBoard(s,s.players[pi],pi,viewer));
     window._skyjoLastInspect={s,viewer};window._skyjoInspect=(seat)=>investigate(window._skyjoLastInspect.s,seat,window._skyjoLastInspect.viewer);
   }

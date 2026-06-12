@@ -248,7 +248,7 @@
     const idx=seats.indexOf(seat),prev=seats[(idx-1+seats.length)%seats.length],next=seats[(idx+1)%seats.length];
     const row=(p.cards&&p.cards.length?p.cards.map(c=>cardEl(c.kind,c.v,{busted:p.status==='busted'})):[...p.nums.map(n=>cardEl('num',n,{busted:p.status==='busted'})),...p.mods.map(m=>cardEl('mod',m,{busted:p.status==='busted'})),...(p.second?[cardEl('act','second')]:[]),...(p.actionCards||[]).map(a=>cardEl('act',a))]);
     const cards=document.createElement('div');cards.className='f7-row';row.forEach(c=>cards.appendChild(c));
-    const box=GameShell.inspect(`<div class="inspect-head"><button class="icon-btn" onclick="window.GameClients['flip7'].inspect(${prev})">‹</button><b>${esc(p.name)} · ${esc(p.status)}</b><button class="icon-btn" onclick="window.GameClients['flip7'].inspect(${next})">›</button><button class="icon-btn" onclick="GameShell.closeInspect()">✕</button></div><div class="player-board f7-focus-board"><div class="board-header"><span>${esc(p.name)}</span><span class="score-badge">Now ${esc(p.live)} · Total ${esc(p.banked)} · ${esc(p.unique)}/7</span></div></div>`);
+    const box=GameShell.inspect(`<div class="inspect-head"><button class="icon-btn" onclick="window.GameClients['flip7'].inspect(${prev})">‹</button><b>${esc(p.name)} · ${esc(p.status)}</b><button class="icon-btn" onclick="window.GameClients['flip7'].inspect(${next})">›</button><button class="icon-btn" onclick="GameShell.closeInspect()">${Kit.Icon.html('x',{size:14})}</button></div><div class="player-board f7-focus-board"><div class="board-header"><span>${esc(p.name)}</span><span class="score-badge">Now ${esc(p.live)} · Total ${esc(p.banked)} · ${esc(p.unique)}/7</span></div></div>`);
     box.querySelector('.player-board').appendChild(cards);
   }
 
@@ -275,14 +275,21 @@
       ],{id:'f7Controls'});
     };
     Kit.Controls.clear('f7Controls');
-    if(net.spectating){Kit.Status.set({text:'👁 Spectating — you\'ll join next round',tone:'warn'});}
+    if(net.spectating){Kit.Status.set({html:Kit.Icon.html('eye',{size:14})+'Spectating — you\'ll join next round',tone:'warn'});}
     else if(s.phase==='ROUND_END'||s.phase==='GAME_OVER'){
       if(mode==='local'||net.isHost)Kit.Status.set({button:{label:s.phase==='GAME_OVER'?(mode==='local'?'Play Again':'New Game'):'Next Round',onClick:()=>mode==='local'?localNext():net.send({type:'next_round'})}});
       else Kit.Status.set({text:'Waiting for host…',tone:'muted'});
     }
     else if(pending){
       const k=s.pendingAction.kind;
-      Kit.Status.set({text:(k==='freeze'?'❄ Choose who to Freeze':k==='flip3'?'🔃 Choose who flips 3':'♥ Give Second Chance to an opponent')+' (tap a player)',tone:'warn'});
+      // Use the same color tokens as the card faces for visual continuity.
+      const kindIcon = k==='freeze' ? '<span style="color:#7dd3fc">❄</span>'
+                     : k==='flip3'  ? Kit.Icon.html('sparkle',{size:14,cls:'kit-icon-inline'})
+                     :                '<span style="color:#fbcfe8">♥</span>';
+      const label = k==='freeze' ? 'Choose who to Freeze'
+                  : k==='flip3'  ? 'Choose who flips 3'
+                  :                'Give Second Chance to an opponent';
+      Kit.Status.set({html: kindIcon + label + ' (tap a player)', tone:'warn'});
     }
     else {
       // Are hit/stay legal for the viewer? (Replaces the old myTurn check.)
@@ -295,7 +302,10 @@
         const cur=s.players[s.current];
         if(s.pendingAction){
           const k=s.pendingAction.kind;
-          Kit.Status.set({text:esc(cur.name)+': '+(k==='freeze'?'Freeze ❄':k==='flip3'?'Flip 3':'Give ♥')+' — tap a player',tone:'warn'});
+          const verb = k==='freeze' ? 'Freeze <span style="color:#7dd3fc">❄</span>'
+                     : k==='flip3'  ? 'Flip 3 '+Kit.Icon.html('sparkle',{size:12})
+                     :                'Give <span style="color:#fbcfe8">♥</span>';
+          Kit.Status.set({html:esc(cur.name)+': '+verb+' — tap a player',tone:'warn'});
         } else {
           Kit.Status.set({text:(cur?cur.name:'')+'\'s turn',tone:'go'});
           // Pass-and-play: query legal for whoever's turn it is on the device.
@@ -531,8 +541,13 @@
         draw(liveView);
         if(!e.secondPass&&e.actionKind){
           actionVfx(e.actionKind); SFX[e.actionKind==='freeze'?'discard':'triplet']();
-          if(e.auto)Kit.turnBanner((e.actionKind==='freeze'?'\u2744 ':'\ud83d\udd03 ')+'on self!',false);
+          // Self-targeted action banner: use the card glyph for freeze (❄ in
+          // sky-blue, matching the freeze-card face) and a "sparkle" icon for
+          // flip3. We don't go through Kit.Icon here because turnBanner takes
+          // a plain string; the suit glyph reads as part of the card's voice.
+          if(e.auto)Kit.turnBanner((e.actionKind==='freeze'?'\u2744 ':'+3 ')+'on self!',false);
         } else if(e.secondPass){
+          // Second-chance card uses the same heart glyph as the card face.
           SFX.flip(); if(e.auto)Kit.turnBanner('\u2665 passed',true);
         }
         await sleep(SPEED.beat*0.45); break;

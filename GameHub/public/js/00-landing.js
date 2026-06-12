@@ -2,7 +2,7 @@
  *
  * Game tiles: derived from window.GameCatalogue (single source of truth from
  * the hub registry). Each tile offers two actions:
- *   • ⚡ Play vs Bot  — jumps into local pass-and-play with auto-added bots
+ *   • Play vs Bot — jumps into local pass-and-play with auto-added bots
  *                       (no setup screen, no friction)
  *   • Read rules
  *
@@ -20,10 +20,12 @@
   function renderTiles() {
     const container = $('landingGameTiles');
     if (!container || !window.GameCatalogue) return;
+    // Per-game emoji from meta still shown on the tile face — it's the game's
+    // identity glyph, not a UI control. UI control buttons use Kit.Icon.
     container.innerHTML = window.GameCatalogue.map((g) => `
       <div class="landing-tile" data-game="${esc(g.id)}">
         <div class="lt-head">
-          <div class="lt-emoji">${esc(g.emoji || '🎮')}</div>
+          <div class="lt-emoji">${esc(g.emoji || '')}</div>
           <div>
             <div class="lt-title">${esc(g.name)}</div>
             <div class="lt-meta">${esc(g.minPlayers)}–${esc(g.maxPlayers)} players</div>
@@ -31,8 +33,8 @@
         </div>
         <div class="lt-desc">${esc(g.description || '')}</div>
         <div class="lt-actions">
-          <button class="ltbtn primary" data-act="bot" data-game="${esc(g.id)}">⚡ Play vs Bot</button>
-          <button class="ltbtn ghost" data-act="rules" data-game="${esc(g.id)}">📖 Rules</button>
+          <button class="ltbtn primary" data-act="bot" data-game="${esc(g.id)}">${Kit.Icon.html('rocket',{size:14,cls:'kit-icon-inline'})}Play vs Bot</button>
+          <button class="ltbtn ghost" data-act="rules" data-game="${esc(g.id)}">${Kit.Icon.html('book',{size:14,cls:'kit-icon-inline'})}Rules</button>
         </div>
       </div>
     `).join('');
@@ -72,7 +74,9 @@
     const seats = [{ name: myName, bot: false }];
     const botNames = ['Botley', 'Chip', 'Ada', 'Turing', 'Pixel', 'Nova'];
     for (let i = 0; i < desiredBots; i++) {
-      seats.push({ name: `${botNames[i] || ('Bot ' + (i + 1))} 🤖`, bot: true, difficulty: 'medium' });
+      // No emoji in bot names — the bot badge is rendered as an icon by the
+      // chip renderer (see public/js/01-network-local.js renderRoom()).
+      seats.push({ name: botNames[i] || ('Bot ' + (i + 1)), bot: true, difficulty: 'medium' });
     }
     if (typeof window.setLocalSeats === 'function') window.setLocalSeats(seats);
     if (typeof window.startLocalForGame === 'function') {
@@ -154,9 +158,27 @@
     else el.textContent = `${rooms} rooms · ${players} players online`;
   }
 
+  // Decorative drifting icons in the hero background. Replaces the old
+  // emoji float-cards. We pick a small icon set + position with the same
+  // CSS classes the old emojis used, keeping the floatY animation intact.
+  function bootDecor() {
+    const bg = document.querySelector('.landing-hero-bg');
+    if (!bg || bg.dataset.decorMounted) return;
+    bg.dataset.decorMounted = '1';
+    const picks = [
+      { icon: 'cards',  cls: 'fc1', size: 72 },
+      { icon: 'dice',   cls: 'fc2', size: 64 },
+      { icon: 'cube',   cls: 'fc3', size: 72 },
+      { icon: 'flame',  cls: 'fc4', size: 52 },
+      { icon: 'swords', cls: 'fc5', size: 68 },
+    ];
+    bg.innerHTML = picks.map((p) => `<div class="float-card ${p.cls}" aria-hidden="true">${Kit.Icon.html(p.icon, { size: p.size })}</div>`).join('');
+  }
+
   // ─── Bootstrap ───────────────────────────────────────────────────────
   function boot() {
     if (!$('landingGameTiles')) return; // page without landing layout
+    bootDecor();
     renderTiles();
     renderStats();
     startStatsSocket();

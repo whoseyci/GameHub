@@ -722,7 +722,7 @@ const SFX=(()=>{
   ['pointerdown','keydown','touchstart'].forEach(ev=>window.addEventListener(ev,()=>api.unlock(),{passive:true}));
   return api;
 })();
-function toggleSound(){const m=SFX.toggle();const b=$('soundBtn');if(b){b.textContent=m?'🔇':'🔊';b.classList.toggle('off',m);}if(!m)SFX.tap();}
+function toggleSound(){const m=SFX.toggle();const b=$('soundBtn');if(b){b.innerHTML='';b.appendChild(Kit.Icon(m?'sound-off':'sound-on',{size:20}));b.classList.toggle('off',m);}if(!m)SFX.tap();}
 
 /* ====================== HUB STATE ====================== */
 let mode='online';            // 'online' | 'local'
@@ -925,12 +925,14 @@ function openRules(gameId){
   const r=window.GameRules?.[gameId];if(!r){showRulesMenu();return;}
   $('rulesBox').innerHTML=`<h2 style="margin:0 0 4px">${r.title}</h2><div class="muted" style="margin-bottom:10px">${r.quick}</div>
     <ol style="text-align:left;line-height:1.55;font-weight:600;padding-left:20px;margin:0 0 12px">${r.steps.map(s=>`<li style="margin-bottom:7px">${s}</li>`).join('')}</ol>
-    <div style="background:var(--bg);border:2px solid var(--border);border-radius:12px;padding:10px;font-weight:700;text-align:left">💡 ${r.tip}</div>
+    <div style="background:var(--bg);border:2px solid var(--border);border-radius:12px;padding:10px;font-weight:700;text-align:left;display:flex;align-items:flex-start;gap:8px">${Kit.Icon.html('lightbulb',{size:16})}<span>${r.tip}</span></div>
     <button class="btn" style="margin-top:16px" onclick="$('rulesOverlay').classList.add('hidden')">Got it</button>`;
   $('rulesOverlay').classList.remove('hidden');
 }
 function showRulesMenu(){
-  $('rulesBox').innerHTML=`<h2 style="margin:0 0 12px">📖 How to Play</h2>
+  // Use Kit.Icon for the header glyph; rules-text emoji on game tiles is
+  // legacy game-meta and stays (each game module declares its own emoji).
+  $('rulesBox').innerHTML=`<h2 style="margin:0 0 12px;display:flex;align-items:center;gap:8px">${Kit.Icon.html('book',{size:22})}How to Play</h2>
     <div class="game-tiles">${catalogue.map(g=>`<div class="game-tile" onclick="openRules('${esc(g.id)}')"><div class="emoji">${esc(g.emoji)}</div><div class="gname">${esc(g.name)}</div></div>`).join('')}</div>
     <button class="btn secondary" style="margin-top:14px" onclick="$('rulesOverlay').classList.add('hidden')">Close</button>`;
   $('rulesOverlay').classList.remove('hidden');
