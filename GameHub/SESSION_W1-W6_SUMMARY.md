@@ -137,36 +137,79 @@ regressions in any `public/` HTML/CSS/JS file.
 
 **12 tests** pinning the server contract markers + client wire-up.
 
-## W6 part 2 — Groups + variants UI (queued)
+## W6 part 2 — Groups + variants UI ✅
 
-What's done in part 1 already enables this:
-- Server has `isGroup` field + variant pass-through.
-- Ready system works for any room (not just quick-play).
-- Invite-link routing works for any room (groups included).
+**🐛 Latent bug fixed (W6 part 1).** The protocol parser silently dropped
+`set_ready`, `isGroup`, and `variant`. Grep-based source tests passed
+because the markers existed, but in production clicking "Ready" did
+nothing — `parseClientMessage` returned `null` and the server never saw
+the message. Fixed and pinned with new end-to-end protocol tests
+(`tests/w6-part2.test.ts` exercises the parser with real payloads).
 
-What's left for part 2:
-- A "Convert to group" toggle in the room screen (host only) that
-  flips `isGroup=true` and persists the room past games-ended.
-- Group-shard routing: when host clicks a game from inside a private
-  group, all members load into a `group-<code>-<gameId>` shard.
-- A small variant-picker UI when a game advertises
-  `meta.features.variants: [{ id, name, description }]`. (No game
-  implements variants yet — the picker just shows "Standard" until
-  one does.)
-- A "Recent groups" section on the menu so returning players hit
-  the same group fast.
+**Protocol:**
+- `parseClientMessage` accepts `set_ready` (with optional `pid`),
+  `set_group`, and `launch_game` `variant`. `join` carries `isGroup`
+  through.
+- All fields sanitized — `cleanId` / `cleanBool` gates, malformed
+  values silently stripped (rest of message survives).
 
-Estimate: ~2 long arcs of work. Server is mostly there; bulk of
-remaining work is client UI for group lifecycle + variant picker.
+**Server:**
+- New `set_group` handler (host-only, between games). Flipping ON also
+  auto-publicizes the room and clears ready flags so the next game
+  requires explicit opt-in.
+- Room broadcast now includes `hostId` so the client can label
+  "Recent groups" chips with the host's name.
+
+**Games / catalogue:**
+- `GameFeatures.variants?: ReadonlyArray<{ id, name, description? }>`
+  — optional opt-in catalogue. Skyjo ships `"standard"` + `"sprint"`
+  as a demo. (Gameplay branching deferred — the picker UI is real;
+  no game module actually reads `state.variant` yet.)
+
+**Client:**
+- `hostGroup()` spins a `GROUP-XXXXXX` code and lands the user in a
+  persistent group room (auto-public, ready-gated).
+- `toggleGroupRoom(true/false)` in the room screen lets a host flip
+  the room into/out of group mode. Quick-play rooms can't be
+  converted (ephemeral by design — spin a new group instead).
+- `hostLaunchGame(id)` opens a variant picker (re-uses the rules
+  overlay shell) when a game advertises variants; otherwise launches
+  direct like before.
+- Public list visually distinguishes group rooms with a "Group" tag
+  and a users icon.
+- Room visibility line flags group rooms separately ("Group · …").
+
+**Identity:**
+- `recordGroup` / `getRecentGroups` / `forgetGroup` /
+  `clearRecentGroups`. LRU-cap to 8 entries. No PII stored — just
+  the room code + a friendly label (host name) + lastSeen.
+- Identity-UI renders a "Recent Groups" chip row with one-tap rejoin
+  and per-chip forget.
+- New "Host a Group" button on the online setup screen.
+
+**21 new tests** in `w6-part2.test.ts` — protocol parser end-to-end,
+server handler markers, types, identity, client wiring.
+
+---
+
+**Group-shard routing decision:** I evaluated adding `group-<code>-<gameId>`
+shards as a separate routing layer but landed on the simpler design:
+a group room IS the shard. When the host launches a game from a group
+lobby, everyone is already in the same Durable Object — they just
+transition from lobby → game state in-place. `to_room` returns them
+to the group lobby (already wired, with ready flags cleared). The
+group code itself works as the invite link; the same room survives
+across many games. This is what the part 1 brief was really asking
+for once the persistence-across-games question was answered.
 
 ---
 
 ## State of the codebase
 
-- **315 tests** across 29 files (+89 in this session)
+- **336 tests** across 30 files (+110 in this session)
 - **3 JSDOM smokes** (client, replay, landing) — all green
 - **1 Playwright browser smoke** — green
-- **GH Actions CI** runs on every push; latest run green on `8d24665`
+- **GH Actions CI** runs on every push; latest run green on `df44271`
 - **Cloudflare Workers Build** — green on `main`
 
 ---
