@@ -73,7 +73,7 @@ async function bootPage(page, baseUrl) {
     if (msg.type() === 'error') consoleErrors.push(`console.${msg.type()}: ${msg.text()}`);
   });
   await page.goto(baseUrl, { waitUntil: 'networkidle' });
-  await page.locator('button:has-text("Local (Pass & Play)")').click();
+  await page.locator('button:has-text("Pass & Play")').click();
   await page.waitForSelector('#localPick.active');
   return consoleErrors;
 }
@@ -99,7 +99,7 @@ async function runDesktopSuite(browser, baseUrl) {
   assert(await page.locator('[data-f7-seat]').count() === 0, 'Desktop: Flip7 board nodes leaked back after quitting mid-animation');
   await screenshot(page, 'desktop-after-flip7-quit');
 
-  await page.locator('button:has-text("Local (Pass & Play)")').click();
+  await page.locator('button:has-text("Pass & Play")').click();
   await configureLocal(page, 'skyjo', [
     { name: 'P1', bot: false },
     { name: 'P2', bot: false },
@@ -140,7 +140,7 @@ async function runMobileSuite(browser, baseUrl) {
   page.once('dialog', (d) => d.accept());
   await page.locator('#gameScreen .game-topbar .icon-btn').first().click();
   await page.waitForSelector('#menuScreen.active');
-  await page.locator('button:has-text("Local (Pass & Play)")').click();
+  await page.locator('button:has-text("Pass & Play")').click();
 
   await configureLocal(page, 'flip7', [
     { name: 'H1', bot: false },
