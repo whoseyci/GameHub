@@ -5,6 +5,177 @@
  * for visual consistency, then layers a wider, denser layout on top.
  */
 
+/* ─── UX redesign Phase 1 ─────────────────────────────────────────────
+ * Sticky mode header lives ABOVE every menu/lobby screen. Hidden when
+ * the active screen is #gameScreen so the game gets full viewport
+ * (Mode.applyHeaderVisibility() also toggles `body.in-game` for safety).
+ * The header is sticky-to-viewport (position:fixed) so it never scrolls
+ * away — the per-screen content scrolls beneath it.
+ */
+:root{ --mode-header-h: 56px; }
+.mode-header{
+  position:fixed;
+  top:0; left:0; right:0;
+  z-index:50;
+  background:rgba(15,23,42,.92);
+  backdrop-filter:blur(8px) saturate(140%);
+  -webkit-backdrop-filter:blur(8px) saturate(140%);
+  border-bottom:1px solid var(--border);
+  height:var(--mode-header-h);
+  display:flex;
+  flex-direction:column;
+  align-items:stretch;
+  justify-content:flex-start;
+}
+.mode-header.hidden{ display:none; }
+body.in-game .mode-header{ display:none; }
+.mode-header-inner{
+  display:flex;
+  align-items:center;
+  gap:12px;
+  height:var(--mode-header-h);
+  padding:0 14px;
+  max-width:1080px;
+  margin:0 auto;
+  width:100%;
+}
+.mode-header-brand{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  font-weight:900;
+  letter-spacing:.02em;
+  color:var(--text);
+  flex:0 0 auto;
+}
+.mode-header-logo{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  width:30px; height:30px;
+  border-radius:9px;
+  background:linear-gradient(135deg, var(--accent), #6366f1);
+  color:#fff;
+}
+.mode-header-title{ font-size:1.05rem; }
+@media(max-width:520px){ .mode-header-title{ display:none; } }
+
+.mode-toggle{
+  display:inline-flex;
+  background:rgba(255,255,255,.05);
+  border:1px solid var(--border);
+  border-radius:999px;
+  padding:3px;
+  margin:0 auto;
+  gap:2px;
+}
+.mode-toggle-btn{
+  appearance:none;
+  background:transparent;
+  border:0;
+  color:var(--text-dim);
+  font-weight:800;
+  font-size:.88rem;
+  padding:6px 14px;
+  border-radius:999px;
+  cursor:pointer;
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  transition:background .15s, color .15s;
+}
+.mode-toggle-btn:hover{ color:var(--text); }
+.mode-toggle-btn.on{
+  background:var(--accent);
+  color:#fff;
+  box-shadow:0 2px 8px rgba(59,130,246,.35);
+}
+.mode-toggle-icon{ display:inline-flex; }
+
+.mode-header-actions{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  flex:0 0 auto;
+}
+.mode-header-action{
+  appearance:none;
+  background:rgba(255,255,255,.05);
+  border:1px solid var(--border);
+  color:var(--text);
+  font-weight:800;
+  font-size:.85rem;
+  padding:7px 12px;
+  border-radius:10px;
+  cursor:pointer;
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  transition:background .15s, border-color .15s;
+}
+.mode-header-action:hover{ background:rgba(255,255,255,.1); border-color:var(--text-dim); }
+
+/* ─── Group picker dropdown ─────────────────────────────────────────── */
+.group-picker{
+  position:absolute;
+  top:var(--mode-header-h);
+  right:14px;
+  width:min(340px, calc(100vw - 28px));
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-top:0;
+  border-radius:0 0 14px 14px;
+  box-shadow:0 12px 32px rgba(0,0,0,.4);
+  z-index:51;
+}
+.group-picker.hidden{ display:none; }
+.group-picker-inner{
+  display:flex;
+  flex-direction:column;
+  gap:14px;
+  padding:14px;
+}
+.group-picker-action{ margin:0; }
+.group-picker-section{ display:flex; flex-direction:column; gap:6px; }
+.group-picker-label{
+  font-size:.7rem;
+  font-weight:800;
+  letter-spacing:.06em;
+  text-transform:uppercase;
+  color:var(--text-dim);
+}
+.group-picker-recents{
+  display:flex;
+  flex-wrap:wrap;
+  gap:6px;
+  min-height:24px;
+}
+.group-picker-recents .empty{
+  color:var(--text-dim);
+  font-size:.78rem;
+  font-style:italic;
+}
+.group-picker-recent-chip{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  background:var(--bg);
+  border:1px solid var(--border);
+  border-radius:999px;
+  padding:5px 10px;
+  font-size:.8rem;
+  font-weight:700;
+  cursor:pointer;
+}
+.group-picker-recent-chip:hover{ border-color:var(--accent); }
+.group-picker-join{ display:flex; gap:6px; }
+.group-picker-input{ margin:0 !important; flex:1; }
+.group-picker-join-btn{ margin:0; flex:0 0 auto; padding:0 14px; }
+
+/* Push every non-game screen below the sticky header. */
+body:not(.in-game) .screen{ padding-top:calc(var(--mode-header-h) + 6px); }
+body:not(.in-game) .landing-screen{ padding-top:var(--mode-header-h) !important; }
+
 .landing-screen{
   /* Override the default centred-and-tight screen layout: the landing wants
      full width, top-aligned scroll, and air to breathe. */

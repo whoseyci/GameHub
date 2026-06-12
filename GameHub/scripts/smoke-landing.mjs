@@ -98,6 +98,33 @@ async function run() {
   assert(stats, 'landingStatLive missing');
   assert(stats.textContent && stats.textContent.length > 0, 'landingStatLive empty');
 
+  // ── UX redesign Phase 1: mode header ──
+  // Header is mounted, default mode is local (button has .on), and the
+  // body does NOT yet have the in-game class.
+  const modeHeader = window.document.getElementById('modeHeader');
+  assert(modeHeader, '#modeHeader missing');
+  assert(!modeHeader.classList.contains('hidden'), 'mode header is hidden on landing');
+  const localBtn = window.document.getElementById('modeBtnLocal');
+  const onlineBtn = window.document.getElementById('modeBtnOnline');
+  assert(localBtn?.classList.contains('on'), 'mode toggle: Local should be default-on');
+  assert(!onlineBtn?.classList.contains('on'), 'mode toggle: Online should be off by default');
+  assert(!window.document.body.classList.contains('in-game'), 'body.in-game set on landing');
+  // Flipping mode updates the buttons + persists.
+  window.Mode.set('online');
+  assert(onlineBtn.classList.contains('on'), 'flipping to Online did not paint the button');
+  assert(!localBtn.classList.contains('on'), 'Local stayed on after switch to Online');
+  assert(window.localStorage.getItem('gh.mode') === 'online', 'mode did not persist');
+  window.Mode.set('local'); // reset for the rest of the smoke
+
+  // Group picker opens / closes via the API.
+  const picker = window.document.getElementById('groupPicker');
+  assert(picker, 'groupPicker missing');
+  assert(picker.classList.contains('hidden'), 'groupPicker should start hidden');
+  window.GroupPicker.open();
+  assert(!picker.classList.contains('hidden'), 'GroupPicker.open did not show');
+  window.GroupPicker.close();
+  assert(picker.classList.contains('hidden'), 'GroupPicker.close did not hide');
+
   // ── "Play vs Bot" actually starts a game ──
   // Click the first bot button (skyjo by alphabetical/registry order) and
   // verify we end up on the game screen with a local engine running.
@@ -107,9 +134,12 @@ async function run() {
   await sleep(40);
   const gameScreen = window.document.getElementById('gameScreen');
   assert(gameScreen?.classList.contains('active'), 'gameScreen did not activate after Play vs Bot');
+  // After entering the game, mode header hides and body gets .in-game.
+  assert(window.document.body.classList.contains('in-game'), 'body.in-game not set after entering game screen');
+  assert(modeHeader.classList.contains('hidden'), 'mode header still visible inside the game');
 
   if (errors.length) throw new Error(`Errors during landing smoke:\n${errors.join('\n')}`);
-  console.log(`Landing smoke OK: ${tiles.length} tiles · instant-bot start works · identity panel rendered`);
+  console.log(`Landing smoke OK: ${tiles.length} tiles · instant-bot start works · identity panel rendered · mode header behaves`);
 }
 
 await run();

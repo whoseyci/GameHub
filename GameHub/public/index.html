@@ -16,6 +16,56 @@
 <body>
 <div id="app">
 
+  <!--
+    UX REDESIGN — sticky mode header.
+    Always visible on menu / lobby screens; hidden whenever the active screen
+    is the game screen (CSS rule below + Mode.applyHeaderVisibility()).
+    Owns the Local↔Online toggle (default Local) and the Group button picker.
+    Phase 1: header DOM + Mode module + persistence. No flow changes yet —
+    flipping the toggle just persists `gh.mode`; landing tiles still do what
+    they used to.
+  -->
+  <div id="modeHeader" class="mode-header" role="banner">
+    <div class="mode-header-inner">
+      <div class="mode-header-brand">
+        <span class="mode-header-logo" aria-hidden="true" data-icon="dice" data-icon-size="22"></span>
+        <span class="mode-header-title">GameHub</span>
+      </div>
+      <div class="mode-toggle" role="tablist" aria-label="Play mode">
+        <button id="modeBtnLocal" class="mode-toggle-btn on" role="tab" aria-selected="true" onclick="Mode.set('local')">
+          <span data-icon="users" data-icon-size="14" class="mode-toggle-icon"></span>Local
+        </button>
+        <button id="modeBtnOnline" class="mode-toggle-btn" role="tab" aria-selected="false" onclick="Mode.set('online')">
+          <span data-icon="globe" data-icon-size="14" class="mode-toggle-icon"></span>Online
+        </button>
+      </div>
+      <div class="mode-header-actions">
+        <button id="groupBtn" class="mode-header-action" onclick="GroupPicker.toggle()" title="Groups">
+          <span data-icon="users" data-icon-size="16" class="mode-toggle-icon"></span>Group
+        </button>
+      </div>
+    </div>
+    <!-- Group picker dropdown (hidden by default; toggled by GroupPicker). -->
+    <div id="groupPicker" class="group-picker hidden" role="dialog" aria-label="Groups">
+      <div class="group-picker-inner">
+        <button class="btn green group-picker-action" onclick="GroupPicker.createNew()">
+          <span data-icon="users" data-icon-size="14" class="mode-toggle-icon"></span>Create new group
+        </button>
+        <div class="group-picker-section">
+          <div class="group-picker-label">Recent groups</div>
+          <div id="groupPickerRecents" class="group-picker-recents"></div>
+        </div>
+        <div class="group-picker-section">
+          <div class="group-picker-label">Join by code</div>
+          <div class="group-picker-join">
+            <input id="groupPickerCode" class="input group-picker-input" placeholder="e.g. GROUP-AB12CD" maxlength="64" autocomplete="off">
+            <button class="btn group-picker-join-btn" onclick="GroupPicker.joinByCode()">Join</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Menu / Landing -->
   <div id="menuScreen" class="screen active landing-screen">
     <div class="landing-wrap">
@@ -226,6 +276,10 @@
 <script src="/js/00-identity.js"></script>
 <script src="/js/00-core.js"></script>
 <script src="/js/00-icons.js"></script>
+<!-- UX redesign Phase 1: sticky mode header + group picker.
+     Loaded after 00-core.js (needs showScreen) and after 00-icons.js
+     (header buttons use data-icon mount). -->
+<script src="/js/00-mode.js"></script>
 <script src="/js/00-kit-turn.js"></script>
 <script src="/js/00-kit-passplay.js"></script>
 <script src="/js/00-kit-layout.js"></script>
