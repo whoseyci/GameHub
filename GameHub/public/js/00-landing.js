@@ -20,31 +20,54 @@
   function renderTiles() {
     const container = $('landingGameTiles');
     if (!container || !window.GameCatalogue) return;
-    // Per-game emoji from meta still shown on the tile face — it's the game's
-    // identity glyph, not a UI control. UI control buttons use Kit.Icon.
+    // UX redesign Phase 3: tiles are mode-aware. The whole tile is one
+    // big clickable surface — clicking it does the right thing based on
+    // the current Mode (Local → instant vs bot; Online → quick-play).
+    // The only secondary action is a small "?" rules button that
+    // doesn't trigger the tile click. We removed the per-tile buttons
+    // (Play Online / vs Bot / Rules) — the user picks intent ONCE in
+    // the header toggle, then every tile inherits that intent.
     container.innerHTML = window.GameCatalogue.map((g) => `
-      <div class="landing-tile" data-game="${esc(g.id)}">
+      <button class="landing-tile" data-game="${esc(g.id)}" type="button" aria-label="Play ${esc(g.name)}">
         <div class="lt-head">
           <div class="lt-emoji">${esc(g.emoji || '')}</div>
-          <div>
+          <div class="lt-titles">
             <div class="lt-title">${esc(g.name)}</div>
             <div class="lt-meta">${esc(g.minPlayers)}–${esc(g.maxPlayers)} players</div>
           </div>
           <!-- W6: per-game live count chip. Populated by renderTileCounts()
                from the lobby socket; hidden when there's nothing to show. -->
           <div class="lt-counts" data-counts="${esc(g.id)}" hidden></div>
+          <!-- Rules helper. data-rules-for prevents bubbling to the tile
+               click handler; openRules opens a self-contained overlay. -->
+          <span class="lt-rules" data-rules-for="${esc(g.id)}" title="How to play" tabindex="0" role="button" aria-label="${esc(g.name)} rules">?</span>
         </div>
         <div class="lt-desc">${esc(g.description || '')}</div>
-        <div class="lt-actions">
-          <button class="ltbtn primary" data-act="quick" data-game="${esc(g.id)}">${Kit.Icon.html('rocket',{size:14,cls:'kit-icon-inline'})}Play Online</button>
-          <button class="ltbtn ghost" data-act="bot" data-game="${esc(g.id)}">${Kit.Icon.html('robot',{size:14,cls:'kit-icon-inline'})}vs Bot</button>
-          <button class="ltbtn ghost" data-act="rules" data-game="${esc(g.id)}">${Kit.Icon.html('book',{size:14,cls:'kit-icon-inline'})}Rules</button>
-        </div>
-      </div>
+        <div class="lt-cta" data-cta-for="${esc(g.id)}"></div>
+      </button>
     `).join('');
 
-    container.addEventListener('click', onTileClick, { passive: true });
+    container.addEventListener('click', onTileClick);
+    container.addEventListener('keydown', onTileKeydown);
     renderTileCounts();
+    repaintCtas();
+    // Repaint the per-tile CTA labels whenever the user flips mode.
+    if (!_modeSubbed && window.Mode && typeof window.Mode.onChange === 'function') {
+      window.Mode.onChange(repaintCtas);
+      _modeSubbed = true;
+    }
+  }
+
+  let _modeSubbed = false;
+  /** Per-tile CTA chip text: "vs Bot" in Local, "Quick Play" in Online. */
+  function repaintCtas() {
+    const mode = (window.Mode && window.Mode.get && window.Mode.get()) || 'local';
+    const label = mode === 'online'
+      ? `${Kit.Icon.html('rocket', { size: 13, cls: 'kit-icon-inline' })}Quick Play`
+      : `${Kit.Icon.html('robot',  { size: 13, cls: 'kit-icon-inline' })}vs Bot`;
+    for (const slot of document.querySelectorAll('.lt-cta[data-cta-for]')) {
+      slot.innerHTML = label;
+    }
   }
 
   // W6: paint the lt-counts chip on each tile from the latest counts payload.
@@ -71,24 +94,43 @@
   }
 
   function onTileClick(e) {
-    const btn = e.target.closest('button[data-act]');
-    if (!btn) return;
-    const gameId = btn.dataset.game;
-    const act = btn.dataset.act;
-    if (act === 'rules') {
-      if (typeof window.openRules === 'function') window.openRules(gameId);
+    // Rules helper: handled FIRST so it never bubbles to the tile action.
+    const rulesEl = e.target.closest('[data-rules-for]');
+    if (rulesEl) {
+      e.preventDefault();
+      e.stopPropagation();
+      const gid = rulesEl.getAttribute('data-rules-for');
+      if (typeof window.openRules === 'function') window.openRules(gid);
       return;
     }
-    if (act === 'bot') {
-      instantBotPlay(gameId);
-      return;
-    }
-    if (act === 'quick') {
-      // W6: click-to-join quick-play. Hops into the quick-<game>-1 shard;
-      // the room handles fallback to -2 / -3 on full.
-      if (typeof window.ensureName === 'function') window.ensureName();
+    // Tile click → primary mode action.
+    const tile = e.target.closest('.landing-tile[data-game]');
+    if (!tile) return;
+    const gameId = tile.getAttribute('data-game');
+    dispatchTileAction(gameId);
+  }
+  function onTileKeydown(e) {
+    // Treat Enter / Space on the rules "?" as a click (it has role="button").
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    const rulesEl = e.target.closest('[data-rules-for]');
+    if (!rulesEl) return;
+    e.preventDefault();
+    if (typeof window.openRules === 'function') window.openRules(rulesEl.getAttribute('data-rules-for'));
+  }
+
+  /**
+   * Single source of truth for "the user picked a tile". Branches on
+   * the current Mode — Local → instant local game with you + 2 bots;
+   * Online → quick-play queue for that game (sharded room).
+   */
+  function dispatchTileAction(gameId) {
+    if (!gameId) return;
+    const mode = (window.Mode && window.Mode.get && window.Mode.get()) || 'local';
+    if (typeof window.ensureName === 'function') window.ensureName();
+    if (mode === 'online') {
       if (typeof window.quickPlay === 'function') window.quickPlay(gameId);
-      return;
+    } else {
+      instantBotPlay(gameId);
     }
   }
 

@@ -76,11 +76,14 @@ describe("W6 front-door: server contract markers", () => {
     expect(src).toMatch(/isGroup:\s*!!this\.isGroup/);
   });
 
-  it("Landing tiles include a click-to-join (quick-play) action button", async () => {
+  it("Landing tiles route to quick-play when in Online mode (Phase 3 form)", async () => {
     const src = await import("node:fs").then((m) =>
       m.readFileSync("public/js/00-landing.js", "utf8"),
     );
-    expect(src).toMatch(/data-act="quick"/);
+    // Phase 3 collapsed per-tile buttons into one mode-aware click. The
+    // quick-play call is still there — just behind the Mode='online'
+    // branch of dispatchTileAction.
+    expect(src).toMatch(/function\s+dispatchTileAction/);
     expect(src).toMatch(/window\.quickPlay\s*\(/);
   });
 

@@ -291,6 +291,10 @@ body:not(.in-game) .landing-screen{ padding-top:var(--mode-header-h) !important;
   grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));
   gap:12px;
 }
+/* Phase 3: the tile IS the button now. One big clickable surface; the
+   primary action label sits in .lt-cta and updates with Mode (vs Bot
+   in Local, Quick Play in Online). A small "?" badge in the corner
+   opens rules without triggering the tile click. */
 .landing-tile{
   position:relative;
   display:flex; flex-direction:column; gap:6px;
@@ -300,13 +304,25 @@ body:not(.in-game) .landing-screen{ padding-top:var(--mode-header-h) !important;
   background:linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.0));
   text-align:left;
   cursor:pointer;
-  transition:transform .18s var(--spring), border-color .18s, background .18s;
+  transition:transform .18s var(--spring), border-color .18s, background .18s, box-shadow .18s;
+  /* button reset */
+  appearance:none;
+  color:inherit;
+  font:inherit;
+  width:100%;
 }
 .landing-tile:hover{
   transform:translateY(-3px);
   border-color:#8b5cf6;
   background:linear-gradient(180deg, rgba(139,92,246,.10), rgba(255,255,255,.0));
+  box-shadow:0 8px 22px rgba(139,92,246,.18);
 }
+.landing-tile:focus-visible{
+  outline:none;
+  border-color:var(--accent);
+  box-shadow:0 0 0 3px var(--accent-glow);
+}
+.landing-tile:active{ transform:translateY(-1px); }
 .landing-tile .lt-head{
   display:flex; align-items:center; gap:10px;
 }
@@ -344,36 +360,44 @@ body:not(.in-game) .landing-screen{ padding-top:var(--mode-header-h) !important;
   font-size:.85rem; color:var(--text-dim); margin:2px 0 8px;
   line-height:1.4;
 }
-.landing-tile .lt-actions{
-  display:flex; gap:6px; margin-top:auto; flex-wrap:wrap;
+/* Phase 3: one CTA chip anchored to the bottom-right of the tile,
+   label is mode-aware. Replaces the old per-tile action buttons. */
+.landing-tile .lt-titles{ display:flex; flex-direction:column; gap:0; min-width:0; }
+.landing-tile .lt-cta{
+  align-self:flex-end;
+  margin-top:auto;
+  display:inline-flex; align-items:center; gap:6px;
+  padding:9px 14px;
+  border-radius:999px;
+  background:#8b5cf6; color:#fff;
+  font-size:.85rem; font-weight:800;
+  border:1px solid transparent;
+  pointer-events:none; /* the WHOLE tile is the click target — this is decorative */
+  transition:.15s;
+  box-shadow:0 4px 12px rgba(139,92,246,.35);
 }
-.landing-tile .lt-actions .ltbtn{ flex:1 1 0; min-width:0; }
-.landing-tile .lt-actions .ltbtn{
-  flex:1;
-  background:rgba(255,255,255,.05);
+.landing-tile:hover .lt-cta{
+  background:#7c3aed; box-shadow:0 6px 16px rgba(124,58,237,.45);
+}
+.landing-tile .lt-rules{
+  position:absolute; top:8px; right:10px;
+  width:22px; height:22px; border-radius:50%;
+  display:inline-flex; align-items:center; justify-content:center;
+  background:rgba(255,255,255,.06);
+  color:var(--text-dim);
+  font-weight:900; font-size:.78rem;
+  cursor:help;
   border:1px solid var(--border);
-  color:var(--text);
-  padding:9px 10px;
-  border-radius:10px;
-  font-size:.82rem; font-weight:800;
-  cursor:pointer;
   transition:.15s;
 }
-.landing-tile .lt-actions .ltbtn:hover{
-  background:var(--accent); border-color:var(--accent); color:#fff;
+.landing-tile .lt-rules:hover{
+  background:var(--accent); color:#fff; border-color:var(--accent);
 }
-.landing-tile .lt-actions .ltbtn.primary{
-  background:#8b5cf6; border-color:#8b5cf6; color:#fff;
+.landing-tile .lt-rules:focus-visible{
+  outline:2px solid var(--accent); outline-offset:2px;
 }
-.landing-tile .lt-actions .ltbtn.primary:hover{
-  background:#7c3aed; border-color:#7c3aed;
-}
-.landing-tile .lt-actions .ltbtn.ghost{
-  background:transparent;
-}
-.landing-tile .lt-actions .ltbtn.ghost:hover{
-  background:rgba(255,255,255,.06); border-color:var(--text-dim); color:var(--text);
-}
+/* Counts sit BEFORE the rules badge so they don't overlap. */
+.landing-tile .lt-counts{ margin-right:28px; }
 
 /* ─── IDENTITY WRAP ──────────────────────────────────── */
 .landing-identity-wrap{

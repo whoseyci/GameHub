@@ -84,8 +84,11 @@ async function run() {
   assert(tiles.length >= 4, `expected ≥4 landing tiles, got ${tiles.length}`);
   for (const t of tiles) {
     assert(t.querySelector('.lt-title')?.textContent?.trim(), 'tile missing title');
-    assert(t.querySelector('button[data-act="bot"]'), 'tile missing Play vs Bot button');
-    assert(t.querySelector('button[data-act="rules"]'), 'tile missing Rules button');
+    // Phase 3: tile itself is the button; rules helper is a `?` badge.
+    assert(t.tagName === 'BUTTON', `tile is not a <button>: ${t.tagName}`);
+    assert(t.hasAttribute('data-game'), 'tile missing data-game');
+    assert(t.querySelector('[data-rules-for]'), 'tile missing rules helper "?"');
+    assert(t.querySelector('.lt-cta'), 'tile missing CTA chip');
   }
 
   // ── Identity panel ──
@@ -145,15 +148,19 @@ async function run() {
   window.GroupPicker.close();
   assert(picker.classList.contains('hidden'), 'GroupPicker.close did not hide');
 
-  // ── "Play vs Bot" actually starts a game ──
-  // Click the first bot button (skyjo by alphabetical/registry order) and
-  // verify we end up on the game screen with a local engine running.
-  const firstBot = tilesEl.querySelector('button[data-act="bot"]');
-  assert(firstBot, 'no Play vs Bot button to click');
-  firstBot.click();
+  // ── Phase 3: clicking a tile in Local mode starts a vs-bot game ──
+  // (Mode is already set back to 'local' above.) The tile itself is the
+  // button; clicking anywhere on it (except the "?" badge) triggers the
+  // mode-aware action.
+  const firstTile = tilesEl.querySelector('.landing-tile[data-game]');
+  assert(firstTile, 'no landing-tile to click');
+  // Confirm the CTA shows "vs Bot" in Local mode.
+  const cta = firstTile.querySelector('.lt-cta');
+  assert(cta && /vs Bot/i.test(cta.textContent || ''), `Local-mode CTA should say "vs Bot" (got "${cta?.textContent}")`);
+  firstTile.click();
   await sleep(40);
   const gameScreen = window.document.getElementById('gameScreen');
-  assert(gameScreen?.classList.contains('active'), 'gameScreen did not activate after Play vs Bot');
+  assert(gameScreen?.classList.contains('active'), 'gameScreen did not activate after tile click');
   // After entering the game, mode header hides and body gets .in-game.
   assert(window.document.body.classList.contains('in-game'), 'body.in-game not set after entering game screen');
   assert(modeHeader.classList.contains('hidden'), 'mode header still visible inside the game');
