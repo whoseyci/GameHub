@@ -433,7 +433,17 @@
     hasMultiRound: true,
     canSpectate: true,
     minDurationSec: 120,
-    maxDurationSec: 600
+    maxDurationSec: 600,
+    // W6 part 2: variant catalogue. The Skyjo module recognises the variant
+    // string on state.variant (set by the server when launch_game carries it)
+    // but for now both variants play identically — the picker UI is real,
+    // gameplay branching is queued for a future session. Listing "standard"
+    // explicitly so the dropdown has labelled choices instead of a bare
+    // "default vs unknown" toggle.
+    variants: [
+      { id: "standard", name: "Standard", description: "Classic Skyjo to 100 points." },
+      { id: "sprint", name: "Sprint", description: "Same rules, faster finish line (target 50)." }
+    ]
   };
   var Skyjo = {
     meta: {
