@@ -154,14 +154,17 @@ async function runReplayFor(gameId) {
     text: async () => JSON.stringify(bundle),
   });
 
-  // NOW load the replay player — boot() will hit our stubbed fetch.
-  const playerCode = readFileSync(join(root, 'public', playerSrc.slice(1)), 'utf8');
-  const ps = window.document.createElement('script');
-  ps.textContent = playerCode;
-  window.document.body.appendChild(ps);
+  // Load the highlights analyzer alongside the player (replay.html does this
+  // in production via <script src="/js/replay-highlights.js">).
+  for (const rel of ['/js/replay-highlights.js', playerSrc]) {
+    const code = readFileSync(join(root, 'public', rel.slice(1)), 'utf8');
+    const s = window.document.createElement('script');
+    s.textContent = code;
+    window.document.body.appendChild(s);
+  }
 
-  // Give the player time to fetch + rehydrate + render.
-  await sleep(120);
+  // Give the player time to fetch + rehydrate + render + run highlight analysis.
+  await sleep(200);
 
   // The player should have populated scrubber UI and rendered a frame.
   const scrub = window.document.getElementById('replayScrub');

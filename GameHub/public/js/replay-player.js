@@ -61,6 +61,7 @@
   let playing = false;
   let frameDelayMs = 1000;
   let playTimer = null;
+  let highlights = [];        // [{frame, kind, score, seat, label}] from Kit.Highlights
 
   // Rebuild state from scratch by deep-cloning initialState and replaying
   // actions[0..targetCursor]. The engines are fast enough that this is
@@ -132,10 +133,121 @@
       $('actionLabel').textContent = 'Initial deal';
     }
     $('playBtn').textContent = playing ? '⏸' : '▶';
-    // Disable next/play at end
     const atEnd = cursor >= total;
     $('playBtn').disabled = atEnd && !playing;
+    // Highlight label: show whenever the cursor lands on a highlight frame.
+    const here = highlights.find((h) => h.frame === cursor);
+    const lbl = $('hlLabel');
+    if (lbl) {
+      if (here) { lbl.textContent = `✨ ${here.label}`; lbl.style.display = ''; }
+      else { lbl.style.display = 'none'; }
+    }
+    const btn = $('hlBtn');
+    if (btn) btn.style.display = highlights.length ? '' : 'none';
   }
+
+  function renderHighlightPips() {
+    const container = $('replayHighlights');
+    if (!container || !bundle) return;
+    container.innerHTML = '';
+    const total = bundle.actions.length;
+    if (!total) return;
+    for (const h of highlights) {
+      const pip = document.createElement('div');
+      pip.className = `hl-pip kind-${h.kind}`;
+      pip.style.left = `${(h.frame / total) * 100}%`;
+      pip.title = h.label;
+      pip.addEventListener('click', () => { pause(); rebuildTo(h.frame); renderFrame(); });
+      container.appendChild(pip);
+    }
+  }
+
+  // ─── What-if simulator ────────────────────────────────────────────────
+  let whatifWorker = null;
+  window.runWhatIf = function () {
+    if (!bundle || !state) return;
+    const btn = $('whatifBtn');
+    const resultEl = $('whatifResult');
+    if (!btn || !resultEl) return;
+    if (whatifWorker) { try { whatifWorker.terminate(); } catch {} whatifWorker = null; }
+    btn.disabled = true;
+    btn.textContent = '🎲 Simulating…';
+    resultEl.style.display = 'none';
+    try {
+      whatifWorker = new Worker('/js/whatif-worker.js');
+    } catch (e) {
+      btn.disabled = false; btn.textContent = '🎲 What-if?';
+      console.warn('Worker unavailable', e);
+      return;
+    }
+    whatifWorker.onmessage = (e) => {
+      const m = e.data || {};
+      if (m.type === 'progress') {
+        btn.textContent = `🎲 ${m.done}/${m.total}`;
+      } else if (m.type === 'done') {
+        btn.disabled = false; btn.textContent = '🎲 What-if?';
+        renderWhatIf(m);
+        whatifWorker.terminate(); whatifWorker = null;
+      } else if (m.type === 'error') {
+        btn.disabled = false; btn.textContent = '🎲 What-if?';
+        resultEl.style.display = '';
+        resultEl.innerHTML = `<div class="wf-head">What-if</div><div style="color:#fca5a5">${escapeHtml(m.message)}</div>`;
+        whatifWorker.terminate(); whatifWorker = null;
+      }
+    };
+    whatifWorker.onerror = (e) => {
+      btn.disabled = false; btn.textContent = '🎲 What-if?';
+      console.warn('whatif worker error', e);
+    };
+    // Send a JSON-cloneable snapshot of current state.
+    whatifWorker.postMessage({
+      type: 'run',
+      gameId: bundle.gameId,
+      state: JSON.parse(JSON.stringify(state)),
+      simCount: 100,
+      maxDepth: 400,
+    });
+  };
+
+  function escapeHtml(s){return String(s).replace(/[&<>"']/g,(c)=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+
+  function renderWhatIf(m) {
+    const resultEl = $('whatifResult');
+    if (!resultEl) return;
+    const names = bundle.names || [];
+    const rates = m.winRates || [];
+    const rows = rates.map((r, i) => `
+      <div class="wf-row">
+        <span class="wf-name">${escapeHtml(names[i] || ('Seat ' + i))}</span>
+        <span class="wf-bar"><span class="wf-bar-fill" style="width:${Math.round(r*100)}%"></span></span>
+        <span class="wf-pct">${Math.round(r * 100)}%</span>
+      </div>
+    `).join('');
+    const drawPct = Math.round((m.draws / m.plays) * 100);
+    resultEl.innerHTML = `
+      <div class="wf-head">If we played from here ${m.plays}× …</div>
+      ${rows}
+      <div class="wf-foot">avg game length: ${m.avgSteps} steps${drawPct > 0 ? ` · ${drawPct}% draws/stalemates` : ''}</div>
+    `;
+    resultEl.style.display = '';
+  }
+
+  // W key: run what-if at current frame.
+  document.addEventListener('keydown', (e) => {
+    if (e.target && /input|textarea|select/i.test(e.target.tagName)) return;
+    if (e.key === 'w' || e.key === 'W') { e.preventDefault(); window.runWhatIf(); }
+  });
+
+  window.jumpHighlight = function (dir) {
+    if (!highlights.length) return;
+    pause();
+    const seq = dir >= 0
+      ? highlights.find((h) => h.frame > cursor)
+      : [...highlights].reverse().find((h) => h.frame < cursor);
+    const target = seq ? seq.frame : (dir >= 0 ? highlights[0].frame : highlights[highlights.length - 1].frame);
+    rebuildTo(target);
+    renderFrame();
+  };
 
   // ─── Scrubber controls (window-scoped so the inline onclicks work) ───
   window.step = function step(delta) {
@@ -219,6 +331,8 @@
     else if (e.key === ' ') { e.preventDefault(); window.togglePlay(); }
     else if (e.key === 'Home') { e.preventDefault(); window.seekStart(); }
     else if (e.key === 'End') { e.preventDefault(); window.seekEnd(); }
+    else if (e.key === 'h' || e.key === 'H') { e.preventDefault(); window.jumpHighlight(1); }
+    else if (e.key === 'g' || e.key === 'G') { e.preventDefault(); window.jumpHighlight(-1); }
   });
 
   // ─── Bootstrap ───────────────────────────────────────────────────────
@@ -273,6 +387,17 @@
     renderFrame();
     $('replayControls').style.display = 'flex';
     $('replayScrub').addEventListener('input', onScrubInput);
+
+    // Compute highlights asynchronously so the first paint isn't blocked.
+    setTimeout(() => {
+      try {
+        if (window.Kit?.Highlights?.analyze) {
+          highlights = window.Kit.Highlights.analyze(bundle, { max: 8 });
+          renderHighlightPips();
+          updateScrubUI();
+        }
+      } catch (e) { console.warn('highlight analysis failed', e); }
+    }, 60);
   }
 
   // Wait for game modules to be on window (scripts above us are synchronous,

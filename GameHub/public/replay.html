@@ -57,6 +57,40 @@
   border-top:1px solid var(--border);
 }
 .replay-scrub-wrap{ position:relative; height:18px; display:flex; align-items:center; }
+.replay-highlights{ position:absolute; left:0; right:0; top:50%; transform:translateY(-50%); height:10px; pointer-events:none; }
+.replay-highlights .hl-pip{
+  position:absolute; top:50%; transform:translate(-50%, -50%);
+  width:6px; height:10px; border-radius:2px;
+  background:#fbbf24; box-shadow:0 0 6px rgba(251,191,36,.7);
+  pointer-events:auto; cursor:pointer;
+  transition:transform .15s;
+}
+.replay-highlights .hl-pip.kind-win{ background:#10b981; box-shadow:0 0 8px rgba(16,185,129,.7); width:7px; height:12px; }
+.replay-highlights .hl-pip.kind-lead{ background:var(--replay-accent); box-shadow:0 0 6px rgba(167,139,250,.7); }
+.replay-highlights .hl-pip.kind-loss{ background:#f87171; box-shadow:0 0 6px rgba(248,113,113,.7); }
+.replay-highlights .hl-pip:hover{ transform:translate(-50%,-50%) scaleY(1.5); }
+.hl-label{
+  margin-top:4px;
+  font-size:.78rem; font-weight:700;
+  color:var(--text); text-align:center;
+  padding:6px 10px; border-radius:8px;
+  background:linear-gradient(90deg, rgba(251,191,36,.18), rgba(167,139,250,.18));
+  border:1px solid rgba(251,191,36,.35);
+}
+.whatif-wrap{ margin-top:4px; display:flex; flex-direction:column; gap:6px; align-items:center; }
+.whatif-result{
+  width:100%; max-width:520px;
+  padding:10px 12px; border-radius:10px;
+  background:rgba(167,139,250,.08); border:1px solid rgba(167,139,250,.35);
+  font-size:.78rem; color:var(--text);
+}
+.whatif-result .wf-head{ font-weight:700; margin-bottom:6px; color:var(--replay-accent); letter-spacing:.04em; text-transform:uppercase; font-size:.7rem; }
+.whatif-result .wf-row{ display:flex; align-items:center; gap:8px; padding:2px 0; }
+.whatif-result .wf-name{ width:90px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:700; }
+.whatif-result .wf-bar{ flex:1; height:8px; border-radius:999px; background:rgba(255,255,255,.06); overflow:hidden; position:relative; }
+.whatif-result .wf-bar-fill{ height:100%; background:linear-gradient(90deg, var(--replay-accent), #60a5fa); transition:width .6s var(--spring); }
+.whatif-result .wf-pct{ width:50px; text-align:right; font-family:'SF Mono', Menlo, monospace; font-weight:700; font-size:.74rem; }
+.whatif-result .wf-foot{ margin-top:4px; color:var(--text-dim); font-size:.7rem; font-weight:600; }
 .replay-scrub{
   -webkit-appearance:none; appearance:none;
   width:100%; height:6px; background:rgba(255,255,255,.08); border-radius:999px;
@@ -183,10 +217,13 @@
   <div class="replay-controls" id="replayControls" style="display:none">
     <div class="replay-scrub-wrap">
       <input type="range" id="replayScrub" class="replay-scrub" min="0" max="0" value="0" step="1">
+      <!-- Highlight pips overlaid on the scrubber track (positioned by JS). -->
+      <div id="replayHighlights" class="replay-highlights" aria-hidden="true"></div>
     </div>
     <div class="replay-bar-row">
       <span class="frame" id="frameLabel">0 / 0</span>
       <span class="action" id="actionLabel"></span>
+      <button class="ghost-btn" id="hlBtn" onclick="jumpHighlight(1)" title="Jump to next highlight (H)" style="font-size:.74rem;padding:4px 8px">✨ Next</button>
       <select class="speed" id="speedSelect" onchange="setSpeed(this.value)">
         <option value="2000">0.5×</option>
         <option value="1000" selected>1×</option>
@@ -197,10 +234,18 @@
     </div>
     <div class="replay-btns">
       <button class="replay-btn" onclick="seekStart()" title="Jump to start">⏮</button>
-      <button class="replay-btn" onclick="step(-1)" title="Previous action">◀</button>
-      <button class="replay-btn play" id="playBtn" onclick="togglePlay()" title="Play/Pause">▶</button>
-      <button class="replay-btn" onclick="step(1)" title="Next action">▶|</button>
+      <button class="replay-btn" onclick="step(-1)" title="Previous action (←)">◀</button>
+      <button class="replay-btn play" id="playBtn" onclick="togglePlay()" title="Play/Pause (Space)">▶</button>
+      <button class="replay-btn" onclick="step(1)" title="Next action (→)">▶|</button>
       <button class="replay-btn" onclick="seekEnd()" title="Jump to end">⏭</button>
+    </div>
+    <!-- Current highlight label (populated when cursor lands on a highlight frame) -->
+    <div id="hlLabel" class="hl-label" style="display:none"></div>
+    <!-- What-if simulator: pops up a per-seat win-probability bar after running
+         N random-legal playouts in a Web Worker from the current frame. -->
+    <div class="whatif-wrap">
+      <button class="ghost-btn" id="whatifBtn" onclick="runWhatIf()" title="Simulate the rest from here (W)">🎲 What-if?</button>
+      <div id="whatifResult" class="whatif-result" style="display:none"></div>
     </div>
   </div>
 
@@ -256,7 +301,8 @@
 <script src="/js/games/schotten.js"></script>
 <script src="/js/05-bots-init.js"></script>
 
-<!-- Replay player -->
+<!-- Replay analysis + player -->
+<script src="/js/replay-highlights.js"></script>
 <script src="/js/replay-player.js"></script>
 </body>
 </html>
