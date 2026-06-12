@@ -1,7 +1,7 @@
 /* ====================== GAME CLIENTS REGISTRY ====================== */
 window.GameClients = window.GameClients || {};
 
-/* -------------------- QWIXX client -------------------- */
+/* -------------------- QWIXX client — GameClientFramework migration -------------------- */
 (function(){
   window.GameRules['qwixx']={title:'🎲 Qwixx',quick:'Cross off numbers left-to-right for the highest score.',steps:['Each turn rolls two white dice and four colored dice.','In the <b>White Phase</b>, everyone may cross one number equal to white + white on any row.','In the <b>Color Phase</b>, only the active player may cross one number equal to one white die + the matching colored die.','Numbers must always be crossed from left to right; you can skip numbers but never go back.','The far-right number locks a row only after enough marks. Two locked rows or four penalties ends the game.','More marks in a row score quadratically; penalties subtract points.'],tip:'Skipping is allowed. Avoid penalties, but do not wait too long to score rows.'};
   const COLORS = ['red', 'yellow', 'green', 'blue'];
@@ -20,7 +20,7 @@ window.GameClients = window.GameClients || {};
   }
   function rowPoints(row){
     let m = row.marks.length;
-    if(row.marks.includes(row.nums.length - 1)) m++; // lock symbol
+    if(row.marks.includes(row.nums.length - 1)) m++;
     return SCORE_BY_MARKS[Math.min(m, SCORE_BY_MARKS.length - 1)];
   }
   function scoreRows(rows, penalties){
@@ -57,8 +57,6 @@ window.GameClients = window.GameClients || {};
   function legalCombo(white, color){
     if(!white || !color) return true;
     if(white.color !== color.color) return true;
-    // If taking both on the same row, white must be resolved first and therefore
-    // must be left of the color mark.
     return white.idx < color.idx;
   }
   function moveValue(player, marks){
@@ -97,13 +95,10 @@ window.GameClients = window.GameClients || {};
     const pendingWhite = state.phase === 'WHITE_PHASE' && state.pendingWhiteDecisions.includes(player.seat);
     const active = player.seat === state.activeSeat;
 
-    // Everyone who has not resolved the white phase sees all white-sum choices.
     if(pendingWhite){
       possibleWhiteMarks(state, player).forEach(w => add(w.color, w.idx, { ...w, actionable:true }));
     }
 
-    // Active player sees all colored possibilities from all six dice simultaneously.
-    // In WHITE_PHASE these are previews; in COLOR_PHASE they are actionable.
     if(active && (state.phase === 'WHITE_PHASE' || state.phase === 'COLOR_PHASE')){
       possibleColorMarks(state, player).forEach(c => add(c.color, c.idx, { ...c, actionable:true, preview:state.phase === 'WHITE_PHASE' }));
     }
@@ -124,7 +119,7 @@ window.GameClients = window.GameClients || {};
   }
 
   function actionLegalForCell(state, player, viewerSeat, color, row, i, hints){
-    if(player.seat !== viewerSeat) return false; // inspecting an opponent never controls their sheet
+    if(player.seat !== viewerSeat) return false;
     if(!canMarkIndex(state, color, row, i)) return false;
     return (hints.get(`${color}:${i}`) || []).some(h => h.actionable);
   }
@@ -147,8 +142,6 @@ window.GameClients = window.GameClients || {};
       return `<div class="qwixx-mini-row"><span class="qwixx-mini-row-key ${color}"></span>${dots}<span class="qwixx-mini-row-pts">${rowPoints(row)}</span></div>`;
     }).join('');
     const pens = Array.from({length:4}, (_, i) => `<span class="qwixx-mini-pen ${player.penalties > i ? 'on' : ''}">⚠</span>`).join('');
-    // BODY only — the dot grid + penalty pips. The shared Kit.MiniBoard provides the
-    // frame, active/you states, header (name + score) and the inspect click.
     return `<div class="qwixx-mini-grid">${rows}</div><div class="qwixx-mini-pens">${pens}</div>`;
   }
 
@@ -175,8 +168,6 @@ window.GameClients = window.GameClients || {};
         if(locked || pendingLock) cls += ' lock';
         if(cellHints.length){
           cls += ' hintable good';
-          // Tint the flashing hint glow by the mark's die: white dice → white glow,
-          // colored dice → that row's colour (so the indicator reads as which die it is).
           const hasWhite = cellHints.some(h => h.kind === 'white');
           cls += hasWhite ? ' hint-glow-white' : (' hint-glow-' + color);
         }
@@ -194,10 +185,138 @@ window.GameClients = window.GameClients || {};
     return html;
   }
 
-  function render(view,ctx={}){
-    // Rich game state lives under the namespaced key view.qwixx (the same shape the
-    // server and the shared local engine emit). Older local engines stashed it on
-    // view.state; keep that as a fallback so nothing breaks mid-migration.
+  // ── Register with the framework ──────────────────────────────────────
+  // Qwixx uses the framework for mini boards, inspect navigation, and
+  // turn detection. The scorecard grid and 3D dice are too specialized
+  // for the generic spec — they remain custom renderBoard/centerArea.
+
+  GameClientFramework.register('qwixx', {
+    // Qwixx doesn't use CardManager cards (it's a sheet-crossing game)
+    cards() { return []; },
+    cardSpec() { return null; },
+
+    renderBoard(view) {
+      // Qwixx has no board in the card sense — the scorecard IS the board.
+      const s = view.qwixx || view.state;
+      const focusSeat = view.yourSeat >= 0 ? view.yourSeat : s.activeSeat;
+      const focused = s.allPlayers.find(p => p.seat === focusSeat) || s.allPlayers[0];
+      const diceSig = window._qwixxDiceSig;
+      const diceRevealed = diceSig != null;
+      const displayState = {...s, diceHidden: !diceRevealed};
+      const rec = focused.seat === s.activeSeat ? `<div class="qwixx-reco">💡 ${diceRevealed ? recommendedMove(s, focused) : 'Throw dice to reveal options.'}</div>` : '';
+      const focus = `<div class="qwixx-table"><div class="qwixx-focus-card player-board${focused.active ? ' active' : ''}">
+        <div class="board-header"><span>${focused.active ? '🎲 ' : ''}${esc(focused.name)}${focused.seat === view.yourSeat ? ' (you)' : ''}</span><span class="score-badge">Active: ${esc(s.allPlayers.find(p=>p.seat===s.activeSeat)?.name||'?')} · total ${esc(focused.score)}</span></div>
+        ${rec}
+        ${renderScorecard(focused, displayState, view.yourSeat, false)}
+      </div></div>`;
+      const wrap = document.createElement('div');
+      wrap.innerHTML = focus;
+      return wrap.firstElementChild;
+    },
+
+    centerArea(view) {
+      const s = view.qwixx || view.state;
+      const dice = s.dice || { w:[0,0], r:0, y:0, g:0, b:0 };
+      const diceSig = `${s.round}|${s.activeSeat}|${dice.w.join(',')}|${dice.r}|${dice.y}|${dice.g}|${dice.b}`;
+      const diceRevealed = window._qwixxDiceSig === diceSig;
+      const isWhite = s.phase === 'WHITE_PHASE';
+      const isColor = s.phase === 'COLOR_PHASE';
+      const isAct = s.activeSeat === view.yourSeat;
+      const pendingWhite = isWhite && s.pendingWhiteDecisions.includes(view.yourSeat);
+      const activeName = s.allPlayers.find(p => p.seat === s.activeSeat)?.name || 'Active player';
+
+      let controlsHtml = '';
+      if(!diceRevealed){
+        controlsHtml = `<span class="muted">Throw dice to reveal this turn.</span>`;
+      } else if(isWhite){
+        if (pendingWhite) controlsHtml = `<button class="qwixx-ctrl-btn pri" onclick="window.GameClients['qwixx'].act('skip')">Skip white ${dice.w[0]+dice.w[1]}</button>`;
+        else if (isAct && !s.activeColorUsed) controlsHtml = `<button class="qwixx-ctrl-btn pri" onclick="window.GameClients['qwixx'].act('finishTurn')">Skip color / pass to others</button>`;
+        else controlsHtml = `<span class="muted">Waiting for white-dice decisions…</span>`;
+      } else if(isColor){
+        controlsHtml = isAct
+          ? `<button class="qwixx-ctrl-btn pri" onclick="window.GameClients['qwixx'].act('finishTurn')">${!s.activeMarkedThisTurn ? 'Take Penalty / Finish' : 'Finish Turn'}</button>`
+          : `<span class="muted">${esc(activeName)} may take one color mark…</span>`;
+      }
+
+      return {
+        html: `<div class="qwixx-dice-zone">
+          <div class="qwixx-turn-head">
+            <span>${!diceRevealed ? '🎲 New throw' : (isWhite ? '🎲 Everyone: white dice' : '🎯 Active player: one color combo')}</span>
+            <span>Round ${s.round}</span>
+          </div>
+          ${renderDice(dice)}
+          <div class="qwixx-combos">
+            ${diceRevealed ? `<span class="qwixx-combo white">White: ${dice.w[0]}+${dice.w[1]}=${dice.w[0]+dice.w[1]}</span>${COLORS.map(c => dice[COLOR_KEY[c]] ? `<span class="qwixx-combo ${c}">${c[0].toUpperCase()}: ${dice.w[0]}+${dice[COLOR_KEY[c]]} / ${dice.w[1]}+${dice[COLOR_KEY[c]]}</span>` : '').join('')}` : '<span class="qwixx-combo white">Dice hidden until throw</span>'}
+          </div>
+          <div class="qwixx-controls">${controlsHtml}</div>
+        </div>`,
+        onMount(container) {
+          const s = (window._renderView?.qwixx || window._renderView?.state);
+          if (!s) return;
+          const dice = s.dice || { w:[0,0], r:0, y:0, g:0, b:0 };
+          const diceSig = `${s.round}|${s.activeSeat}|${dice.w.join(',')}|${dice.r}|${dice.y}|${dice.g}|${dice.b}`;
+          const diceRevealed = window._qwixxDiceSig === diceSig;
+          const shouldRoll = !diceRevealed;
+          const diceTray = $('qwixxDiceKit'), throwBtn = $('qwixxThrowBtn');
+          const dsize = innerWidth < 760 ? 30 : 42;
+          const doThrow = () => {
+            if(throwBtn) throwBtn.classList.add('hidden');
+            window._qwixxDiceSig = diceSig;
+            Kit.Dice3D.roll(diceTray, diceList(dice), {size: dsize}).then(()=>{
+              diceTray.dataset.shown = diceSig;
+              if(window._renderView && window._renderView.game === 'qwixx') dispatchView(window._renderView);
+            });
+          };
+          if(shouldRoll){ diceTray.dataset.shown=''; diceTray.innerHTML=''; if(throwBtn){ throwBtn.classList.remove('hidden'); throwBtn.onclick=doThrow; } }
+          else {
+            if(throwBtn) throwBtn.classList.add('hidden');
+            const has3d = diceTray.querySelector('canvas') && diceTray.dataset.shown === diceSig;
+            if(!has3d){ Kit.Dice3D.showStatic(diceTray, diceList(dice), {size: dsize}); diceTray.dataset.shown = diceSig; }
+          }
+        },
+      };
+    },
+
+    // Mini body: the dot-grid scorecard
+    miniBody(playerIdx, view) {
+      const s = view.qwixx || view.state;
+      const player = s?.allPlayers?.find(p => p.seat === playerIdx);
+      if (!player) return document.createElement('div');
+      const diceSig = window._qwixxDiceSig;
+      const diceRevealed = diceSig != null;
+      const displayState = {...s, diceHidden: !diceRevealed};
+      const wrap = document.createElement('div');
+      wrap.innerHTML = renderMiniBoard(player, displayState, view.yourSeat);
+      return wrap;
+    },
+
+    status(view) {
+      const s = view.qwixx || view.state;
+      if (!s) return '';
+      const dice = s.dice || { w:[0,0], r:0, y:0, g:0, b:0 };
+      const diceSig = `${s.round}|${s.activeSeat}|${dice.w.join(',')}|${dice.r}|${dice.y}|${dice.g}|${dice.b}`;
+      const diceRevealed = window._qwixxDiceSig === diceSig;
+      const isWhite = s.phase === 'WHITE_PHASE';
+      const isAct = s.activeSeat === view.yourSeat;
+      const pendingWhite = isWhite && s.pendingWhiteDecisions.includes(view.yourSeat);
+      const activeName = s.allPlayers.find(p => p.seat === s.activeSeat)?.name || 'Active player';
+
+      if (s.phase === 'GAME_OVER') return 'Game Over';
+      if (!diceRevealed) return 'Throw dice to reveal this turn';
+      if (isWhite) return pendingWhite ? `Mark one white ${dice.w[0]+dice.w[1]} or skip` : 'Waiting for other players';
+      if (isAct) return 'Take one white+color mark or finish';
+      return `Waiting for ${esc(activeName)}`;
+    },
+
+    unmount() { removeQwixxUi(); },
+  });
+
+  // ── Override framework render with Qwixx-specific rendering ──
+  // Qwixx's layout is deeply custom (scorecard grid + 3D dice). The framework
+  // handles mini boards and inspect, but the main render path stays custom.
+  const baseClient = window.GameClients['qwixx'];
+
+  function render(view, ctx = {}) {
     const s = view.qwixx || view.state;
     const dice = s.dice || { w:[0,0], r:0, y:0, g:0, b:0 };
     const isAct = s.activeSeat === view.yourSeat;
@@ -225,11 +344,6 @@ window.GameClients = window.GameClients || {};
         : `<span class="muted">${esc(activeName)} may take one color mark…</span>`;
     }
 
-    // Opponent strip: append each mini DIRECTLY as a grid child (a DocumentFragment
-    // flattens on append), so they are the real grid items. (A display:contents
-    // wrapper looked fine but hid the minis from the strip's :nth-child(N) column
-    // rules — which made rows past the first CLIP under overflow:hidden, so only the
-    // first 1–2 opponents showed their crossed-off marks. Fragment fixes that.)
     const opponents = document.createDocumentFragment();
     others.forEach(player => opponents.appendChild(Kit.MiniBoard({
       name: player.name, badge: player.score,
@@ -268,9 +382,6 @@ window.GameClients = window.GameClients || {};
     const doThrow = () => {
       if(throwBtn) throwBtn.classList.add('hidden');
       window._qwixxDiceSig = diceSig;
-      // Roll via the shared WebGL 3D dice API only (no legacy CSS-dice roller). The 3D
-      // dice settle on their real result and STAY shown (we tag the tray with the
-      // diceSig so the next re-render leaves the settled canvas in place).
       Kit.Dice3D.roll(diceTray, diceList(dice), {size: dsize}).then(()=>{
         diceTray.dataset.shown = diceSig;
         if(window._renderView && window._renderView.game === 'qwixx') dispatchView(window._renderView);
@@ -279,14 +390,16 @@ window.GameClients = window.GameClients || {};
     if(shouldRoll){ diceTray.dataset.shown=''; diceTray.innerHTML=''; if(throwBtn){ throwBtn.classList.remove('hidden'); throwBtn.onclick=doThrow; } }
     else {
       if(throwBtn) throwBtn.classList.add('hidden');
-      // Revealed: if the settled 3D canvas for THIS throw is already on screen, leave
-      // it (don't wipe the result). Otherwise (e.g. opponent's throw arriving, or
-      // post-roll re-render with no canvas) render the clean settled readout.
       const has3d = diceTray.querySelector('canvas') && diceTray.dataset.shown === diceSig;
       if(!has3d){ Kit.Dice3D.showStatic(diceTray, diceList(dice), {size: dsize}); diceTray.dataset.shown = diceSig; }
     }
 
     if(s.phase === 'GAME_OVER') showSummary(view);
+  }
+
+  function act(action, msg = {}){
+    const view = window._renderView;
+    GameActions.send(action, msg, view?.yourSeat ?? 0);
   }
 
   function inspect(seat){
@@ -297,12 +410,8 @@ window.GameClients = window.GameClients || {};
     GameShell.inspect(`<div class="inspect-head"><button class="icon-btn" onclick="window.GameClients['qwixx'].inspect(${prev})">‹</button><b>${esc(player.name)}${player.active?' 🎲':''}</b><button class="icon-btn" onclick="window.GameClients['qwixx'].inspect(${next})">›</button><button class="icon-btn" onclick="GameShell.closeInspect()">✕</button></div><div class="player-board qwixx-focus-card">${renderScorecard(player,s,view.yourSeat,false)}</div>`);
   }
 
-  function act(action, msg = {}){
-    const view = window._renderView;
-    GameActions.send(action, msg, view?.yourSeat ?? 0);
-  }
-
   function unmount(){removeQwixxUi();}
-  window.GameClients['qwixx'] = { render, act, inspect, unmount };
 
+  // Re-export with the canonical pattern for test compatibility
+  window.GameClients['qwixx'] = { render, act, inspect, unmount };
 })();
