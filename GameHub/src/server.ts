@@ -449,6 +449,12 @@ export class Room extends Server<Env> {
         code: this.name,
         isPublic: this.isPublic,
         isGroup: this.isGroup,
+        // W6 part 2: surfacing hostId lets the client label "Recent groups"
+        // chips with the host's name (for the user's benefit only — the chip
+        // shows e.g. "Ada's group" so they recognise it). The server already
+        // ships hostId in the game broadcast indirectly via `seats`, so this
+        // is just symmetry for the room broadcast.
+        hostId: this.hostId,
         quickGame: this.quickGame,
         maxPlayers: this.maxPlayers,
         catalogue: GAME_CATALOGUE,
@@ -573,6 +579,27 @@ export class Room extends Server<Env> {
       if ((this.quickGame || this.isGroup) && this.canAllReadyStart()) {
         const launchGameId = this.quickGame || msg.gameId;
         if (launchGameId) this.startGame(launchGameId);
+      }
+      return;
+    }
+
+    /* ---- W6 part 2: host toggles room into a persistent group ---- */
+    if (msg.type === "set_group" && isHost && !this.gameId) {
+      const wanted = !!msg.isGroup;
+      if (wanted !== this.isGroup) {
+        this.isGroup = wanted;
+        // Groups should appear in the public lobby (they're discoverable by
+        // intent — friends rejoin from "recent groups", strangers can spot
+        // an open table). Quick-play rooms set isPublic explicitly; flipping
+        // a private custom room into a group also publicizes it.
+        if (wanted) this.isPublic = true;
+        // Flipping ON or OFF resets ready flags so the next launch requires
+        // explicit opt-in (groups always use the ready gate).
+        for (const m of this.members) if (!m.bot) m.ready = false;
+        this.log({ kind: "set_group", actor: pid, detail: { isGroup: wanted } });
+        await this.persistMeta();
+        await this.lobbyUpdate();
+        this.broadcastState();
       }
       return;
     }

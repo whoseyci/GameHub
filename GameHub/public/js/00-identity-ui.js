@@ -88,7 +88,34 @@
               })()}
               <button onclick="window.Identity._forget('${esc(r.pid)}')" style="background:none;border:none;color:var(--text-dim);font-weight:900;padding:0 2px;cursor:pointer;font-size:.85rem;line-height:1" title="Forget">×</button>
             </div>`).join('')}</div>`}
+      ${(() => {
+        // W6 part 2: recent group rooms. Renders only when we have at least
+        // one. One-tap rejoin via connectRoom (the user is already named).
+        const groups = me.getRecentGroups ? me.getRecentGroups() : [];
+        if (!groups.length) return '';
+        return `<div style="font-size:.72rem;color:var(--text-dim);font-weight:700;letter-spacing:.06em;text-transform:uppercase;margin:14px 0 8px;display:flex;align-items:center;gap:8px">
+          <span>Recent Groups</span>
+          <button onclick="window.Identity._clearGroupsWithConfirm()" style="margin-left:auto;background:none;border:none;color:var(--text-dim);font-size:.7rem;cursor:pointer;font-weight:700">Clear</button>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px">${groups.map((g) => `
+          <div class="chip recent-group-chip" title="Rejoin group ${esc(g.code)}" style="display:inline-flex;align-items:center;gap:6px;background:var(--bg);border:1px solid var(--border);padding:5px 8px;border-radius:999px;font-size:.78rem">
+            <button data-rejoin-group="${esc(g.code)}" style="background:none;border:none;color:var(--text);font-weight:800;padding:0;cursor:pointer;font-size:.82rem;display:inline-flex;align-items:center;gap:4px">
+              ${Kit.Icon.html('users',{size:12,cls:'kit-icon-inline'})}<span>${esc(g.label || g.code)}</span>
+            </button>
+            <button onclick="window.Identity._forgetGroup('${esc(g.code)}')" style="background:none;border:none;color:var(--text-dim);font-weight:900;padding:0 2px;cursor:pointer;font-size:.85rem;line-height:1" title="Forget">×</button>
+          </div>`).join('')}</div>`;
+      })()}
     `;
+    // Wire the rejoin buttons (avoids inline JS string interpolation of codes
+    // — they're safe but this matches the rest of the panel's pattern).
+    panel.querySelectorAll('[data-rejoin-group]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const code = btn.getAttribute('data-rejoin-group');
+        if (!code || typeof window.connectRoom !== 'function') return;
+        if (typeof window.ensureName === 'function') window.ensureName();
+        window.connectRoom(code, { isGroup: true });
+      });
+    });
 
     const inp = $('identityNameInput');
     if (inp) {
@@ -128,6 +155,16 @@
   window.Identity._forget = function (pid) {
     window.Identity.forgetRecent(pid);
     render();
+  };
+  window.Identity._forgetGroup = function (code) {
+    if (window.Identity.forgetGroup) window.Identity.forgetGroup(code);
+    render();
+  };
+  window.Identity._clearGroupsWithConfirm = function () {
+    if (confirm('Forget every recent group?')) {
+      if (window.Identity.clearRecentGroups) window.Identity.clearRecentGroups();
+      render();
+    }
   };
 
   // Re-render on menu show. The hub's showScreen function is global; wrap it

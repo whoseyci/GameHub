@@ -7,13 +7,13 @@ function syncOnlinePrimaryName(){const n=($('onlineName')?.value||'').trim();if(
 function onlineSeatsPayload(){syncOnlinePrimaryName();return onlineDevicePlayers.map((p,i)=>({pid:getSeatPid(i),name:(p.name||('Player '+(i+1))).slice(0,20)}));}
 function renderOnlineDevicePlayers(){syncOnlinePrimaryName();const box=$('onlineDevicePlayers');if(!box)return;box.innerHTML=onlineDevicePlayers.map((p,i)=>`<div style="display:flex;gap:6px;align-items:center;margin-bottom:5px"><input class="input" style="margin:0;padding:8px" value="${p.name.replace(/"/g,'&quot;')}" ${i===0?'placeholder="Main player"':'placeholder="Same-device player"'} oninput="onlineDevicePlayers[${i}].name=this.value; if(${i}===0)$('onlineName').value=this.value"><button class="icon-btn" ${i===0?'disabled style="opacity:.3"':''} onclick="onlineDevicePlayers.splice(${i},1);renderOnlineDevicePlayers()">${Kit.Icon.html('x',{size:14})}</button></div>`).join('');}
 function addOnlineDevicePlayer(){syncOnlinePrimaryName();if(onlineDevicePlayers.length>=8)return;onlineDevicePlayers.push({name:'Player '+(onlineDevicePlayers.length+1)});renderOnlineDevicePlayers();}
-function connectRoom(code,{isPublic=false,quickGame=null,maxPlayers=8,shard=null}={}){
+function connectRoom(code,{isPublic=false,isGroup=false,quickGame=null,maxPlayers=8,shard=null}={}){
   mode='online';net.room=code;net.isHost=false;net.spectating=false;
-  _joinAttempt={code,isPublic,quickGame,maxPlayers,shard};
+  _joinAttempt={code,isPublic,isGroup,quickGame,maxPlayers,shard};
   if(net.ws){try{net.ws.close();}catch(e){}}
   resetGameUi();
   const ws=new WebSocket(wsUrl('room',code));net.ws=ws;
-  ws.onopen=()=>ws.send(JSON.stringify({type:'join',pid:getPid(),name:myName,seats:onlineSeatsPayload(),isPublic,quickGame,maxPlayers}));
+  ws.onopen=()=>ws.send(JSON.stringify({type:'join',pid:getPid(),name:myName,seats:onlineSeatsPayload(),isPublic,isGroup,quickGame,maxPlayers}));
   ws.onmessage=ev=>{let m;try{m=JSON.parse(ev.data);}catch(e){return;}handleNet(m);};
   ws.onerror=()=>toast('Connection error');
 }
@@ -23,6 +23,21 @@ function joinPublic(code){ensureName();connectRoom(code,{});}
 // Quick Play uses sharded room codes: quick-<game>-1, -2, … On "full" we roll to
 // the next shard so players pool together until a room fills, then overflow opens a new one.
 function quickPlay(gameId,shard=1){ensureName();connectRoom('quick-'+gameId+'-'+shard,{isPublic:true,quickGame:gameId,shard});}
+// W6 part 2: spin up a persistent GROUP room. Group room codes are
+// "group-<6char>" (uppercased). The host hops in via connectRoom with
+// isGroup=true so the server stamps the room as a group on the first join.
+function hostGroup(){
+  ensureName();
+  const code='GROUP-'+Math.random().toString(36).slice(2,8).toUpperCase();
+  // Groups are by definition discoverable + ready-gated; the server forces
+  // isPublic=true when a room flips into a group, but we also send it on
+  // the initial join so the very first member never sees a stale state.
+  connectRoom(code,{isPublic:true,isGroup:true,maxPlayers:8});
+}
+// W6 part 2: host-only toggle that flips an existing room into (or out of)
+// a persistent group. Server enforces the host + between-games rule, but
+// we also gate the button so it never even renders for non-hosts or mid-game.
+function toggleGroupRoom(makeGroup){ net.send({type:'set_group',isGroup:!!makeGroup}); }
 
 // W6: invite-link helper. Copies "${origin}/?join=${roomCode}" to the
 // clipboard so the host can paste it anywhere. The landing page boots,
@@ -105,10 +120,23 @@ function removeBot(){net.send({type:'remove_bot'});}
 function renderRoom(m){
   $('roomCode').textContent=m.code;
   // Visibility line: icon + text via innerHTML (Kit.Icon returns SVG strings).
-  $('roomVis').innerHTML=(m.quickGame?Kit.Icon.html('rocket',{size:12,cls:'kit-icon-inline'})+'Quick Play &middot; ':'')+(m.isPublic?Kit.Icon.html('globe',{size:12,cls:'kit-icon-inline'})+'Public room':Kit.Icon.html('lock',{size:12,cls:'kit-icon-inline'})+'Private room');
+  // W6 part 2: visibility line now also flags group rooms separately so the
+  // user knows this room sticks around between games.
+  $('roomVis').innerHTML=
+    (m.quickGame?Kit.Icon.html('rocket',{size:12,cls:'kit-icon-inline'})+'Quick Play &middot; ':'')
+    +(m.isGroup?Kit.Icon.html('users',{size:12,cls:'kit-icon-inline'})+'Group &middot; ':'')
+    +(m.isPublic?Kit.Icon.html('globe',{size:12,cls:'kit-icon-inline'})+'Public room':Kit.Icon.html('lock',{size:12,cls:'kit-icon-inline'})+'Private room');
   // Identity: record every human in the room as a "recent" so they appear on
   // the menu next time. Bots and ourselves are skipped inside recordEncounter.
   if(window.Identity){ for(const p of (m.members||[])){ if(!p.bot && p.id && p.name) Identity.recordEncounter({pid:p.id,name:p.name}); } }
+  // W6 part 2: if this is a persistent group room, remember the code so the
+  // user can re-join from the menu's "Recent groups" chip row next time.
+  // We DON'T record quick-play shards (they're ephemeral and the code is
+  // a synthetic prefix nobody types).
+  if(window.Identity && m.isGroup && m.code && !String(m.code).startsWith('quick-')){
+    const host = (m.members||[]).find(p=>p.id===(m.hostId||''))?.name;
+    Identity.recordGroup({ code:m.code, hostName:host });
+  }
   // W6: render members with a ready check pip when in a quick-play / group
   // lobby (anywhere ready-gating matters). Plain chips for custom rooms.
   const isReadyLobby = !!(m.quickGame || m.isGroup);
@@ -148,6 +176,27 @@ function renderRoom(m){
       <span class="muted" style="font-size:.85rem">${gateText}</span>
     `;
   } else if(readyBox){ readyBox.remove(); }
+
+  // W6 part 2: "Convert to group" toggle. Host-only, only outside a game
+  // (server enforces too). Quick-play rooms can't be converted — they're
+  // ephemeral by design; spinning up a fresh group makes more sense there.
+  let groupBox=$('groupBox');
+  if(m.isHost && !m.quickGame){
+    if(!groupBox){
+      groupBox=document.createElement('div');
+      groupBox.id='groupBox';
+      groupBox.style.cssText='margin:8px 0;text-align:center';
+      $('roomMembers').parentNode.appendChild(groupBox);
+    }
+    if(m.isGroup){
+      groupBox.innerHTML = `<span class="muted" style="font-size:.85rem;display:inline-flex;align-items:center;gap:6px">${Kit.Icon.html('users',{size:13,cls:'kit-icon-inline'})}Persistent group · stays open between games</span>
+        <button class="btn secondary" style="margin:6px 0 0;display:inline-flex;align-items:center;gap:6px" onclick="toggleGroupRoom(false)">${Kit.Icon.html('x',{size:13})}Disband group</button>`;
+    } else {
+      groupBox.innerHTML = `<button class="btn secondary" style="margin:0;display:inline-flex;align-items:center;gap:6px" onclick="toggleGroupRoom(true)">${Kit.Icon.html('users',{size:14})}Convert to group</button>
+        <div class="muted" style="font-size:.75rem;margin-top:4px">Keeps everyone together across multiple games</div>`;
+    }
+  } else if(groupBox){ groupBox.remove(); }
+
   $('hostArea').classList.toggle('hidden',!m.isHost);
   $('guestArea').classList.toggle('hidden',m.isHost);
   // bot controls (host only)
@@ -167,7 +216,45 @@ function renderRoom(m){
         ${nBots?`<button class="btn secondary" style="margin:0" onclick="removeBot()">− Remove Bot</button>`:''}
       </div>`;
   } else if(botBox){ botBox.remove(); }
-  if(m.isHost) renderTiles('hostTiles',gid=>net.send({type:'launch_game',gameId:gid}), m.members.length);
+  if(m.isHost) renderTiles('hostTiles',gid=>hostLaunchGame(gid), m.members.length);
+}
+
+// W6 part 2: launch a game from the room lobby. If the game advertises
+// variants in its features manifest, pop a tiny picker first; otherwise
+// fire launch_game immediately like before.
+function hostLaunchGame(gameId){
+  const g = (catalogue||[]).find(x=>x.id===gameId);
+  const variants = g?.features?.variants;
+  if(!variants || !variants.length){
+    net.send({type:'launch_game',gameId});
+    return;
+  }
+  openVariantPicker(gameId, variants);
+}
+
+// Tiny in-page modal for choosing a game variant. Re-uses the existing
+// #rulesOverlay shell so we don't add another full-screen layer.
+function openVariantPicker(gameId, variants){
+  const overlay = $('rulesOverlay');
+  const box = $('rulesBox');
+  if(!overlay || !box) return;
+  const g = (catalogue||[]).find(x=>x.id===gameId);
+  const rows = variants.map(v => `
+    <button class="btn" style="display:block;width:100%;margin:0 0 8px;text-align:left;padding:12px 14px"
+            onclick="pickVariantAndLaunch(${JSON.stringify(gameId)}, ${JSON.stringify(v.id)})">
+      <div style="font-weight:800;font-size:1.02rem">${esc(v.name)}</div>
+      ${v.description ? `<div class="muted" style="font-size:.82rem;margin-top:2px">${esc(v.description)}</div>` : ''}
+    </button>`).join('');
+  box.innerHTML = `
+    <h2 style="margin:0 0 6px;display:flex;align-items:center;gap:8px;justify-content:center">${Kit.Icon.html('cube',{size:20})}<span>${esc(g?.name || gameId)} · choose variant</span></h2>
+    <div class="muted" style="margin-bottom:14px">Each variant uses different rules.</div>
+    ${rows}
+    <button class="btn secondary" style="margin-top:6px" onclick="$('rulesOverlay').classList.add('hidden')">Cancel</button>`;
+  overlay.classList.remove('hidden');
+}
+function pickVariantAndLaunch(gameId, variantId){
+  $('rulesOverlay').classList.add('hidden');
+  net.send({type:'launch_game',gameId,variant:variantId});
 }
 function leaveOnline(){if(net.ws){try{net.ws.close();}catch(e){}net.ws=null;}net.room=null;net.isHost=false;net.spectating=false;window._currentBots=[];resetGameUi();showScreen('onlineSetup');}
 function leaveGameToRoom(){ // back arrow in game
@@ -195,11 +282,16 @@ function renderPublic(rooms){
           ? '<span style="color:#10b981;display:inline-flex;align-items:center;gap:4px">'+Kit.Icon.html('rocket',{size:12})+esc(gameName(r.gameId))+' lobby</span>'
           : '<span style="color:#10b981;display:inline-flex;align-items:center;gap:4px">'+Kit.Icon.html('spinner',{size:12})+'Waiting</span>');
     // Quick-play room codes have a "quick-" prefix; render the rocket icon
-    // inline in place of the prefix for visual distinction.
+    // inline in place of the prefix for visual distinction. Group rooms get
+    // a users icon and a "Group ·" label so they're easy to spot.
     const isQuick=String(r.code||'').startsWith('quick-');
-    const codeRest=String(r.code||'').replace(/^quick-/,'');
-    const shown=isQuick?Kit.Icon.html('rocket',{size:12,cls:'kit-icon-inline'})+codeRest:codeRest;
-    return `<div class="room-row"><div><div class="rc">${esc(shown)}</div><div class="rm">${esc(r.hostName)} · ${esc(r.players)}/${esc(r.maxPlayers)} · ${status}</div></div><button data-room-idx="${idx}">${label}</button></div>`;
+    const isGroup=!!r.isGroup;
+    const codeRest=String(r.code||'').replace(/^quick-/,'').replace(/^GROUP-/i,'');
+    const shown= isQuick ? Kit.Icon.html('rocket',{size:12,cls:'kit-icon-inline'})+codeRest
+               : isGroup ? Kit.Icon.html('users',{size:12,cls:'kit-icon-inline'})+codeRest
+               : codeRest;
+    const tag = isGroup ? '<span style="color:#a78bfa;font-weight:700">Group</span> · ' : '';
+    return `<div class="room-row"><div><div class="rc">${esc(shown)}</div><div class="rm">${tag}${esc(r.hostName)} · ${esc(r.players)}/${esc(r.maxPlayers)} · ${status}</div></div><button data-room-idx="${idx}">${label}</button></div>`;
   }).join('');
   el.querySelectorAll('[data-room-idx]').forEach(btn=>btn.onclick=()=>joinPublic(rooms[Number(btn.dataset.roomIdx)].code));
 }

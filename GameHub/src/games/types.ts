@@ -36,6 +36,12 @@ export interface GameFeatures {
   canSpectate: boolean;       // late joiners allowed mid-game
   minDurationSec: number;     // estimated minimum game duration
   maxDurationSec: number;     // estimated maximum game duration
+  // W6 part 2: optional opt-in variant catalogue. When present, the room
+  // lobby shows a dropdown next to the launch button so the host can pick
+  // a ruleset; the chosen id is passed to `launch_game` and ends up on
+  // `state.variant` for the game module to branch on. Games without any
+  // variants (the vast majority right now) omit the field entirely.
+  variants?: ReadonlyArray<{ id: string; name: string; description?: string }>;
 }
 
 /**

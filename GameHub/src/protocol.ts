@@ -96,6 +96,10 @@ export function parseClientMessage(raw: string): any | null {
         name,
         seats,
         isPublic: cleanBool(msg.isPublic),
+        // W6 part 2: group flag travels with the very first join (creates the
+        // room AS a persistent group). Subsequent joiners' flag is ignored on
+        // the server (only the first member's settings stick).
+        isGroup: cleanBool(msg.isGroup),
         quickGame: msg.quickGame == null ? null : cleanId(msg.quickGame),
         maxPlayers: cleanInt(msg.maxPlayers, 2, 8) ?? 8,
       };
@@ -106,9 +110,32 @@ export function parseClientMessage(raw: string): any | null {
     case "next_round":
     case "to_room":
       return { type: msg.type };
+    case "set_ready": {
+      // W6: per-member ready toggle. Optional `pid` lets a pass-and-play
+      // host toggle a specific controlled seat; omitted toggles all the
+      // seats this connection controls.
+      const out: any = { type: "set_ready", ready: cleanBool(msg.ready) };
+      const pid = cleanId(msg.pid);
+      if (pid) out.pid = pid;
+      const gameId = cleanId(msg.gameId);
+      if (gameId) out.gameId = gameId;
+      return out;
+    }
+    case "set_group": {
+      // W6 part 2: host-only toggle that flips this room into a persistent
+      // group (or back). Server enforces host + between-games preconditions.
+      return { type: "set_group", isGroup: cleanBool(msg.isGroup) };
+    }
     case "launch_game": {
       const gameId = cleanId(msg.gameId);
-      return gameId ? { type: "launch_game", gameId } : null;
+      if (!gameId) return null;
+      // W6: opt-in variant string. Games that don't implement variants
+      // ignore the field; the platform never enforces a catalogue (each
+      // game module owns its own set).
+      const variant = msg.variant ? cleanId(msg.variant) : null;
+      const out: any = { type: "launch_game", gameId };
+      if (variant) out.variant = variant;
+      return out;
     }
     case "action": {
       if (typeof msg.action !== "string" || msg.action.length > 40) return null;

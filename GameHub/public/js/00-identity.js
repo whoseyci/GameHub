@@ -23,6 +23,10 @@
 
   const STORE_KEY = 'gh.identity';
   const MAX_RECENTS = 24;
+  // W6 part 2: cap how many recent group rooms we remember per device. Eight
+  // is enough for "the friends + the family + the work crew + a few one-offs"
+  // without making the menu chip row a wall of buttons.
+  const MAX_RECENT_GROUPS = 8;
 
   // ─── Friend code derivation ──────────────────────────────────────────
   // 7-char shareable code derived deterministically from the pid: 3 letters
@@ -79,6 +83,10 @@
     store.friendCode = store.friendCode || deriveFriendCode(store.pid);
     if (!Array.isArray(store.recents)) store.recents = [];
     if (!store.elo || typeof store.elo !== 'object') store.elo = {}; // gameId → rating
+    // W6 part 2: recent group rooms (just the code + a friendly label + when
+    // we last saw it). No PII — the code is what gets shared as the invite
+    // link anyway. Capped LRU.
+    if (!Array.isArray(store.recentGroups)) store.recentGroups = [];
     saveStore(store);
     return store;
   }
@@ -182,6 +190,41 @@
     saveStore(store);
   }
 
+  // ─── W6 part 2: recent groups (room codes you've visited) ──────────
+  const SAFE_GROUP_CODE = /^[A-Z0-9_-]{1,64}$/i;
+  /** Remember (or refresh) a group room. `label` is optional — host name. */
+  function recordGroup({ code, label, hostName }) {
+    if (!code || typeof code !== 'string') return;
+    const norm = code.toUpperCase();
+    if (!SAFE_GROUP_CODE.test(norm)) return;
+    const store = ensure();
+    const now = Date.now();
+    const i = store.recentGroups.findIndex((r) => r.code === norm);
+    const labelOut = (label || hostName || '').toString().slice(0, 32) || (`Group ${norm.slice(0, 8)}`);
+    if (i >= 0) {
+      store.recentGroups[i].label = labelOut;
+      store.recentGroups[i].lastSeen = now;
+    } else {
+      store.recentGroups.unshift({ code: norm, label: labelOut, lastSeen: now });
+    }
+    store.recentGroups.sort((a, b) => (b.lastSeen || 0) - (a.lastSeen || 0));
+    if (store.recentGroups.length > MAX_RECENT_GROUPS) store.recentGroups.length = MAX_RECENT_GROUPS;
+    saveStore(store);
+  }
+  function getRecentGroups() { return ensure().recentGroups.slice(); }
+  function forgetGroup(code) {
+    if (!code) return;
+    const norm = String(code).toUpperCase();
+    const store = ensure();
+    store.recentGroups = store.recentGroups.filter((g) => g.code !== norm);
+    saveStore(store);
+  }
+  function clearRecentGroups() {
+    const store = ensure();
+    store.recentGroups = [];
+    saveStore(store);
+  }
+
   /** Format a "wins-losses" summary string for a recent. */
   function summarizeRecent(rec) {
     if (!rec || !rec.games) return '';
@@ -217,6 +260,8 @@
     clearRecents, forgetRecent,
     summarizeRecent,
     getElo, updateElo,
+    // W6 part 2: recent groups (room codes the user has joined as a group).
+    getRecentGroups, recordGroup, forgetGroup, clearRecentGroups,
     _deriveFriendCode: deriveFriendCode, // exposed for tests
   };
 })();

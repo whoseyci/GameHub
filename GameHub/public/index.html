@@ -83,6 +83,9 @@
         <button class="btn green" style="margin-top:0" onclick="showScreen('quickPick')" data-icon="rocket">Quick Play</button>
         <button class="btn purple" style="margin-top:0" onclick="showScreen('hostSetup')" data-icon="users">Make a Room</button>
       </div>
+      <!-- W6 part 2: one-tap group host. Spins a GROUP-XXXXXX code, lands
+           the user in a persistent group room ready to invite friends. -->
+      <button class="btn" onclick="hostGroup()" data-icon="users">Host a Group</button>
       <button class="btn" onclick="showScreen('joinSetup')">Join a Room</button>
     </div>
   </div>
