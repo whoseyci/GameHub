@@ -806,6 +806,7 @@ const GameShell=(()=>{
     // Reset shared-turn detection so a future game in the same session
     // doesn't see a stale "currentSeat" from the previous game.
     try { Kit?.Turn?.reset?.(current); } catch {}
+    try { Kit?.PassPlay?.reset?.(current); } catch {}
     // Drop any per-game persisted nodes (Qwixx's dice canvas etc) so a fresh
     // entry to the same game starts with a clean slate.
     try { clearPersisted(); } catch {}
@@ -814,7 +815,12 @@ const GameShell=(()=>{
   function render(view,client){
     if(current!==view.game){unmount(view.game);}
     if(client.mount&&!client._mounted){client.mount();client._mounted=true;}
+    // W2: pass-and-play turn transition. Runs BEFORE the game renders so
+    // the leaving-board animation is on-screen while the new render swaps
+    // in beneath it. No-op for online play / single-human / bot-vs-bot.
+    try { Kit?.PassPlay?.beforeRender?.(view); } catch (e) { console.warn('Kit.PassPlay.beforeRender threw', e); }
     client.render(view,ctx(view));
+    try { Kit?.PassPlay?.afterRender?.(view); } catch (e) { console.warn('Kit.PassPlay.afterRender threw', e); }
     // API-9: shared turn detection runs AFTER the game has updated its DOM,
     // so the banner shows with the new layout already on screen. Games that
     // need to suppress it during an animation pipeline can call

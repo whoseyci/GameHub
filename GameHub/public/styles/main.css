@@ -284,6 +284,53 @@
 /* (legacy .qwixx-die CSS dice removed — all dice now go through Kit.Dice3D
    which renders WebGL when available and .kit-die-static otherwise.) */
 
+/* ─── Kit.PassPlay — pass-and-play hand-off animation ────────────────── */
+#mainBoardsContainer{position:relative;transition:transform .26s var(--spring-soft),opacity .22s ease,filter .22s ease}
+#mainBoardsContainer.kit-passplay-leaving{transform:scale(.92) translateY(8px);opacity:.0;filter:blur(2px)}
+#mainBoardsContainer.kit-passplay-entering{animation:kitPPEnter .42s var(--spring) both}
+@keyframes kitPPEnter{
+  0%  {transform:scale(.94) translateY(-10px) rotateX(8deg);opacity:0;filter:blur(2px)}
+  60% {transform:scale(1.02) translateY(2px)  rotateX(-2deg);opacity:1;filter:blur(0)}
+  100%{transform:none;opacity:1;filter:none}
+}
+.kit-passplay-overlay{
+  position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  pointer-events:none;z-index:200;opacity:0;
+  background:radial-gradient(circle at 50% 50%, rgba(15,23,42,.78) 0%, rgba(15,23,42,.95) 70%);
+  backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px);
+  transition:opacity .18s ease;
+}
+.kit-passplay-overlay.visible{opacity:1}
+.kit-passplay-card{
+  text-align:center;color:var(--text);
+  padding:18px 26px;border-radius:18px;
+  background:linear-gradient(180deg, rgba(124,92,255,.18), rgba(124,92,255,.08));
+  border:1px solid rgba(124,92,255,.45);
+  box-shadow:0 14px 50px rgba(0,0,0,.55), 0 0 0 1px rgba(255,255,255,.04);
+  transform:translateY(8px) scale(.96);
+  animation:kitPPCardIn .35s cubic-bezier(.2,1.4,.3,1) both;
+}
+@keyframes kitPPCardIn{
+  0%  {transform:translateY(16px) scale(.94);opacity:0}
+  100%{transform:translateY(0)    scale(1);   opacity:1}
+}
+.kit-passplay-eyebrow{
+  font-size:.62rem;font-weight:800;letter-spacing:.22em;text-transform:uppercase;
+  color:#c4b5fd;margin-bottom:6px;
+}
+.kit-passplay-name{
+  font-size:clamp(1.4rem,4vw,2.2rem);font-weight:900;letter-spacing:-.01em;line-height:1.1;
+  background:linear-gradient(135deg,#c4b5fd,#60a5fa);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;
+}
+.kit-passplay-sub{
+  font-size:.85rem;font-weight:700;color:var(--text-dim);margin-top:4px;
+}
+@media (prefers-reduced-motion: reduce){
+  #mainBoardsContainer{transition:none}
+  #mainBoardsContainer.kit-passplay-leaving,#mainBoardsContainer.kit-passplay-entering{animation:none;transform:none;opacity:1;filter:none}
+  .kit-passplay-overlay,.kit-passplay-card{animation:none;transition:none}
+}
+
 /* ─── Kit.Icon — inline-SVG icon system (Phosphor) ────────────────────── */
 .kit-icon{display:inline-block;vertical-align:-.18em;flex-shrink:0;line-height:1;color:currentColor}
 .kit-icon-inline{vertical-align:middle;margin-right:6px}
