@@ -280,6 +280,11 @@
      Loaded after 00-core.js (needs showScreen) and after 00-icons.js
      (header buttons use data-icon mount). -->
 <script src="/js/00-mode.js"></script>
+<!-- UX redesign Phase 2: owns the lobby WebSocket lifecycle.
+     Loaded after 00-mode.js (subscribes to Mode.onChange) and before
+     00-landing.js (landing now subscribes via OnlineSession.onLobbyMessage
+     instead of opening its own socket on boot). -->
+<script src="/js/00-online-session.js"></script>
 <script src="/js/00-kit-turn.js"></script>
 <script src="/js/00-kit-passplay.js"></script>
 <script src="/js/00-kit-layout.js"></script>

@@ -79,14 +79,35 @@ Each phase is a separate commit so it's easy to revert / review.
 - Header hides when `.screen.active` is the game screen.
 - TESTS: mode persistence, header DOM presence, hide-in-game.
 
-### Phase 2 — Persistent Online socket
-- Refactor `connectRoom` / `quickPlay` / `hostRoom` / `joinByCode` to
-  funnel through ONE `OnlineSession` object that owns the WebSocket.
-- Session opens on mode flip → online OR first online action.
-- Idle close: 60s with no inbound/outbound message AND `!net.room`.
-- All current message types still work (this is purely a transport-layer
-  change; the protocol is unchanged).
-- TESTS: socket count, idle close timing, message routing.
+### Phase 2 — Persistent Online socket (Cloudflare-DO honest version)
+**Constraint:** Cloudflare DO routing means each ROOM is its own WebSocket
+endpoint (`/parties/room/<code>`). We cannot multiplex N rooms over one
+socket. The lobby (`/parties/lobby/public-lobby`) is also its own DO
+with its own socket. Two sockets is the floor.
+What we CAN cleanly avoid:
+- Opening the lobby socket on landing load when the user never goes
+  online (currently it opens immediately — wastes a DO connection on
+  every landing visit, including bots/crawlers).
+- Spurious room-socket reconnects when nothing changed.
+
+**Implementation:**
+- New `OnlineSession` module wraps the existing `net.ws` + lobby `ws`
+  lifecycle. Funnels `connectRoom` / `quickPlay` / `leaveOnline` through
+  one place.
+- Lobby socket opens when:
+    * `Mode.set('online')` fires, OR
+    * the user clicks an online action from Local mode (we flip mode + open).
+- Lobby socket closes when:
+    * `Mode.set('local')` fires AND not in a room, OR
+    * 60s pass with no inbound message AND `!net.room`.
+- Room socket lifecycle unchanged (per-room WS), but `OnlineSession`
+  exposes a single `enterRoom(code, opts)` / `leaveRoom()` API so the
+  call sites stop reaching directly into `net.ws`.
+- All current message types still work (transport refactor only).
+- TESTS: lobby socket NOT opened on landing in local mode; opens when
+  flipping to online; idle close kicks in; entering a room from any
+  mode works; leaving a room returns to landing without dropping the
+  lobby socket prematurely.
 
 ### Phase 3 — Wire landing tiles to mode
 - In Local mode, tile click does what "vs Bot" currently does (instant

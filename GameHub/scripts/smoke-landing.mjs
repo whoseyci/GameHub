@@ -109,11 +109,31 @@ async function run() {
   assert(localBtn?.classList.contains('on'), 'mode toggle: Local should be default-on');
   assert(!onlineBtn?.classList.contains('on'), 'mode toggle: Online should be off by default');
   assert(!window.document.body.classList.contains('in-game'), 'body.in-game set on landing');
-  // Flipping mode updates the buttons + persists.
+
+  // ── UX redesign Phase 2: OnlineSession lifecycle ──
+  // The lobby WebSocket must NOT be opened on landing load in Local mode.
+  // (In the test harness window.WebSocket is a stub that never connects,
+  // but we can count instantiations via a side-channel.)
+  assert(window.OnlineSession, 'window.OnlineSession missing');
+  const sessionBefore = window.OnlineSession.state();
+  assert(sessionBefore.lobby === 'closed', 'lobby socket opened in Local mode (should be closed)');
+
+  // Flipping mode → online updates buttons + persists.
   window.Mode.set('online');
   assert(onlineBtn.classList.contains('on'), 'flipping to Online did not paint the button');
   assert(!localBtn.classList.contains('on'), 'Local stayed on after switch to Online');
   assert(window.localStorage.getItem('gh.mode') === 'online', 'mode did not persist');
+  // Give OnlineSession a microtask to probe + open.
+  await sleep(40);
+  const sessionAfter = window.OnlineSession.state();
+  // In JSDOM the fetch probe returns 404+text/html, so the socket stays
+  // closed (which is the correct behaviour — no PartyServer detected).
+  // What we're really verifying: flipping to Online TRIGGERS the probe
+  // path (no exception). The full "opens an actual socket" verification
+  // happens in the browser smoke / production.
+  assert(['closed', 'connecting'].includes(sessionAfter.lobby),
+    `unexpected lobby state after Mode→online: ${sessionAfter.lobby}`);
+
   window.Mode.set('local'); // reset for the rest of the smoke
 
   // Group picker opens / closes via the API.

@@ -123,69 +123,34 @@
     }
   }
 
-  // ─── Live stats counter (lobby WebSocket) ───────────────────────────
-  let lobbyWs = null;
+  // ─── Live stats counter (lobby WebSocket, owned by OnlineSession) ───
+  // UX redesign Phase 2: landing no longer opens its own lobby socket.
+  // OnlineSession owns the lobby WS lifecycle (opens on Mode='online' or
+  // first online action, idle-closes after 60s). We just subscribe to
+  // incoming lobby messages here and re-render. If the user is in Local
+  // mode and never goes online, no socket is ever opened (saves a DO
+  // connection per landing visit, esp. for crawlers and bots).
   let lastStats = { rooms: 0, players: 0 };
-  // W6: per-game queue counts. Keyed by gameId: { waiting, inGame, ready, ... }
   let lastCounts = {};
-  // Track whether we've confirmed there's a real PartyServer behind us. A
-  // static dev server (e.g. scripts/e2e-client.mjs's local file-serving
-  // harness) will return HTML for /parties/* via SPA fallback, which causes
-  // an "Unexpected response code: 200" WebSocket handshake failure that the
-  // browser logs to console.error — which then trips the e2e error gate.
-  // Probe first; only open the WS if the endpoint actually looks like a DO.
-  let probedHasPartyServer = null; // null = unknown, true/false once probed.
+  let lobbyUnsub = null;
 
-  async function probePartyServer() {
-    if (probedHasPartyServer != null) return probedHasPartyServer;
-    try {
-      // PartyServer responds to a plain GET on the parties route with JSON
-      // (or at least NOT with text/html). A static dev server serves
-      // index.html, which is text/html — that's our "no party server" signal.
-      const r = await fetch('/parties/lobby/public-lobby', { method: 'GET', cache: 'no-store' });
-      const ct = r.headers.get('content-type') || '';
-      probedHasPartyServer = !ct.startsWith('text/html');
-    } catch {
-      probedHasPartyServer = false;
+  function handleLobbyMessage(m) {
+    if (!m || m.type !== 'rooms' || !Array.isArray(m.rooms)) return;
+    const rooms = m.rooms.length;
+    const players = m.rooms.reduce((sum, r) => sum + (r.players || 0), 0);
+    lastStats = { rooms, players };
+    if (Array.isArray(m.counts)) {
+      lastCounts = {};
+      for (const c of m.counts) if (c && c.gameId) lastCounts[c.gameId] = c;
+      renderTileCounts();
     }
-    return probedHasPartyServer;
+    renderStats();
   }
 
-  async function startStatsSocket() {
-    const live = await probePartyServer();
-    if (!live) {
-      // No real party server (most likely the e2e static harness). Render the
-      // empty-state copy and skip the WebSocket attempt entirely so we don't
-      // pollute the console.
-      renderStats(true);
-      return;
-    }
-    try {
-      const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const url = `${proto}//${location.host}/parties/lobby/public-lobby`;
-      lobbyWs = new WebSocket(url);
-      lobbyWs.onmessage = (e) => {
-        try {
-          const m = JSON.parse(e.data);
-          if (m && m.type === 'rooms' && Array.isArray(m.rooms)) {
-            const rooms = m.rooms.length;
-            const players = m.rooms.reduce((sum, r) => sum + (r.players || 0), 0);
-            lastStats = { rooms, players };
-            // W6: per-game queue counts ride alongside the rooms list.
-            if (Array.isArray(m.counts)) {
-              lastCounts = {};
-              for (const c of m.counts) if (c && c.gameId) lastCounts[c.gameId] = c;
-              renderTileCounts();
-            }
-            renderStats();
-          }
-        } catch { /* ignore non-JSON / unknown messages */ }
-      };
-      lobbyWs.onopen = () => renderStats();
-      lobbyWs.onerror = () => renderStats(true);
-      lobbyWs.onclose = () => { lobbyWs = null; };
-    } catch {
-      renderStats(true);
+  function subscribeLobby() {
+    if (lobbyUnsub) return;
+    if (window.OnlineSession && typeof window.OnlineSession.onLobbyMessage === 'function') {
+      lobbyUnsub = window.OnlineSession.onLobbyMessage(handleLobbyMessage);
     }
   }
   function renderStats(failed) {
@@ -244,31 +209,14 @@
     bootDecor();
     renderTiles();
     renderStats();
-    startStatsSocket();
+    subscribeLobby(); // OnlineSession decides when to actually OPEN the socket
     tryInviteJoin();
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
   else boot();
 
-  // Close lobby socket when navigating away from the menu screen to free the DO
-  // connection. Reopen when returning. Patches showScreen (idempotent).
-  function patchShowScreen() {
-    if (typeof window.showScreen !== 'function' || window._landingPatched) return;
-    window._landingPatched = true;
-    const orig = window.showScreen;
-    window.showScreen = function (id) {
-      const r = orig.apply(this, arguments);
-      if (id === 'menuScreen') {
-        renderStats();
-        if (!lobbyWs || lobbyWs.readyState !== 1) startStatsSocket();
-      } else if (lobbyWs && lobbyWs.readyState === 1) {
-        try { lobbyWs.close(); } catch {}
-        lobbyWs = null;
-      }
-      return r;
-    };
-  }
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', patchShowScreen);
-  else patchShowScreen();
+  // No more showScreen lifecycle patch for the lobby socket — OnlineSession
+  // owns that now. We just keep our subscription alive for the page's
+  // lifetime; it's a no-op when no socket is open (callbacks never fire).
 })();
