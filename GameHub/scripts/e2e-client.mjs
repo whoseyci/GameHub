@@ -144,7 +144,12 @@ async function runMobileSuite(browser, baseUrl) {
   await page.waitForTimeout(1200);
   pending = await readPending();
   assert(pending.includes(1), 'Mobile: Qwixx bot acted before the throw');
-  await page.locator('#qwixxThrowBtn').click();
+  // force:true bypasses Playwright's "element must be stable" auto-wait. The
+  // throw button intentionally pulses when it's the active seat's turn (UX
+  // affordance — see .qwixx-dice-zone.awaiting-throw.is-active-seat pulse in
+  // main.css). Real users have no trouble hitting it; only stability-checking
+  // automation does.
+  await page.locator('#qwixxThrowBtn').click({ force: true });
   await page.waitForTimeout(2600);
   pending = await readPending();
   assert(!pending.includes(1), 'Mobile: Qwixx bot did not act after the throw');
