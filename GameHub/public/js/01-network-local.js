@@ -243,6 +243,14 @@ function resetLocalSession(){ localEngine=null; localGameId=null; localActor=0; 
 
 /* Local seats: array of {name, bot, difficulty}. Rendered as rows. */
 let localSeats=[{name:'Player 1',bot:false},{name:'Player 2',bot:false}];
+// Exposed setter so the landing page's "instant play vs bot" can configure
+// the local game without poking script-scoped lets directly.
+window.setLocalSeats = function(arr){ if(Array.isArray(arr)) { localSeats.length=0; for(const s of arr) localSeats.push(s); renderLocalSeats(); refreshLocalTiles(); } };
+window.setLocalPick = function(id){ _localPick = id; markLocalPick(); };
+window.startLocalForGame = function(gameId){
+  if(typeof gameId === 'string') { _localPick = gameId; }
+  startLocalGame();
+};
 let _localBotDiff='medium';
 function setLocalBotDiff(d){_localBotDiff=d;document.querySelectorAll('#localBotDiff button').forEach(b=>b.classList.toggle('on',b.dataset.d===d));}
 function renderLocalSeats(){
