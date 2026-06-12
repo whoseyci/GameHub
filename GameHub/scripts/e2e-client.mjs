@@ -126,14 +126,27 @@ async function runMobileSuite(browser, baseUrl) {
   await page.waitForSelector('#gameScreen.active');
   await screenshot(page, 'mobile-qwixx-before-throw');
 
-  let pending = await page.evaluate(() => localEngine.viewFor(localDisplaySeat()).state.pendingWhiteDecisions.slice());
+  // "Pending white decision" used to be a raw field on view.state, but the
+  // view-shape standardization (tests/view-shape) requires hub-canonical
+  // fields only on view.state. The same information is now derivable from
+  // view.state.players[i].status === 'active' during the white phase (i.e.
+  // the seat still needs to decide). view.qwixx.allPlayers also exposes a
+  // .waiting flag computed identically; using view.state keeps the test
+  // hub-shape-aware.
+  const readPending = () => page.evaluate(() => {
+    const v = localEngine.viewFor(localDisplaySeat());
+    const inWhitePhase = v?.qwixx?.phase === 'WHITE_PHASE';
+    if (!inWhitePhase) return [];
+    return (v?.state?.players || []).filter((p) => p.status === 'active').map((p) => p.seat);
+  });
+  let pending = await readPending();
   assert(pending.includes(1), 'Mobile: Qwixx bot should still be pending before throw');
   await page.waitForTimeout(1200);
-  pending = await page.evaluate(() => localEngine.viewFor(localDisplaySeat()).state.pendingWhiteDecisions.slice());
+  pending = await readPending();
   assert(pending.includes(1), 'Mobile: Qwixx bot acted before the throw');
   await page.locator('#qwixxThrowBtn').click();
   await page.waitForTimeout(2600);
-  pending = await page.evaluate(() => localEngine.viewFor(localDisplaySeat()).state.pendingWhiteDecisions.slice());
+  pending = await readPending();
   assert(!pending.includes(1), 'Mobile: Qwixx bot did not act after the throw');
   await screenshot(page, 'mobile-qwixx-after-throw');
 
