@@ -116,11 +116,8 @@
     if(s.phase==='FINAL_TURNS'&&!lastRoundShown){lastRoundShown=true;const e=s.players[s.roundEnder]?.name||'A player';toast('🚨 LAST ROUND! '+e+' closed it out',3200);SFX.lastRound();}
     if(s.phase==='REVEAL'||s.phase==='PLAY')lastRoundShown=false;
 
-    // turn banner
-    if(isPlay&&prevView&&prevView.skyjo){
-      const pv=prevView.skyjo,pPlay=pv.phase==='PLAY'||pv.phase==='FINAL_TURNS';
-      if(ta===null&&(s.currentPlayer!==pv.currentPlayer||!pPlay)){const mine=s.currentPlayer===viewer;Kit.turnBanner(mine?'Your turn!':(s.players[s.currentPlayer]?.name+"'s turn"),mine);bumpStatus();if(mine)SFX.yourTurn();}
-    }
+    // Turn banner is handled by Kit.Turn (called automatically by GameShell.render
+    // after this function returns). Skyjo's old per-game block was equivalent.
 
     const prevForAnim=prevView?prevView.skyjo:null;
     const newAction=s.lastAction&&(!prevForAnim||JSON.stringify(prevForAnim.lastAction)!==JSON.stringify(s.lastAction));

@@ -592,7 +592,9 @@
     const token=currentToken();
     // turn banner on turn change (only when not mid-animation start)
     if(prevView&&prevView.flip7&&view.flip7.phase==='PLAY'&&view.flip7.current!==prevView.flip7.current&&(!view.flip7.events||!view.flip7.events.length)){
-      const mine=view.flip7.current===view.flip7.viewerSeat;Kit.turnBanner(mine?'Your turn!':(view.flip7.players[view.flip7.current]?.name+"'s turn"),mine);bumpStatus();if(mine)SFX.yourTurn();
+      // Turn banner is now handled by Kit.Turn (called automatically by
+      // GameShell.render). Flip 7 keeps just the event-list short-circuit
+      // since it has more nuanced banner control during animation pipelines.
     }
     playEvents(view, token);
   }
