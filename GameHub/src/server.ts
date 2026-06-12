@@ -18,6 +18,11 @@ import {
 import { getGame, GAME_CATALOGUE } from "./games/registry";
 import { cleanId, cleanInt, cleanName, parseClientMessage } from "./protocol";
 import { appendReplay, summarizeGameState, type ReplayEntry } from "./replay";
+import {
+  newReplayBundle, pushAction, freezeReplay, replayKey,
+  REPLAY_INDEX_KEY, REPLAY_KEEP,
+  type ReplayBundle, type ReplayIndexEntry,
+} from "./replay-capture";
 import type { ErrorCode, ServerError, ActionRejected } from "./games/types";
 
 // ─── Structured error / event protocol (Proposal 10) ───────────────────
@@ -78,6 +83,17 @@ export class Room extends Server<Env> {
   gameState: any = null;
   tickAt: number | null = null; // when a deferred game tick should run
 
+  // ─── Replay capture (deterministic per-game bundles) ─────────────────
+  // currentReplay holds the live capture while a game is in progress; it gets
+  // frozen and persisted under `replay:<id>` once the game ends (or the room
+  // returns to its lobby / starts a new game). `replayIndex` is the small
+  // metadata list the public API uses to enumerate replays without scanning
+  // storage. `replayCounter` is monotonic per-room and feeds the replay id.
+  currentReplay: ReplayBundle | null = null;
+  replayIndex: ReplayIndexEntry[] = [];
+  replayCounter = 0;
+  private actionSeq = 0; // monotonic action sequence per room, for replay events
+
   async onStart() {
     const m = await this.ctx.storage.get<any>("meta");
     if (m) {
@@ -91,8 +107,11 @@ export class Room extends Server<Env> {
       this.actionLog = m.actionLog ?? [];
       this.gameId = m.gameId ?? null;
       this.tickAt = m.tickAt ?? null;
+      this.replayCounter = m.replayCounter ?? 0;
     }
     this.gameState = (await this.ctx.storage.get<any>("gameState")) ?? null;
+    this.currentReplay = (await this.ctx.storage.get<ReplayBundle>("currentReplay")) ?? null;
+    this.replayIndex = (await this.ctx.storage.get<ReplayIndexEntry[]>(REPLAY_INDEX_KEY)) ?? [];
     // State migration (Proposal 3): an in-progress game persisted by an OLDER deploy
     // may have a stale schema. Run the game's migrate() once on load so a deploy can't
     // crash live rooms. Failures are logged, never thrown (a bad migrate shouldn't
@@ -111,15 +130,22 @@ export class Room extends Server<Env> {
       isPublic: this.isPublic, quickGame: this.quickGame, maxPlayers: this.maxPlayers,
       lastActivity: this.lastActivity, actionLog: this.actionLog,
       gameId: this.gameId, tickAt: this.tickAt,
+      replayCounter: this.replayCounter,
     });
   }
   private async persistGame() {
     if (this.gameState) await this.ctx.storage.put("gameState", this.gameState);
     else await this.ctx.storage.delete("gameState");
   }
+  private async persistReplay() {
+    if (this.currentReplay) await this.ctx.storage.put("currentReplay", this.currentReplay);
+    else await this.ctx.storage.delete("currentReplay");
+    await this.ctx.storage.put(REPLAY_INDEX_KEY, this.replayIndex);
+  }
   private async persistRoom() {
     await this.persistMeta();
     await this.persistGame();
+    await this.persistReplay();
   }
 
   private memberIdx(pid: string) { return this.members.findIndex((m) => m.id === pid); }
@@ -230,6 +256,27 @@ export class Room extends Server<Env> {
     const url = new URL(req.url);
     if (url.pathname === "/debug") return Response.json(this.debugSnapshot());
     if (url.pathname === "/replay") return Response.json({ code: this.name, replay: this.actionLog });
+    // ─── Public replay API (mounted by the Worker fetch handler) ───────
+    // /replays         → small list { replays: ReplayIndexEntry[] }
+    // /replays/<id>    → full bundle ReplayBundle (or 404)
+    if (url.pathname === "/replays") {
+      return Response.json({ code: this.name, replays: this.replayIndex });
+    }
+    if (url.pathname.startsWith("/replays/")) {
+      const id = decodeURIComponent(url.pathname.slice("/replays/".length));
+      // First check the live in-memory bundle (game still ongoing)
+      if (this.currentReplay && this.currentReplay.id === id) {
+        return Response.json(this.currentReplay, { headers: { "cache-control": "no-store" } });
+      }
+      const stored = await this.ctx.storage.get<ReplayBundle>(replayKey(id));
+      if (!stored) return new Response("Replay not found", { status: 404 });
+      return Response.json(stored, {
+        headers: {
+          // Frozen replays are immutable, so they're aggressively cacheable.
+          "cache-control": stored.endedAt ? "public, max-age=86400, immutable" : "no-store",
+        },
+      });
+    }
     return Response.json({ ok: true, room: this.name });
   }
 
@@ -242,6 +289,15 @@ export class Room extends Server<Env> {
       if (g?.completeTick) {
         g.completeTick(this.gameState);
         this.log({ kind: "tick", gameId: this.gameId });
+        // Capture the tick as a pseudo-action so client replay can drive it the
+        // same way the server did. We use a synthetic action name the client's
+        // replay player understands (it calls completeTick instead of applyAction).
+        this.actionSeq += 1;
+        if (this.currentReplay) pushAction(this.currentReplay, -1, { action: "__tick__" }, this.actionSeq);
+        // Game might have ended on a tick — finalize so the replay is preserved.
+        if (g.isOver(this.gameState) && this.currentReplay && !this.currentReplay.endedAt) {
+          this.finalizeCurrentReplay();
+        }
       }
       this.scheduleTick();        // a tick may queue another (e.g. chained turn-ends)
       await this.persistRoom();
@@ -458,6 +514,8 @@ export class Room extends Server<Env> {
         this.pending = [];
       }
       g.applyAction(this.gameState, seat, { action: "next_round" });
+      this.actionSeq += 1;
+      if (this.currentReplay) pushAction(this.currentReplay, seat, { action: "next_round" }, this.actionSeq);
       this.log({ kind: "next_round", actor: pid, seat, gameId: this.gameId });
       this.scheduleTick();
       await this.persistRoom(); await this.lobbyUpdate();
@@ -468,6 +526,9 @@ export class Room extends Server<Env> {
     /* ---- host: return to room lobby (keep the group together) ---- */
     if (msg.type === "to_room" && isHost) {
       this.log({ kind: "to_room", actor: pid, seat, gameId: this.gameId });
+      // Make sure the replay for the game just finished is preserved before
+      // we drop the game state.
+      if (this.currentReplay) this.finalizeCurrentReplay();
       this.gameId = null; this.gameState = null; this.tickAt = null;
       // absorb spectators into the group now that we're between games
       for (const p of this.pending) if (this.memberIdx(p.id) < 0 && this.members.length < this.maxPlayers) this.members.push(p);
@@ -499,7 +560,14 @@ export class Room extends Server<Env> {
       this.touch();
       const g = getGame(this.gameId)!;
       g.applyAction(this.gameState, actSeat, msg);
+      this.actionSeq += 1;
+      if (this.currentReplay) pushAction(this.currentReplay, actSeat, msg, this.actionSeq);
       this.log({ kind: "action", actor: pid, seat: actSeat, gameId: this.gameId, action: msg.action, detail: msg.botSeat != null ? { botSeat: msg.botSeat } : undefined });
+      // If this action ended the game, freeze the replay capture so it's persisted
+      // even if the host stays in the post-game screen for a long time.
+      if (g.isOver(this.gameState) && this.currentReplay && !this.currentReplay.endedAt) {
+        this.finalizeCurrentReplay();
+      }
       this.scheduleTick();
       await this.persistRoom();
       this.broadcastState();
@@ -513,10 +581,58 @@ export class Room extends Server<Env> {
     if (this.members.length < g.meta.minPlayers) return `${g.meta.name} needs at least ${g.meta.minPlayers} players.`;
     if (this.members.length > g.meta.maxPlayers) return `${g.meta.name} supports at most ${g.meta.maxPlayers} players.`;
     this.touch();
+    // If a previous replay was somehow left live (e.g. host launched a new game
+    // without ending the prior cleanly), freeze and persist it first so we never
+    // lose data — then start a fresh capture.
+    if (this.currentReplay) this.finalizeCurrentReplay();
     this.gameId = gameId;
     this.gameState = g.create(this.members.map((m) => m.name));
+    this.actionSeq = 0;
+    this.replayCounter += 1;
+    this.currentReplay = newReplayBundle({
+      roomCode: this.name,
+      gameId,
+      names: this.members.map((m) => m.name),
+      bots: this.members.map((m) => !!m.bot),
+      initialState: this.gameState,
+      counter: this.replayCounter,
+    });
     this.scheduleTick();
     return null;
+  }
+
+  /** Move the live replay into the persisted index, evicting old entries. */
+  private finalizeCurrentReplay(): void {
+    if (!this.currentReplay) return;
+    const r = this.currentReplay;
+    // Build a final summary from the game module if it provides one
+    let summary: ReplayBundle["finalSummary"];
+    try {
+      const g = r.gameId && this.gameState ? getGame(r.gameId) : null;
+      const v = g?.viewFor(this.gameState, -1);
+      if (v?.summary) summary = { winners: v.summary.winners, rows: v.summary.rows };
+    } catch { /* never let summary extraction throw */ }
+    freezeReplay(r, summary);
+
+    // Update the index (newest first)
+    const indexEntry: ReplayIndexEntry = {
+      id: r.id,
+      gameId: r.gameId,
+      names: r.names,
+      createdAt: r.createdAt,
+      endedAt: r.endedAt,
+      actionCount: r.actions.length,
+      winners: summary?.winners,
+    };
+    this.replayIndex = [indexEntry, ...this.replayIndex.filter((e) => e.id !== r.id)];
+
+    // Async eviction: write the new bundle, drop any past the cap
+    void this.ctx.storage.put(replayKey(r.id), r);
+    while (this.replayIndex.length > REPLAY_KEEP) {
+      const evicted = this.replayIndex.pop();
+      if (evicted) void this.ctx.storage.delete(replayKey(evicted.id));
+    }
+    this.currentReplay = null;
   }
 
   private async maybeQuickStart() {
@@ -617,18 +733,68 @@ export class Lobby extends Server<Env> {
 /* ============================================================
    Worker entry
    ============================================================ */
+// Shared room-code validator (used by debug + public replay routes).
+const VALID_CODE = /^[A-Za-z0-9_-]{1,64}$/;
+
+// CORS headers for the public replay API — replays are read-only, public, and
+// designed to be embedded/shared, so we allow cross-origin reads.
+const REPLAY_CORS = {
+  "access-control-allow-origin": "*",
+  "access-control-allow-methods": "GET, OPTIONS",
+  "access-control-max-age": "86400",
+};
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
+
+    // ─── Debug endpoint (token-gated) ─────────────────────────────────
     if (url.pathname.startsWith("/debug/room/")) {
       if (!env.DEBUG_TOKEN) return new Response("Debug disabled", { status: 404 });
       const supplied = url.searchParams.get("token") || request.headers.get("x-debug-token");
       if (supplied !== env.DEBUG_TOKEN) return new Response("Unauthorized", { status: 401 });
       const code = decodeURIComponent(url.pathname.slice("/debug/room/".length));
-      if (!/^[A-Za-z0-9_-]{1,64}$/.test(code)) return new Response("Bad room code", { status: 400 });
+      if (!VALID_CODE.test(code)) return new Response("Bad room code", { status: 400 });
       const room = await getServerByName(env.Room, code);
       return room.fetch("https://room/debug");
     }
+
+    // ─── Public replay API ────────────────────────────────────────────
+    //   GET  /api/replays/<code>           → ReplayIndexEntry[]
+    //   GET  /api/replay/<code>/<replayId> → ReplayBundle
+    // Replays only contain public game state (no player IPs / private chat),
+    // so no auth is required. Bundles are immutable, hence aggressively cached.
+    if (url.pathname.startsWith("/api/replay")) {
+      if (request.method === "OPTIONS") {
+        return new Response(null, { headers: REPLAY_CORS });
+      }
+      if (request.method !== "GET") {
+        return new Response("Method Not Allowed", { status: 405, headers: REPLAY_CORS });
+      }
+      const listMatch = url.pathname.match(/^\/api\/replays\/([^/]+)\/?$/);
+      const oneMatch = url.pathname.match(/^\/api\/replay\/([^/]+)\/([^/]+)\/?$/);
+      if (listMatch) {
+        const code = decodeURIComponent(listMatch[1]);
+        if (!VALID_CODE.test(code)) return new Response("Bad room code", { status: 400, headers: REPLAY_CORS });
+        const room = await getServerByName(env.Room, code);
+        const r = await room.fetch("https://room/replays");
+        return new Response(r.body, { status: r.status, headers: { ...REPLAY_CORS, "content-type": "application/json" } });
+      }
+      if (oneMatch) {
+        const code = decodeURIComponent(oneMatch[1]);
+        const id = decodeURIComponent(oneMatch[2]);
+        if (!VALID_CODE.test(code)) return new Response("Bad room code", { status: 400, headers: REPLAY_CORS });
+        if (!/^[A-Za-z0-9_-]{1,80}$/.test(id)) return new Response("Bad replay id", { status: 400, headers: REPLAY_CORS });
+        const room = await getServerByName(env.Room, code);
+        const r = await room.fetch(`https://room/replays/${encodeURIComponent(id)}`);
+        const headers = new Headers(r.headers);
+        for (const [k, v] of Object.entries(REPLAY_CORS)) headers.set(k, v);
+        if (!headers.has("content-type")) headers.set("content-type", "application/json");
+        return new Response(r.body, { status: r.status, headers });
+      }
+      return new Response("Not Found", { status: 404, headers: REPLAY_CORS });
+    }
+
     return (
       (await routePartykitRequest(request, env)) ||
       (await env.ASSETS.fetch(request)) ||
