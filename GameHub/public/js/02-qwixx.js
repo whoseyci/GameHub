@@ -128,10 +128,14 @@ window.GameClients = window.GameClients || {};
     return `<div class="qwixx-dice-rows"><button id="qwixxThrowBtn" class="qwixx-throw-btn">🎲 Throw dice</button><div data-persist-slot="qwixx:dice" class="qwixx-kit-dice"></div></div>`;
   }
 
-  function actionLegalForCell(state, player, viewerSeat, color, row, i, hints){
-    if(player.seat !== viewerSeat) return false; // inspecting an opponent never controls their sheet
-    if(!canMarkIndex(state, color, row, i)) return false;
-    return (hints.get(`${color}:${i}`) || []).some(h => h.actionable);
+  // API-11: server-emitted legality. Replaces the old canMarkIndex + actionable
+  // check; the server's legalActions enumerates every (color, i, use) tuple
+  // the seat could mark right now. Inspecting an opponent never reveals action
+  // affordances on their sheet — same rule as before, enforced here.
+  function actionLegalForCell(view, player, viewerSeat, color, i){
+    if(player.seat !== viewerSeat) return false;
+    const legal = (view?.state?.legal) || [];
+    return legal.some(a => a.action === 'mark' && a.c === color && a.i === i);
   }
   function renderMiniBoard(player, state, viewerSeat){
     const rows = COLORS.map(color => {
@@ -157,8 +161,12 @@ window.GameClients = window.GameClients || {};
     return `<div class="qwixx-mini-grid">${rows}</div><div class="qwixx-mini-pens">${pens}</div>`;
   }
 
-  function renderScorecard(player, state, viewerSeat, compact=false){
+  function renderScorecard(player, state, viewerSeat, compact=false, view=null){
     const hints = markHintsFor(state, player);
+    // The viewer's own scorecard taps into server-emitted legality (API-11)
+    // so the "click this number to mark it" affordance comes from the rule
+    // authority, not from a client-side rule check.
+    view = view || window._renderView;
     let html = `<div class="qwixx-scorecard${player.active ? ' active' : ''}${compact ? ' compact' : ''}">`;
     COLORS.forEach(color => {
       const row = player.rows[color];
@@ -172,7 +180,7 @@ window.GameClients = window.GameClients || {};
         const marked = row.marks.includes(i);
         const unavailable = !marked && (i <= last || locked);
         const cellHints = hints.get(`${color}:${i}`) || [];
-        const legal = actionLegalForCell(state, player, viewerSeat, color, row, i, hints);
+        const legal = actionLegalForCell(view, player, viewerSeat, color, i);
         const hintHtml = compact ? '' : cellHints.map(h => `<span class="qwixx-hint ${h.kind === 'white' ? 'white' : color}${h.actionable ? '' : ' preview'}" title="${h.title}" onclick="event.stopPropagation();window.GameClients['qwixx'].act('mark',{c:'${color}',i:${i},use:'${h.use||h.kind}'})">${h.label}</span>`).join('');
         let cls = 'qwixx-cell';
         if(marked) cls += ' x';

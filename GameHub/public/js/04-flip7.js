@@ -187,7 +187,7 @@
     const miniFrag=document.createDocumentFragment();
     const mainFrag=document.createDocumentFragment();
     s.players.forEach((p,i)=>{
-      if(i!==focus){miniFrag.appendChild(miniDOM(s,p,i,viewer,pending));return;}
+      if(i!==focus){miniFrag.appendChild(miniDOM(s,p,i,viewer,pending,view));return;}
       const wrap=document.createElement('div');const busted=p.status==='busted';
       wrap.className='player-board f7-focus-board'+(s.current===i&&s.phase==='PLAY'?' active-turn':'')+(i===viewer?' me':'');
       wrap.dataset.f7Seat=i;
@@ -200,7 +200,10 @@
       renderF7PlayerCards(row,p,busted);
       wrap.appendChild(row);
       const meta=document.createElement('div');meta.className='muted';meta.style.cssText='margin-top:6px;font-size:.8rem';meta.textContent=p.unique+'/7 unique';wrap.appendChild(meta);
-      const canTarget=pending&&p.status==='active'&&!(s.pendingAction.kind==='give_second'&&i===viewer);
+      // API-11: server-emitted legality decides if this player is a valid
+      // target for the viewer's pending action.
+      const viewerLegal=(view?.yourSeat===viewer && view?.state?.legal) ? view.state.legal : [];
+      const canTarget=viewerLegal.some(a=>a.action==='target'&&a.target===i);
       if(canTarget){wrap.style.cursor='pointer';wrap.style.outline='2px dashed #f59e0b';wrap.onclick=()=>net.spectating?null:act(viewer,{action:'target',target:i});}
       mainFrag.appendChild(wrap);
     });
@@ -215,7 +218,7 @@
     drawControls(view);
   }
 
-  function miniDOM(s,p,i,viewer,pending){
+  function miniDOM(s,p,i,viewer,pending,view){
     const busted=p.status==='busted';
     // BODY = the cards row (must keep .f7-row + data-f7Seat so syncF7Cards pins the
     // permanent card overlays onto it). The shared Kit.MiniBoard provides the frame,
@@ -223,7 +226,9 @@
     const row=document.createElement('div');row.className='f7-row';row.dataset.f7Seat=i;
     if(!(p.cards&&p.cards.length)&&!p.nums.length&&!p.mods.length&&!p.second)row.innerHTML='<span class="f7-empty">no cards</span>';
     renderF7PlayerCards(row,p,busted);
-    const canTarget=pending&&p.status==='active'&&!(s.pendingAction.kind==='give_second'&&i===viewer);
+    // API-11: server-emitted legality (same as the main board path).
+    const viewerLegal=(view?.yourSeat===viewer && view?.state?.legal) ? view.state.legal : [];
+    const canTarget=viewerLegal.some(a=>a.action==='target'&&a.target===i);
     const b=Kit.MiniBoard({
       name:p.name, badge:(busted?'BUST':'Now '+p.live)+' · '+p.banked,
       headExtra:p.status, active:s.current===i, dim:busted,
@@ -247,15 +252,29 @@
     box.querySelector('.player-board').appendChild(cards);
   }
 
+  // API-11: legality-driven controls. Hit/Stay/target affordances come from
+  // view.state.legal (online) or module.legalActions() (local pass-and-play).
+  // The display-text choices (banner / status text) remain UI judgement calls.
+  function f7LegalFor(view, seat){
+    if (seat === view?.yourSeat && view?.state?.legal) return view.state.legal;
+    const mod = window.GameModules?.flip7;
+    if (!mod?.legalActions) return [];
+    try { return mod.legalActions(view.flip7, seat) || []; } catch { return []; }
+  }
+
   function drawControls(view){
     const s=view.flip7,viewer=s.viewerSeat;
-    const myTurn=s.phase==='PLAY'&&s.current===viewer&&s.players[viewer]&&s.players[viewer].status==='active'&&!s.pendingAction;
     const pending=s.pendingAction&&s.pendingAction.from===viewer;
-    const hitStay=(seat)=>Kit.Controls.set([
-      {label:'Hit',kind:'green',onClick:()=>act(seat,{action:'hit'})},
-      {label:'Stay',kind:'secondary',onClick:()=>act(seat,{action:'stay'})},
-    ],{id:'f7Controls'});
-    Kit.Controls.clear('f7Controls'); // default: no controls unless a branch sets them
+    const hitStay=(seat)=>{
+      const legal=f7LegalFor(view, seat);
+      const canHit=legal.some(a=>a.action==='hit');
+      const canStay=legal.some(a=>a.action==='stay');
+      Kit.Controls.set([
+        ...(canHit?[{label:'Hit',kind:'green',onClick:()=>act(seat,{action:'hit'})}]:[]),
+        ...(canStay?[{label:'Stay',kind:'secondary',onClick:()=>act(seat,{action:'stay'})}]:[]),
+      ],{id:'f7Controls'});
+    };
+    Kit.Controls.clear('f7Controls');
     if(net.spectating){Kit.Status.set({text:'👁 Spectating — you\'ll join next round',tone:'warn'});}
     else if(s.phase==='ROUND_END'||s.phase==='GAME_OVER'){
       if(mode==='local'||net.isHost)Kit.Status.set({button:{label:s.phase==='GAME_OVER'?(mode==='local'?'Play Again':'New Game'):'Next Round',onClick:()=>mode==='local'?localNext():net.send({type:'next_round'})}});
@@ -265,13 +284,28 @@
       const k=s.pendingAction.kind;
       Kit.Status.set({text:(k==='freeze'?'❄ Choose who to Freeze':k==='flip3'?'🔃 Choose who flips 3':'♥ Give Second Chance to an opponent')+' (tap a player)',tone:'warn'});
     }
-    else if(myTurn){Kit.Status.set({text:'Your turn — Hit or Stay',tone:'go'});hitStay(viewer);}
-    else if(mode==='local'){const cur=s.players[s.current];
-      if(s.pendingAction){const k=s.pendingAction.kind;Kit.Status.set({text:esc(cur.name)+': '+(k==='freeze'?'Freeze ❄':k==='flip3'?'Flip 3':'Give ♥')+' — tap a player',tone:'warn'});}
-      else{Kit.Status.set({text:(cur?cur.name:'')+'\'s turn',tone:'go'});
-        if(s.phase==='PLAY'&&cur&&cur.status==='active')hitStay(s.current);}
+    else {
+      // Are hit/stay legal for the viewer? (Replaces the old myTurn check.)
+      const viewerLegal=f7LegalFor(view, viewer);
+      const myHitStay=viewerLegal.some(a=>a.action==='hit'||a.action==='stay');
+      if (myHitStay) {
+        Kit.Status.set({text:'Your turn — Hit or Stay',tone:'go'});
+        hitStay(viewer);
+      } else if (mode==='local'){
+        const cur=s.players[s.current];
+        if(s.pendingAction){
+          const k=s.pendingAction.kind;
+          Kit.Status.set({text:esc(cur.name)+': '+(k==='freeze'?'Freeze ❄':k==='flip3'?'Flip 3':'Give ♥')+' — tap a player',tone:'warn'});
+        } else {
+          Kit.Status.set({text:(cur?cur.name:'')+'\'s turn',tone:'go'});
+          // Pass-and-play: query legal for whoever's turn it is on the device.
+          const curLegal=f7LegalFor(view, s.current);
+          if (curLegal.some(a=>a.action==='hit'||a.action==='stay')) hitStay(s.current);
+        }
+      } else {
+        Kit.Status.set({text:'Waiting for '+(s.players[s.current]?.name||'…'),tone:'info'});
+      }
     }
-    else Kit.Status.set({text:'Waiting for '+(s.players[s.current]?.name||'…'),tone:'info'});
   }
 
   // ---- fly a card-like element between two points ----

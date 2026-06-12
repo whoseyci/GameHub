@@ -122,8 +122,13 @@
     const prevForAnim=prevView?prevView.skyjo:null;
     const newAction=s.lastAction&&(!prevForAnim||JSON.stringify(prevForAnim.lastAction)!==JSON.stringify(s.lastAction));
 
-    drawPiles(s,viewer,myTurn,ta);
-    drawBoards(s,viewer);
+    // API-11: server-emitted legality hints. Skyjo's tap-target logic
+    // (which pile is tappable, which board cell is revealable, when to show
+    // the held-card "discard" affordance) all read from view.state.legal —
+    // no client-side phase/turnAction rule code needed.
+    const hints = (typeof Kit !== 'undefined' && Kit.Cards?.legalHints) ? Kit.Cards.legalHints(view) : { byAction:{}, has:()=>false };
+    drawPiles(s,viewer,myTurn,ta,hints);
+    drawBoards(s,viewer,hints);
 
     if(s.phase==='REVEAL'&&(!prevForAnim||prevForAnim.phase!=='REVEAL'||prevForAnim.round!==s.round))Kit.dealCascade();
     if(newAction)runAnim(s,viewer);
@@ -134,7 +139,7 @@
     prevView=view;curView=view;
   }
 
-  function drawPiles(s,viewer,myTurn,ta){
+  function drawPiles(s,viewer,myTurn,ta,hints){
     const uiDeck=$('uiDeck'),uiDiscard=$('uiDiscard');
     $('deckCount').textContent=s.deckCount!=null?s.deckCount:'';
     uiDeck.classList.remove('pile-hint');uiDeck.onclick=null;uiDiscard.classList.remove('pile-hint');uiDiscard.onclick=null;
@@ -143,10 +148,23 @@
     if(s.publicDrawn!=null&&viewer!==s.currentPlayer){uiDeck.className='card-slot revealed';uiDeck.textContent=s.publicDrawn;uiDeck.style.color=C(s.publicDrawn);uiDeck.style.borderColor='#fff';uiDeck.innerHTML=s.publicDrawn+'<span id="deckCount" class="deck-count">'+(s.deckCount||'')+'</span>';}
     else{uiDeck.className='card-slot face-down';uiDeck.style.color='';uiDeck.style.borderColor='';uiDeck.innerHTML='<span id="deckCount" class="deck-count">'+(s.deckCount||'')+'</span>';}
 
-    if(myTurn&&ta===null){uiDeck.classList.add('pile-hint');uiDeck.onclick=()=>act(s.currentPlayer,{action:'draw_deck'});if(s.discardTop!==null){uiDiscard.classList.add('pile-hint');uiDiscard.onclick=()=>act(s.currentPlayer,{action:'take_discard'});}}
-    else if(myTurn&&ta==='deck'){uiDiscard.classList.add('pile-hint');uiDiscard.onclick=()=>act(s.currentPlayer,{action:'discard_drawn'});}
+    // API-11: pile affordances come from server-emitted legality hints. No
+    // client-side rule checks ("myTurn && ta===null") needed — the server
+    // already knows whether draw_deck / take_discard / discard_drawn is legal.
+    if(hints && hints.has('draw_deck')){
+      uiDeck.classList.add('pile-hint');
+      uiDeck.onclick=()=>act(s.currentPlayer,{action:'draw_deck'});
+    }
+    if(hints && hints.has('take_discard')){
+      uiDiscard.classList.add('pile-hint');
+      uiDiscard.onclick=()=>act(s.currentPlayer,{action:'take_discard'});
+    }
+    if(hints && hints.has('discard_drawn')){
+      uiDiscard.classList.add('pile-hint');
+      uiDiscard.onclick=()=>act(s.currentPlayer,{action:'discard_drawn'});
+    }
 
-    if(s.discardTop!==null){uiDiscard.className='card-slot revealed';uiDiscard.textContent=s.discardTop;uiDiscard.style.color=C(s.discardTop);uiDiscard.style.borderColor='#fff';if(myTurn&&ta==='deck')uiDiscard.classList.add('pile-hint');}
+    if(s.discardTop!==null){uiDiscard.className='card-slot revealed';uiDiscard.textContent=s.discardTop;uiDiscard.style.color=C(s.discardTop);uiDiscard.style.borderColor='#fff';if(hints && hints.has('discard_drawn'))uiDiscard.classList.add('pile-hint');}
     else{uiDiscard.className='card-slot';uiDiscard.textContent='Empty';uiDiscard.style.color='';uiDiscard.style.borderColor='';}
 
     // held window
@@ -250,16 +268,45 @@
     wrap.appendChild(h);wrap.appendChild(grid);return wrap;
   }
   function canClick(s,pi,ci,c,viewer){
-    if(s.phase==='REVEAL'){if(mode!=='local'&&pi!==viewer)return false;if(s.tiebreakerPlayers.length)return s.tiebreakerPlayers.includes(pi)&&!c.revealed&&!c.cleared;return s.players[pi].revealCount<2&&!c.revealed&&!c.cleared;}
-    if(s.phase!=='PLAY'&&s.phase!=='FINAL_TURNS')return false;
-    if(s.currentPlayer!==pi)return false;if(mode!=='local'&&pi!==viewer)return false;
-    if(s.turnAction==='deck'||s.turnAction==='discard')return true;
-    if(s.turnAction==='must_reveal')return !c.revealed;return false;
+    // API-11: defer to server-emitted legality. For ONLINE play, view.state.legal
+    // is already populated by the server for the viewer's seat — that's all we need
+    // (you can never click an opponent's board). For LOCAL pass-and-play, we can't
+    // rely on view.state.legal alone (it's for the viewer's seat), so we query the
+    // pure legalActions() function on the live engine state. Same rule authority,
+    // no duplication.
+    if(mode!=='local'&&pi!==viewer)return false;
+    const view=window._renderView;
+    const mod=window.GameModules?.skyjo;
+    // Prefer the precomputed hints (online); fall back to live legalActions
+    // for the seat in question (local pass-and-play).
+    let legal;
+    if (pi === viewer && view?.state?.legal) {
+      legal = view.state.legal;
+    } else if (mod?.legalActions) {
+      try { legal = mod.legalActions(s, pi) || []; } catch { legal = []; }
+    } else {
+      legal = [];
+    }
+    return legal.some(a =>
+      (a.action === 'reveal' || a.action === 'reveal_after_discard' || a.action === 'swap' || a.action === 'tiebreaker')
+      && a.index === ci
+    );
   }
   function cardClick(s,pi,ci,c){
-    if(s.phase==='REVEAL'){act(pi,{action:s.tiebreakerPlayers.length?'tiebreaker':'reveal',index:ci});return;}
-    if(s.turnAction==='deck'||s.turnAction==='discard')act(pi,{action:'swap',index:ci});
-    else if(s.turnAction==='must_reveal'&&!c.revealed)act(pi,{action:'reveal_after_discard',index:ci});
+    // Find the matching legal action for THIS cell and replay it.
+    // The server has already enumerated every action `pi` could take —
+    // we just pick the one that matches (ci, plus the right action verb).
+    const view=window._renderView;
+    const mod=window.GameModules?.skyjo;
+    let legal;
+    if (pi === view?.yourSeat && view?.state?.legal) legal = view.state.legal;
+    else if (mod?.legalActions) { try { legal = mod.legalActions(s, pi) || []; } catch { legal = []; } }
+    else legal = [];
+    // Prefer reveal_after_discard > swap > tiebreaker > reveal (the order
+    // ensures we pick the specific action the engine expects in each phase).
+    const ORDER = ['reveal_after_discard','swap','tiebreaker','reveal'];
+    const match = ORDER.map(a => legal.find(x => x.action === a && x.index === ci)).find(Boolean);
+    if (match) act(pi, match);
   }
   // seat = which player's board was acted on (needed for local pass-and-play REVEAL,
   // where each player flips their OWN cards). Online ignores it (server uses the
