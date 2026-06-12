@@ -212,6 +212,20 @@ window.GameClients = window.GameClients || {};
   }
 
   function render(view,ctx={}){
+    // W3: declare layout intent ONCE per game-mount. The platform sets CSS
+    // custom properties on #gameScreen; main.css consumes them. Qwixx wants
+    // a roomy opponent strip (132px min col), capped at 24dvh; a centered
+    // main board capped at 1040px; and a dice/center zone capped at 28dvh
+    // so the dice never push the scorecard off-screen.
+    if (window.Kit?.Layout && !window._qwixxLayoutApplied) {
+      Kit.Layout.apply({
+        minis:  { maxHeight: '24dvh', minColWidth: 132, gap: '6px' },
+        main:   { maxWidth: 1040 },
+        center: { maxHeight: '28dvh', padding: '6px' },
+        status: { sticky: true },
+      });
+      window._qwixxLayoutApplied = true;
+    }
     // Ensure the persisted dice tray exists BEFORE renderTable runs so the
     // [data-persist-slot] placeholder finds a node to mount. The legacy id
     // (#qwixxDiceKit) is kept on the persisted node so existing CSS selectors
@@ -415,7 +429,7 @@ window.GameClients = window.GameClients || {};
     GameActions.send(action, msg, view?.yourSeat ?? 0);
   }
 
-  function unmount(){removeQwixxUi();window._qwixxLastScores=null;window._qwixxDiceSig=null;}
+  function unmount(){removeQwixxUi();window._qwixxLastScores=null;window._qwixxDiceSig=null;window._qwixxLayoutApplied=false;}
   window.GameClients['qwixx'] = { render, act, inspect, unmount };
 
 })();

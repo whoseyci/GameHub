@@ -284,6 +284,40 @@
 /* (legacy .qwixx-die CSS dice removed — all dice now go through Kit.Dice3D
    which renders WebGL when available and .kit-die-static otherwise.) */
 
+/* ─── Kit.Layout — declarative layout intent (W3) ─────────────────────
+   Games call Kit.Layout.apply({...}) which sets CSS custom properties on
+   #gameScreen. These rules consume them with sensible fallbacks so a
+   game that doesn't opt-in keeps working exactly as before. */
+#gameScreen .mini-boards-container{
+  max-height:var(--gs-minis-max-h, 22dvh);
+  gap:var(--gs-minis-gap, 4px);
+}
+#gameScreen .mini-boards-container[class*="auto-fit"],
+#gameScreen .mini-boards-container.f7-mini-strip,
+#gameScreen .mini-boards-container.qwixx-top-mini-strip{
+  grid-template-columns:repeat(auto-fit, minmax(var(--gs-minis-mincol, 96px), 1fr));
+}
+#gameScreen #mainBoardsContainer{
+  max-width:var(--gs-main-max-w, none);
+  min-height:var(--gs-main-min-h, 0);
+  padding:var(--gs-main-pad, 0);
+}
+#gameScreen #topArea{
+  max-height:var(--gs-center-max-h, none);
+  padding:var(--gs-center-pad, 4px);
+}
+/* status sticky: 1 = sticky at the bottom on tall screens; 0/unset = static */
+#gameScreen .status-bar{
+  position:relative;
+}
+#gameScreen[style*="--gs-status-sticky: 1"] .status-bar,
+#gameScreen[style*="--gs-status-sticky:1"] .status-bar{
+  position:sticky;
+  bottom:0;
+  z-index:5;
+  background:linear-gradient(180deg, transparent, var(--bg) 30%);
+}
+
 /* ─── Kit.PassPlay — pass-and-play hand-off animation ────────────────── */
 #mainBoardsContainer{position:relative;transition:transform .26s var(--spring-soft),opacity .22s ease,filter .22s ease}
 #mainBoardsContainer.kit-passplay-leaving{transform:scale(.92) translateY(8px);opacity:.0;filter:blur(2px)}

@@ -807,6 +807,7 @@ const GameShell=(()=>{
     // doesn't see a stale "currentSeat" from the previous game.
     try { Kit?.Turn?.reset?.(current); } catch {}
     try { Kit?.PassPlay?.reset?.(current); } catch {}
+    try { Kit?.Layout?.reset?.(); } catch {}
     // Drop any per-game persisted nodes (Qwixx's dice canvas etc) so a fresh
     // entry to the same game starts with a clean slate.
     try { clearPersisted(); } catch {}
