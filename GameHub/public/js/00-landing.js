@@ -87,7 +87,38 @@
   // ─── Live stats counter (lobby WebSocket) ───────────────────────────
   let lobbyWs = null;
   let lastStats = { rooms: 0, players: 0 };
-  function startStatsSocket() {
+  // Track whether we've confirmed there's a real PartyServer behind us. A
+  // static dev server (e.g. scripts/e2e-client.mjs's local file-serving
+  // harness) will return HTML for /parties/* via SPA fallback, which causes
+  // an "Unexpected response code: 200" WebSocket handshake failure that the
+  // browser logs to console.error — which then trips the e2e error gate.
+  // Probe first; only open the WS if the endpoint actually looks like a DO.
+  let probedHasPartyServer = null; // null = unknown, true/false once probed.
+
+  async function probePartyServer() {
+    if (probedHasPartyServer != null) return probedHasPartyServer;
+    try {
+      // PartyServer responds to a plain GET on the parties route with JSON
+      // (or at least NOT with text/html). A static dev server serves
+      // index.html, which is text/html — that's our "no party server" signal.
+      const r = await fetch('/parties/lobby/public-lobby', { method: 'GET', cache: 'no-store' });
+      const ct = r.headers.get('content-type') || '';
+      probedHasPartyServer = !ct.startsWith('text/html');
+    } catch {
+      probedHasPartyServer = false;
+    }
+    return probedHasPartyServer;
+  }
+
+  async function startStatsSocket() {
+    const live = await probePartyServer();
+    if (!live) {
+      // No real party server (most likely the e2e static harness). Render the
+      // empty-state copy and skip the WebSocket attempt entirely so we don't
+      // pollute the console.
+      renderStats(true);
+      return;
+    }
     try {
       const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
       const url = `${proto}//${location.host}/parties/lobby/public-lobby`;
