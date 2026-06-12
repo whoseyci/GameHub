@@ -312,5 +312,67 @@
   }
   Kit.MiniBoard = miniBoard;
 
-  Kit.Cards = { el, anchor, board, snapshot, hand, grid, deck, discard, drop, slot, deal, move, toPile, paint, _decodeSpec:decodeSpec };
+  // ─── API-11: legality-hint helper ─────────────────────────────────────
+  // Consume the server-emitted view.state.legal (API-8) into a normalized
+  // shape every client renderer can use without re-encoding rules:
+  //
+  //   const hints = Kit.Cards.legalHints(view);
+  //   hints.byAction.place      → [{index, target, raw}, ...]
+  //   hints.byField.target      → Set([0, 3, 7])      // legal stones
+  //   hints.byField.index       → Set([0, 1, 2])      // legal hand slots
+  //   hints.byPair.place[0]     → Set([3, 7])         // hand 0 → stones {3,7}
+  //   hints.has('claim', {target:3})                  → boolean
+  //
+  // Used by `Kit.Cards.markHints(el, hints, {action})` to dash-highlight every
+  // .kit-drop-target on a board in one call.
+  function legalHints(view){
+    const out = { all: [], byAction: {}, byField: {}, byPair: {}, has: () => false, raw: [] };
+    const legal = (view && view.state && Array.isArray(view.state.legal)) ? view.state.legal : null;
+    if (!legal) return out;
+    out.raw = legal;
+    out.all = legal.slice();
+    for (const a of legal) {
+      if (!a || typeof a !== 'object') continue;
+      const action = String(a.action || '');
+      (out.byAction[action] = out.byAction[action] || []).push(a);
+      // Per-field set (e.g. all `target` values, all `index` values).
+      for (const k of Object.keys(a)) {
+        if (k === 'action') continue;
+        const v = a[k];
+        if (typeof v !== 'number' && typeof v !== 'string') continue;
+        const set = (out.byField[k] = out.byField[k] || new Set()); set.add(v);
+      }
+      // Pair index: byPair[action][primary] = Set of "secondaries".
+      // Heuristic: if action carries (index, target), keyed by index → set of targets.
+      if ('index' in a && 'target' in a) {
+        const m = (out.byPair[action] = out.byPair[action] || {});
+        const set = (m[a.index] = m[a.index] || new Set()); set.add(a.target);
+      }
+    }
+    out.has = (action, fields) => {
+      const bucket = out.byAction[action]; if (!bucket) return false;
+      if (!fields) return bucket.length > 0;
+      return bucket.some((entry) => Object.keys(fields).every((k) => entry[k] === fields[k]));
+    };
+    return out;
+  }
+
+  // Visual helper: paint a "valid drop target" highlight on a DOM node when
+  // it appears in `hints.byField[fieldName]`. Idempotent. Cleared by
+  // .markHints(el, null) or by re-rendering. Uses CSS hooks defined in main.css.
+  function markHints(els, hints, opts){
+    opts = opts || {};
+    const field = opts.field || 'target';
+    const list = Array.isArray(els) ? els : [els];
+    for (const el of list) {
+      if (!el || !el.dataset) continue;
+      const key = opts.keyAttr ? el.dataset[opts.keyAttr] : (el.dataset.hintKey || el.dataset.target || el.dataset.index);
+      const k = (key != null && !isNaN(Number(key))) ? Number(key) : key;
+      const set = hints?.byField?.[field];
+      const on = !!(set && set.has(k));
+      el.classList.toggle('kit-drop-target', on);
+    }
+  }
+
+  Kit.Cards = { el, anchor, board, snapshot, hand, grid, deck, discard, drop, slot, deal, move, toPile, paint, legalHints, markHints, _decodeSpec:decodeSpec };
 })();

@@ -486,14 +486,40 @@ const Kit=(()=>{
     function clear(prefix=''){for(const id of [...cards.keys()])if(!prefix||id.startsWith(prefix))destroy(id);}
     function reconcile(prefix,activeIds){const keep=new Set(activeIds||[]);for(const id of [...cards.keys()])if(id.startsWith(prefix)&&!keep.has(id))destroy(id);}
     function verifyInvariants(){
-      const errors=[],locMap=new Map();
+      const errors=[],warnings=[],locMap=new Map();
+      // 1) Collision check (existing) — two cards in the same logical zone slot.
       for(const c of cards.values()){
         if(c.location.zone==='transit'||c.location.zone==='removed'||c.location.zone==='deck'||c.location.zone==='discard')continue;
         const key=`${c.location.zone}:p${c.location.player??'x'}:s${c.location.slot??'x'}`;
         if(locMap.has(key))errors.push(`COLLISION: ${c.id} and ${locMap.get(key)} at ${key}`);
         locMap.set(key,c.id);
       }
-      return {ok:errors.length===0,errors};
+      // 2) Orphan overlay — a DOM node with data-cm-id but no card record.
+      //    These are the most common animation-glitch sources (ghost cards left
+      //    behind after a transition); always a bug.
+      const allOverlays = document.querySelectorAll('[data-cm-id]');
+      const knownIds = new Set([...cards.values()].map((c) => c.id));
+      for (const node of allOverlays) {
+        const id = node.getAttribute('data-cm-id');
+        if (!knownIds.has(id)) errors.push(`ORPHAN_OVERLAY: ${id} has DOM node but no card record`);
+      }
+      // 3) Anchor with stale data-card-reg — an anchor pointing at a card that
+      //    no longer exists in the registry (often a sign the card was destroyed
+      //    while still pinned). Warning, not error, because the live render
+      //    sweeps these on next sync.
+      const anchors = document.querySelectorAll('[data-card-reg]');
+      for (const a of anchors) {
+        const ref = a.getAttribute('data-card-reg');
+        if (ref && !knownIds.has(ref)) warnings.push(`STALE_ANCHOR: ${ref} referenced but no card`);
+      }
+      // 4) Card record with overlayEl detached from the DOM — usually means a
+      //    parent was innerHTML='ed during an animation. Hard to recover from.
+      for (const c of cards.values()) {
+        if (c.overlayEl && !document.body.contains(c.overlayEl)) {
+          errors.push(`DETACHED_OVERLAY: ${c.id} overlay no longer in DOM`);
+        }
+      }
+      return {ok:errors.length===0,errors,warnings};
     }
     // ── Transient fly: a one-off card flight between two DOM points, no
     //    permanent identity/location. Reuses moveTo() so it shares the exact same
@@ -670,7 +696,13 @@ const Kit=(()=>{
 
   window.addEventListener('resize',()=>CardManager.sync(),{passive:true});
   window.addEventListener('scroll',()=>CardManager.sync(),{passive:true});
-  return {cardColor,floatText,turnBanner,dealCascade,EventRunner,CardManager,CardBoard,cardFace,assertCardInvariants,rollDice,confetti};
+  const _kitExports = {cardColor,floatText,turnBanner,dealCascade,EventRunner,CardManager,CardBoard,cardFace,assertCardInvariants,rollDice,confetti};
+  // API-10: expose Kit on window for tests/smokes so they can verify
+  // animation health (verifyInvariants) without lexical access. The
+  // production code still references the script-scoped const directly,
+  // so this is purely additive.
+  try { window.Kit = _kitExports; } catch {}
+  return _kitExports;
 })();
 
 /* ====================== SOUND (arcade) ====================== */
@@ -770,12 +802,21 @@ const GameShell=(()=>{
   }
   function unmount(next=null){
     if(current&&window.GameClients?.[current]?.unmount)window.GameClients[current].unmount();
-    clearGlobal(); restoreSharedTop(); current=next;
+    clearGlobal(); restoreSharedTop();
+    // Reset shared-turn detection so a future game in the same session
+    // doesn't see a stale "currentSeat" from the previous game.
+    try { Kit?.Turn?.reset?.(current); } catch {}
+    current=next;
   }
   function render(view,client){
     if(current!==view.game){unmount(view.game);}
     if(client.mount&&!client._mounted){client.mount();client._mounted=true;}
     client.render(view,ctx(view));
+    // API-9: shared turn detection runs AFTER the game has updated its DOM,
+    // so the banner shows with the new layout already on screen. Games that
+    // need to suppress it during an animation pipeline can call
+    // Kit.Turn.update(view, {quiet:true}) themselves; this is the default path.
+    try { Kit?.Turn?.update?.(view); } catch (e) { console.warn('Kit.Turn.update threw', e); }
   }
   // Shared inspect overlay (the "look at another player's board" popup). Games used
   // to poke $('investigateBox')/$('investigateOverlay') directly; route them through

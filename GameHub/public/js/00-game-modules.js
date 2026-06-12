@@ -1817,7 +1817,17 @@
         return currentSeat();
       },
       viewFor(seat) {
-        return module.viewFor(state, seat);
+        const v = module.viewFor(state, seat);
+        try {
+          if (seat >= 0 && module.legalActions && v && v.state) {
+            const legal = module.legalActions(state, seat) || [];
+            v.state.legal = Array.isArray(legal) ? legal.slice(0, 256) : [];
+          }
+        } catch (e) {
+          console.warn(`[LocalEngine ${module.meta.id}] legalActions threw:`, e);
+          if (v && v.state) v.state.legal = [];
+        }
+        return v;
       },
       // Exposed for tests / bot self-play harnesses.
       _module: module,

@@ -535,6 +535,28 @@ html,body,#app{min-height:100%;height:auto;max-height:none;overflow-x:hidden;ove
 .kc.kc-selectable{cursor:pointer}
 .kc.kc-selectable:hover{transform:translateY(-7px) scale(1.05);box-shadow:var(--kc-shadow-hi);filter:brightness(1.1)}
 .kc.kc-selectable:active{transform:scale(.92);transition-duration:.06s}
+
+/* API-11: legality-hint visual (drop-target dashed outline + soft pulse).
+   Applied by Kit.Cards.markHints() from server-emitted view.state.legal,
+   so every game with legalActions() inherits the same affordance look. */
+.kit-drop-target{
+  position:relative;
+  cursor:pointer;
+  outline:2px dashed rgba(96,165,250,.7);
+  outline-offset:3px;
+  box-shadow:0 0 0 6px rgba(96,165,250,.10), 0 0 18px 0 rgba(96,165,250,.22);
+  animation:kitDropPulse 1.6s ease-in-out infinite;
+  transition:transform .12s var(--spring),outline-color .2s,box-shadow .2s;
+  z-index:2;
+}
+.kit-drop-target:hover{transform:scale(1.05);outline-color:#60a5fa;box-shadow:0 0 0 8px rgba(96,165,250,.18), 0 0 22px 0 rgba(96,165,250,.35)}
+@keyframes kitDropPulse{
+  0%,100%{outline-color:rgba(96,165,250,.65);box-shadow:0 0 0 6px rgba(96,165,250,.08), 0 0 16px 0 rgba(96,165,250,.18)}
+  50%   {outline-color:rgba(96,165,250,.95);box-shadow:0 0 0 8px rgba(96,165,250,.18), 0 0 22px 0 rgba(96,165,250,.32)}
+}
+@media (prefers-reduced-motion: reduce){
+  .kit-drop-target{animation:none}
+}
 .kc.kc-selected{transform:translateY(-12px) scale(1.07);box-shadow:0 10px 24px rgba(245,158,11,.55);outline:3px solid var(--kit-gold);z-index:3}
 .kc.kc-dim{opacity:.5;filter:grayscale(.3)}
 /* enumerated state tokens (strict — set via spec.state, never raw classes) */

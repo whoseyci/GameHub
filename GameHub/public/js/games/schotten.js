@@ -89,6 +89,10 @@
     const me = viewer < 0 ? 0 : viewer;
     const opp = 1 - me;
     const myTurn = s.current === viewer && viewer >= 0 && !view.over;
+    // API-11: Server-emitted legality hints (view.state.legal) drive every
+    // affordance below — claim buttons, drop targets, selectable hand cards.
+    // Schotten no longer re-encodes "can I place here?" on the client.
+    const hints = Kit.Cards.legalHints(view);
 
     // ---------- BORDER: 9 stones ----------
     const border = document.createElement('div');
@@ -114,7 +118,10 @@
       stone.innerHTML = claimed >= 0
         ? `<span class="st-stone-flag">${claimed === me ? '✓' : '✕'}</span>`
         : `<span class="st-stone-rock">🪨</span>`;
-      if (myTurn && s.placedThisTurn && claimed < 0) {
+      // Claim affordance: ANY stone the server says is provably claimable.
+      // (Used to be: "if I've placed && stone unclaimed" — but the server
+      // also enforces the formation-proof; let it own the rule.)
+      if (hints.has('claim', { target: i })) {
         stone.classList.add('st-claimable');
         stone.title = 'Claim this stone';
         stone.onclick = () => act('claim', { target: i });
@@ -127,8 +134,8 @@
         if (card) bottom.appendChild(clanAnchor(card, { small:true, loc:{ zone:'stone', player:me, slot:i*10+slot } }));
         else { bottom.appendChild(Kit.Cards.slot({ classes: 'st-slot-empty' })); }
       }
-      // drop target: a selected hand card may be placed on a stone with room
-      if (myTurn && !s.placedThisTurn && selectedHand != null && claimed < 0 && st.sides[me].length < 3) {
+      // Drop target: server says "place(selectedHand, i) is legal".
+      if (selectedHand != null && hints.has('place', { index: selectedHand, target: i })) {
         Kit.Cards.drop(bottom, { onClick: () => {
           const h = selectedHand; selectedHand = null;
           act('place', { index: h, target: i });
@@ -142,10 +149,13 @@
     // ---------- HAND ----------
     const hand = Kit.Cards.hand({ classes: 'st-hand' });
     const myHand = s.players[me]?.hand || [];
+    // A hand card is selectable iff the server has at least one legal
+    // `place` action with this hand index (API-11 — no client-side rule).
+    const placeBucket = hints.byPair?.place || {};
     myHand.forEach((card, idx) => {
       const el = clanAnchor(card, { loc:{ zone:'hand', player:me, slot:idx } });
       el.classList.add('st-hand-card');
-      if (myTurn && !s.placedThisTurn) {
+      if (placeBucket[idx] && placeBucket[idx].size > 0) {
         el.classList.add('kc-selectable');
         if (selectedHand === idx) el.classList.add('kc-selected');
         el.onclick = () => {
@@ -155,6 +165,11 @@
       }
       hand.appendChild(el);
     });
+    // If a card was selected but the server says it has no legal target
+    // (e.g. board state changed under us during animation), clear the pick.
+    if (selectedHand != null && (!placeBucket[selectedHand] || placeBucket[selectedHand].size === 0)) {
+      selectedHand = null;
+    }
 
     // ---------- TABLE FRAME ----------
     const focus = document.createElement('div');

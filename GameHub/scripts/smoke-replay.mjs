@@ -175,6 +175,17 @@ async function runReplayFor(gameId) {
   assert(Number(scrub.value) === bundle.actions.length,
     `after stepping through all actions, scrub.value should be ${bundle.actions.length}, got ${scrub.value}`);
 
+  // Animation invariants: after stepping through a whole replay, the
+  // CardManager must not have orphan overlays, collisions, or detached
+  // overlays. This is the platform-level "no glitchy animation" guard;
+  // any new game scaffolded badly enough to leak cards fails this smoke
+  // before it ever ships.
+  const verify = window.Kit?.CardManager?.verifyInvariants;
+  if (typeof verify === 'function') {
+    const r = verify();
+    if (!r.ok) throw new Error(`Animation invariants failed for ${gameId}: ${r.errors.join('; ')}`);
+  }
+
   // Seek back to the start and forward again — state must end identically.
   window.seekStart();
   await sleep(10);
