@@ -806,6 +806,9 @@ const GameShell=(()=>{
     // Reset shared-turn detection so a future game in the same session
     // doesn't see a stale "currentSeat" from the previous game.
     try { Kit?.Turn?.reset?.(current); } catch {}
+    // Drop any per-game persisted nodes (Qwixx's dice canvas etc) so a fresh
+    // entry to the same game starts with a clean slate.
+    try { clearPersisted(); } catch {}
     current=next;
   }
   function render(view,client){
@@ -835,25 +838,76 @@ const GameShell=(()=>{
       closeInspect,
       renderTable,
       clear:clearGlobal,
+      // Per-game persistent DOM nodes (e.g. Qwixx's dice canvas). See
+      // GameShell.persist documentation.
+      persist,
     };
   }
+  // Persisted-node registry: games can stash a DOM node here (keyed by an
+  // arbitrary string) and the shell guarantees the node SURVIVES every
+  // renderTable() call. Used for the Qwixx dice canvas — a WebGL context is
+  // expensive to recreate and visually disruptive if torn out and rebuilt
+  // every state tick. Cleared on game unmount.
+  //
+  // Usage:
+  //   const tray = GameShell.persist('qwixx:dice', () => {
+  //     const d = document.createElement('div'); d.className='qwixx-kit-dice'; return d;
+  //   });
+  //   // tray is the SAME node every call; mount it inside your center HTML
+  //   // via a placeholder <span data-persist-slot="qwixx:dice"></span>.
+  const _persisted = new Map();
+  function persist(key, factory){
+    let node = _persisted.get(key);
+    if (!node){
+      node = factory ? factory() : document.createElement('div');
+      node.setAttribute('data-persist-id', key);
+      _persisted.set(key, node);
+    }
+    return node;
+  }
+  function clearPersisted(){
+    for (const [, node] of _persisted){
+      // Detach from wherever it currently lives so the next render can re-mount it.
+      if (node.parentNode) node.parentNode.removeChild(node);
+    }
+    _persisted.clear();
+  }
+
+  // Re-mount any persisted nodes into matching placeholders after the shell
+  // has rebuilt the center HTML. The placeholder is replaced (not appended)
+  // so layout positions stay accurate (the placeholder can carry sizing CSS).
+  function mountPersistedSlots(root){
+    if (!root) return;
+    const slots = root.querySelectorAll('[data-persist-slot]');
+    for (const slot of slots){
+      const key = slot.getAttribute('data-persist-slot');
+      const node = _persisted.get(key);
+      if (!node) continue;
+      // Copy any classes / inline styles from the slot onto the persisted node
+      // so per-render visual tweaks still apply.
+      if (slot.className) node.className = slot.className;
+      if (slot.id && !node.id) node.id = slot.id;
+      slot.parentNode.replaceChild(node, slot);
+    }
+  }
+
   // Declarative table renderer. Games provide fragments; the shell owns where
   // they go and guarantees prior game fragments are removed.
   function renderTable({game='',opponents='',center='',focus='',status='',topMode='custom',opponentClass=''}={}){
     const mini=$('miniBoardsContainer'),top=$('topArea'),main=$('mainBoardsContainer'),sb=$('statusBar');
-    if(mini){mini.innerHTML='';mini.className='mini-boards-container '+opponentClass;const node=el(opponents);if(node)mini.appendChild(node);}
+    if(mini){mini.innerHTML='';mini.className='mini-boards-container '+opponentClass;const node=el(opponents);if(node)mini.appendChild(node);mountPersistedSlots(mini);}
     if(top){
       top.querySelectorAll('.game-shell-center,.qwixx-dice-zone,.qwixx-top-mini-strip').forEach(n=>n.remove());
       const piles=top.querySelector('.piles'),held=$('heldCardWrapper');
       if(topMode==='piles'){top.style.display='';if(piles)piles.style.display='flex';if(held)held.style.display='';}
       else if(topMode==='hidden'){top.style.display='none';}
-      else {top.style.display='flex';if(piles)piles.style.display='none';if(held)held.style.display='none';const c=document.createElement('div');c.className='game-shell-center '+game;const node=el(center);if(node)c.appendChild(node);top.appendChild(c);}
+      else {top.style.display='flex';if(piles)piles.style.display='none';if(held)held.style.display='none';const c=document.createElement('div');c.className='game-shell-center '+game;const node=el(center);if(node)c.appendChild(node);top.appendChild(c);mountPersistedSlots(c);}
     }
-    if(main)setHTML(main,focus);
+    if(main){setHTML(main,focus);mountPersistedSlots(main);}
     if(sb&&status!=null)sb.innerHTML=status||'';
     if(typeof Kit!=='undefined'&&Kit.CardManager){requestAnimationFrame(()=>{Kit.CardManager.sync();Kit.assertCardInvariants&&Kit.assertCardInvariants('renderTable');});setTimeout(()=>Kit.CardManager.sync(),80);setTimeout(()=>Kit.CardManager.sync(),550);}
   }
-  return {render,unmount,clearGlobal,renderTable,inspect,closeInspect,focus:(opts)=>SeatModel.resolve(opts)};
+  return {render,unmount,clearGlobal,renderTable,inspect,closeInspect,persist,clearPersisted,focus:(opts)=>SeatModel.resolve(opts)};
 })();
 
 /* ====================== CATALOGUE (single source of truth) ======================

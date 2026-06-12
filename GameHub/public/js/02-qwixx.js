@@ -119,8 +119,13 @@ window.GameClients = window.GameClients || {};
       ...(dice.g?[{color:'green',value:dice.g}]:[]),...(dice.b?[{color:'blue',value:dice.b}]:[]),
     ];
   }
-  function renderDice(dice){
-    return `<div class="qwixx-dice-rows"><button id="qwixxThrowBtn" class="qwixx-throw-btn">🎲 Throw dice</button><div id="qwixxDiceKit" class="qwixx-kit-dice"></div></div>`;
+  // The dice tray is a PERSISTED DOM node — it survives every renderTable()
+  // rebuild thanks to GameShell.persist (00-core.js). That's the only way to
+  // keep a WebGL canvas alive across state ticks (otherwise the canvas gets
+  // torn out + replaced with a CSS-3D fallback on every Qwixx state update,
+  // which is what caused the "2D dice flash after the 3D roll" bug).
+  function renderDice(){
+    return `<div class="qwixx-dice-rows"><button id="qwixxThrowBtn" class="qwixx-throw-btn">🎲 Throw dice</button><div data-persist-slot="qwixx:dice" class="qwixx-kit-dice"></div></div>`;
   }
 
   function actionLegalForCell(state, player, viewerSeat, color, row, i, hints){
@@ -195,6 +200,18 @@ window.GameClients = window.GameClients || {};
   }
 
   function render(view,ctx={}){
+    // Ensure the persisted dice tray exists BEFORE renderTable runs so the
+    // [data-persist-slot] placeholder finds a node to mount. The legacy id
+    // (#qwixxDiceKit) is kept on the persisted node so existing CSS selectors
+    // + the JSDOM smoke selector keep working.
+    if (ctx && typeof ctx.persist === 'function') {
+      ctx.persist('qwixx:dice', () => {
+        const tray = document.createElement('div');
+        tray.className = 'qwixx-kit-dice';
+        tray.id = 'qwixxDiceKit';
+        return tray;
+      });
+    }
     // Rich game state lives under the namespaced key view.qwixx (the same shape the
     // server and the shared local engine emit). Older local engines stashed it on
     // view.state; keep that as a fallback so nothing breaks mid-migration.
@@ -238,15 +255,23 @@ window.GameClients = window.GameClients || {};
       body: renderMiniBoard(player, displayState, view.yourSeat),
       onClick: () => window.GameClients['qwixx'].inspect(player.seat),
     })));
-    const center = `<div class="qwixx-dice-zone">
+    // Active-vs-passive header: the active seat sees a stronger call-to-action
+    // ("Your throw" / "Your color phase"); everyone else sees who they're
+    // waiting on. Round badge moves to the right so the head reads left-to
+    // -right as a sentence.
+    const headLeft = !diceRevealed
+      ? (isAct ? '🎲 Your throw' : `🎲 Waiting for ${esc(activeName)} to throw`)
+      : (isWhite ? '🎲 White phase — everyone may mark' : `🎯 ${esc(activeName)}'s color phase`);
+    const center = `<div class="qwixx-dice-zone${diceRevealed?' is-revealed':' awaiting-throw'}${isAct?' is-active-seat':''}">
       <div class="qwixx-turn-head">
-        <span>${!diceRevealed ? '🎲 New throw' : (isWhite ? '🎲 Everyone: white dice' : '🎯 Active player: one color combo')}</span>
-        <span>Round ${s.round}</span>
+        <span>${headLeft}</span>
+        <span class="qwixx-round-badge">Round ${s.round}</span>
       </div>
-      ${renderDice(dice)}
-      <div class="qwixx-combos">
-        ${diceRevealed ? `<span class="qwixx-combo white">White: ${dice.w[0]}+${dice.w[1]}=${dice.w[0]+dice.w[1]}</span>${COLORS.map(c => dice[COLOR_KEY[c]] ? `<span class="qwixx-combo ${c}">${c[0].toUpperCase()}: ${dice.w[0]}+${dice[COLOR_KEY[c]]} / ${dice.w[1]}+${dice[COLOR_KEY[c]]}</span>` : '').join('')}` : '<span class="qwixx-combo white">Dice hidden until throw</span>'}
-      </div>
+      ${renderDice()}
+      ${diceRevealed ? `<div class="qwixx-combos">
+        <span class="qwixx-combo white">W ${dice.w[0]}+${dice.w[1]}=<b>${dice.w[0]+dice.w[1]}</b></span>
+        ${COLORS.map(c => dice[COLOR_KEY[c]] ? `<span class="qwixx-combo ${c}">${c[0].toUpperCase()} ${dice.w[0]}+${dice[COLOR_KEY[c]]}/${dice.w[1]}+${dice[COLOR_KEY[c]]}</span>` : '').join('')}
+      </div>` : ''}
       <div class="qwixx-controls">${controlsHtml}</div>
     </div>`;
     const rec = focused.seat === s.activeSeat ? `<div class="qwixx-reco">💡 ${diceRevealed ? recommendedMove(s, focused) : 'Throw dice to reveal options.'}</div>` : '';
@@ -263,27 +288,52 @@ window.GameClients = window.GameClients || {};
     GameShell.renderTable({game:'qwixx',opponents,center,focus,status,topMode:'custom',opponentClass:'qwixx-top-mini-strip'});
 
     const shouldRoll = !diceRevealed;
-    const diceTray = $('qwixxDiceKit'), throwBtn = $('qwixxThrowBtn');
+    // The dice tray is the PERSISTED node from GameShell.persist — same element
+    // across every render of this game, so a running WebGL canvas inside it
+    // survives state updates untouched. dataset.shown remembers which throw
+    // is currently displayed; we only mutate the contents when the throw
+    // signature actually changes.
+    const diceTray = ctx.persist?.('qwixx:dice') || $('qwixxDiceKit') || document.querySelector('[data-persist-id="qwixx:dice"]');
+    const throwBtn = $('qwixxThrowBtn');
     const dsize = innerWidth < 760 ? 30 : 42;
     const doThrow = () => {
       if(throwBtn) throwBtn.classList.add('hidden');
       window._qwixxDiceSig = diceSig;
-      // Roll via the shared WebGL 3D dice API only (no legacy CSS-dice roller). The 3D
-      // dice settle on their real result and STAY shown (we tag the tray with the
-      // diceSig so the next re-render leaves the settled canvas in place).
+      // Roll via the shared WebGL 3D dice API only. The canvas the roll creates
+      // stays alive inside the PERSISTED tray for the whole turn — no tear-down,
+      // no CSS-3D fallback flash on subsequent state updates.
       Kit.Dice3D.roll(diceTray, diceList(dice), {size: dsize}).then(()=>{
         diceTray.dataset.shown = diceSig;
         if(window._renderView && window._renderView.game === 'qwixx') dispatchView(window._renderView);
       });
     };
-    if(shouldRoll){ diceTray.dataset.shown=''; diceTray.innerHTML=''; if(throwBtn){ throwBtn.classList.remove('hidden'); throwBtn.onclick=doThrow; } }
-    else {
+    if(shouldRoll){
+      // Brand-new throw needed (new round / next turn). Reset the persisted
+      // tray and show the "throw" button.
+      if(diceTray && diceTray.dataset.shown !== ''){
+        diceTray.dataset.shown=''; diceTray.innerHTML='';
+        diceTray.classList.remove('kit-dice3d');
+      }
+      if(throwBtn){ throwBtn.classList.remove('hidden'); throwBtn.onclick=doThrow; }
+    } else {
       if(throwBtn) throwBtn.classList.add('hidden');
-      // Revealed: if the settled 3D canvas for THIS throw is already on screen, leave
-      // it (don't wipe the result). Otherwise (e.g. opponent's throw arriving, or
-      // post-roll re-render with no canvas) render the clean settled readout.
-      const has3d = diceTray.querySelector('canvas') && diceTray.dataset.shown === diceSig;
-      if(!has3d){ Kit.Dice3D.showStatic(diceTray, diceList(dice), {size: dsize}); diceTray.dataset.shown = diceSig; }
+      // Already revealed AND tray already shows this throw → leave it alone
+      // (the live WebGL canvas keeps its settled pose). Only re-render if we
+      // genuinely DON'T have the right throw on screen — happens for opponents
+      // joining mid-roll, or when WebGL is unavailable.
+      if(!diceTray || diceTray.dataset.shown === diceSig) {
+        // nothing to do; persisted tray is already correct
+      } else if(Kit.Dice3D.supported && Kit.Dice3D.supported()){
+        // We support WebGL but don't have THIS roll's canvas — animate the
+        // arriving roll so opponents see the throw too.
+        Kit.Dice3D.roll(diceTray, diceList(dice), {size: dsize}).then(()=>{
+          diceTray.dataset.shown = diceSig;
+        });
+      } else {
+        // True no-WebGL fallback: static faces, clearly marked as a fallback.
+        Kit.Dice3D.showStatic(diceTray, diceList(dice), {size: dsize});
+        diceTray.dataset.shown = diceSig;
+      }
     }
 
     if(s.phase === 'GAME_OVER') showSummary(view);
