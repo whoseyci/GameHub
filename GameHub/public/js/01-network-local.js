@@ -49,6 +49,8 @@ function handleNet(m){
     window._currentBots=m.bots||[];   // bot seats the host must drive
     window._controlledSeats=m.controlledSeats||[];
     window._controlledViews=m.views||[];
+    // Shareable replay handle (server pushes it with every game broadcast).
+    window._currentReplay={ roomCode:m.roomCode||net.room||'', id:m.replayId||null };
     $('gameRoomTag').textContent=net.room||'';$('gameRoomTag').classList.toggle('hidden',!net.room);
     $('spectateTag').classList.toggle('hidden',!net.spectating);
     if(!$('gameScreen').classList.contains('active'))showScreen('gameScreen');
@@ -195,7 +197,22 @@ function showSummary(view){
   if(mode==='local'){btns=isOver?`<button class="btn green" onclick="localNext()">Play Again</button><button class="btn secondary" onclick="quitLocal()">Menu</button>`:`<button class="btn" onclick="localNext()">Next Round</button>`;}
   else if(net.isHost){btns=`<div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center">${isOver?`<button class="btn green" onclick="net.send({type:'next_round'})">New Game</button><button class="btn secondary" onclick="net.send({type:'to_room'})">Back to Room</button>`:`<button class="btn" onclick="net.send({type:'next_round'})">Next Round</button>`}</div>`;}
   else btns='<div class="muted">Waiting for host…</div>';
-  box.innerHTML=`<h2 style="margin:0 0 6px;font-size:1.8rem">${isOver?'Game Over!':'Round Complete'}</h2><table class="score-table">${head}${rows}</table>${foot}<div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center">${btns}</div>`;
+  // Replay sharing — available to everyone (host + guests + spectators) for
+  // ONLINE games once we have a replay handle from the server. Local pass-and
+  // -play games stay offline-only, no replay URLs to share.
+  let replayUi='';
+  if(isOver && mode!=='local' && window._currentReplay?.id && window._currentReplay?.roomCode){
+    const r=window._currentReplay;
+    const url=location.origin+`/replay.html?room=${encodeURIComponent(r.roomCode)}&id=${encodeURIComponent(r.id)}`;
+    replayUi=`<div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">
+      <div style="font-size:.78rem;color:var(--text-dim);margin-bottom:8px;font-weight:700;letter-spacing:.04em">📺 SHARE THIS GAME</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center">
+        <a class="btn" style="margin:0;text-decoration:none;display:inline-block" href="${esc(url)}" target="_blank" rel="noopener">▶ Watch Replay</a>
+        <button class="btn secondary" style="margin:0" onclick="(async()=>{try{await navigator.clipboard.writeText(${JSON.stringify(url)});this.textContent='✓ Copied!';setTimeout(()=>this.textContent='🔗 Copy Link',1800);}catch{this.textContent='Copy failed'}})()">🔗 Copy Link</button>
+      </div>
+    </div>`;
+  }
+  box.innerHTML=`<h2 style="margin:0 0 6px;font-size:1.8rem">${isOver?'Game Over!':'Round Complete'}</h2><table class="score-table">${head}${rows}</table>${foot}<div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center">${btns}</div>${replayUi}`;
   overlay.classList.remove('hidden');overlay.style.opacity='';
   if(isOver){Kit.confetti();SFX.win();}else SFX.good();
 }

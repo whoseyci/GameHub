@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Replay · Game Hub</title>
+<link rel="stylesheet" href="/styles/main.css">
+<style>
+/* ── Replay-specific chrome (kept tiny; the game itself renders into the
+   existing shell so we stay visually consistent with live play). ── */
+:root{
+  --replay-accent:#a78bfa;
+  --replay-accent-dim:#7c3aed;
+}
+.replay-topbar{
+  position:sticky; top:0; z-index:50;
+  display:flex; align-items:center; gap:10px;
+  padding:10px 14px;
+  background:linear-gradient(180deg, rgba(15,18,32,.95), rgba(15,18,32,.85));
+  backdrop-filter:blur(8px);
+  border-bottom:1px solid var(--border);
+}
+.replay-topbar .title{
+  font-weight:900; font-size:.95rem; letter-spacing:.04em;
+  display:flex; align-items:center; gap:8px;
+}
+.replay-topbar .pill{
+  font-size:.7rem; font-weight:800; letter-spacing:.08em;
+  padding:3px 8px; border-radius:999px;
+  background:var(--replay-accent); color:#0b0d18;
+  text-transform:uppercase;
+}
+.replay-topbar .meta{
+  font-size:.78rem; color:var(--text-dim); margin-left:6px;
+}
+.replay-topbar .spacer{ flex:1; }
+.replay-topbar .ghost-btn{
+  background:transparent; color:var(--text);
+  border:1px solid var(--border); border-radius:8px;
+  padding:6px 10px; font-size:.78rem; font-weight:700;
+  cursor:pointer;
+}
+.replay-topbar .ghost-btn:hover{ border-color:var(--replay-accent); color:var(--replay-accent); }
+.replay-topbar .ghost-btn.primary{
+  background:var(--replay-accent); color:#0b0d18; border-color:var(--replay-accent);
+}
+
+.replay-controls{
+  position:sticky; bottom:0; z-index:50;
+  display:flex; flex-direction:column; gap:6px;
+  padding:8px 14px 12px;
+  background:linear-gradient(0deg, rgba(15,18,32,.96), rgba(15,18,32,.85));
+  backdrop-filter:blur(8px);
+  border-top:1px solid var(--border);
+}
+.replay-scrub-wrap{ position:relative; height:18px; display:flex; align-items:center; }
+.replay-scrub{
+  -webkit-appearance:none; appearance:none;
+  width:100%; height:6px; background:rgba(255,255,255,.08); border-radius:999px;
+  outline:none;
+}
+.replay-scrub::-webkit-slider-thumb{
+  -webkit-appearance:none; appearance:none;
+  width:18px; height:18px; border-radius:50%;
+  background:var(--replay-accent);
+  border:2px solid #0b0d18;
+  cursor:pointer;
+  box-shadow:0 0 0 4px rgba(167,139,250,.18);
+}
+.replay-scrub::-moz-range-thumb{
+  width:16px; height:16px; border-radius:50%;
+  background:var(--replay-accent); border:2px solid #0b0d18; cursor:pointer;
+}
+.replay-bar-row{
+  display:flex; align-items:center; gap:10px;
+  font-size:.78rem; color:var(--text-dim);
+}
+.replay-bar-row .frame{
+  font-family:'SF Mono', Menlo, monospace;
+  color:var(--text); font-weight:700; letter-spacing:.02em;
+}
+.replay-bar-row .action{
+  flex:1; overflow:hidden; white-space:nowrap; text-overflow:ellipsis;
+}
+.replay-bar-row .speed{
+  background:transparent; color:var(--text); border:1px solid var(--border);
+  border-radius:6px; padding:3px 6px; font-size:.72rem; font-weight:700;
+}
+.replay-btns{
+  display:flex; gap:6px; align-items:center; justify-content:center;
+}
+.replay-btn{
+  background:rgba(255,255,255,.04); color:var(--text);
+  border:1px solid var(--border); border-radius:10px;
+  width:42px; height:36px; font-size:.95rem; font-weight:800;
+  cursor:pointer; display:flex; align-items:center; justify-content:center;
+}
+.replay-btn:hover{ border-color:var(--replay-accent); color:var(--replay-accent); }
+.replay-btn.play{
+  background:var(--replay-accent); color:#0b0d18; border-color:var(--replay-accent);
+  width:50px;
+}
+.replay-btn:disabled{ opacity:.4; cursor:not-allowed; }
+
+/* The replay player reuses index.html's gameScreen DOM verbatim so each
+   game module renders exactly as it does in live play. */
+#gameScreen{ display:block; padding-bottom:120px; }
+
+.replay-error{
+  margin:40px auto; max-width:540px;
+  padding:24px; border-radius:12px;
+  background:rgba(239,68,68,.08); border:1px solid rgba(239,68,68,.35);
+  color:#fca5a5; font-size:.92rem; line-height:1.5;
+}
+.replay-error h2{ margin:0 0 8px; color:#fecaca; font-size:1.1rem; }
+.replay-loader{
+  margin:80px auto; text-align:center; color:var(--text-dim);
+}
+.replay-loader .dot{
+  display:inline-block; width:8px; height:8px; margin:0 3px;
+  border-radius:50%; background:var(--replay-accent);
+  animation:replay-bounce 1.2s infinite ease-in-out;
+}
+.replay-loader .dot:nth-child(2){ animation-delay:.15s; }
+.replay-loader .dot:nth-child(3){ animation-delay:.3s; }
+@keyframes replay-bounce{
+  0%,80%,100%{ transform:scale(.4); opacity:.4; }
+  40%{ transform:scale(1); opacity:1; }
+}
+
+.toast.replay-toast{ background:var(--replay-accent); color:#0b0d18; font-weight:800; }
+
+@media (max-width:560px){
+  .replay-topbar .meta{ display:none; }
+  .replay-topbar .title{ font-size:.85rem; }
+}
+</style>
+</head>
+<body>
+
+<div id="app">
+  <!-- Topbar -->
+  <div class="replay-topbar">
+    <button class="icon-btn" onclick="location.href='/'" title="Game Hub">←</button>
+    <div class="title"><span class="pill">REPLAY</span> <span id="replayTitle">Loading…</span></div>
+    <div class="meta" id="replayMeta"></div>
+    <div class="spacer"></div>
+    <button class="ghost-btn" id="copyShareBtn" onclick="copyShare()">🔗 Share</button>
+    <button class="ghost-btn primary" onclick="location.href='/'">Play Now</button>
+  </div>
+
+  <!-- Game screen scaffolding — reused verbatim from index.html so the
+       game modules render exactly as in live play. -->
+  <div id="gameScreen" class="screen active">
+    <div id="loadingArea"></div>
+
+    <div id="miniBoardsContainer" class="mini-boards-container"></div>
+    <div id="topArea" class="top-area">
+      <div class="piles">
+        <div class="pile-wrap"><div class="pile-label">Deck</div>
+          <div id="uiDeck" class="card-slot face-down"><span id="deckCount" class="deck-count"></span></div></div>
+        <div class="pile-wrap"><div class="pile-label">Discard</div>
+          <div id="uiDiscard" class="card-slot">Empty</div></div>
+      </div>
+      <div id="heldCardWrapper" class="held-area-wrapper hidden">
+        <div id="heldCardArea" class="held-area">
+          <div style="display:flex;flex-direction:column;align-items:flex-end">
+            <div class="held-text" id="heldTextLabel">Holding:</div>
+            <div class="held-sub" id="heldSubLabel">&nbsp;</div>
+          </div>
+          <div id="uiHeldCard" class="card-slot revealed held-card-mini" style="display:flex"></div>
+        </div>
+      </div>
+    </div>
+    <div id="mainBoardsContainer" class="boards-container"></div>
+    <div id="statusBar" class="status-bar"></div>
+  </div>
+
+  <!-- Scrubber controls -->
+  <div class="replay-controls" id="replayControls" style="display:none">
+    <div class="replay-scrub-wrap">
+      <input type="range" id="replayScrub" class="replay-scrub" min="0" max="0" value="0" step="1">
+    </div>
+    <div class="replay-bar-row">
+      <span class="frame" id="frameLabel">0 / 0</span>
+      <span class="action" id="actionLabel"></span>
+      <select class="speed" id="speedSelect" onchange="setSpeed(this.value)">
+        <option value="2000">0.5×</option>
+        <option value="1000" selected>1×</option>
+        <option value="500">2×</option>
+        <option value="200">5×</option>
+        <option value="80">10×</option>
+      </select>
+    </div>
+    <div class="replay-btns">
+      <button class="replay-btn" onclick="seekStart()" title="Jump to start">⏮</button>
+      <button class="replay-btn" onclick="step(-1)" title="Previous action">◀</button>
+      <button class="replay-btn play" id="playBtn" onclick="togglePlay()" title="Play/Pause">▶</button>
+      <button class="replay-btn" onclick="step(1)" title="Next action">▶|</button>
+      <button class="replay-btn" onclick="seekEnd()" title="Jump to end">⏭</button>
+    </div>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+  <div id="overlay" class="overlay hidden"><div id="overlayBox" class="overlay-box"></div></div>
+  <div id="rulesOverlay" class="overlay hidden"><div id="rulesBox" class="overlay-box"></div></div>
+  <div id="investigateOverlay" class="overlay hidden" onclick="this.classList.add('hidden')">
+    <div class="boards-container" id="investigateBox" onclick="event.stopPropagation()"></div>
+  </div>
+
+  <!-- Hidden stub containers required by /js/00-core.js, /js/01-network-local.js
+       and /js/05-bots-init.js at boot time. The replay page only uses gameScreen,
+       but the shared scripts also touch these tile/menu containers when they
+       initialise; giving them empty DOM nodes is the cheapest way to stay
+       compatible without forking the shared bundle. -->
+  <div style="display:none" aria-hidden="true">
+    <div id="menuScreen" class="screen"></div>
+    <div id="onlineSetup" class="screen"></div>
+    <div id="quickPick" class="screen"><div id="quickTiles"></div></div>
+    <div id="hostSetup" class="screen">
+      <div id="visSeg"><button data-vis="public"></button><button data-vis="private"></button></div>
+      <div id="maxVal"></div><input id="hostRoom"><input id="onlineName">
+      <div id="onlineDevicePlayers"></div>
+    </div>
+    <div id="joinSetup" class="screen"><input id="joinRoom"><div id="publicList"></div></div>
+    <div id="roomLobby" class="screen">
+      <div id="roomTag"></div><div id="roomMembers"></div>
+      <div id="hostArea"><div id="hostTiles"></div></div>
+      <div id="guestArea"></div>
+    </div>
+    <div id="localPick" class="screen"><div id="localTiles"></div><div id="localPlayers"></div></div>
+    <div id="verStamp"></div>
+    <div id="gameRoomTag"></div><div id="spectateTag"></div>
+    <button id="rulesBtn"></button><button id="soundBtn"></button>
+  </div>
+</div>
+
+<!-- Same scripts as live play; replay uses the very same engines + renderers. -->
+<script src="/js/00-game-modules.js"></script>
+<script src="/js/00-core.js"></script>
+<script src="/js/00-cards.js"></script>
+<script src="/js/00-dice3d.js"></script>
+<script src="/js/01-network-local.js"></script>
+<script src="/js/02-qwixx.js"></script>
+<script src="/js/03-skyjo.js"></script>
+<script src="/js/04-flip7.js"></script>
+<script src="/js/bots/driver.js"></script>
+<script src="/js/bots/flip7.js"></script>
+<script src="/js/bots/qwixx.js"></script>
+<script src="/js/bots/skyjo.js"></script>
+<script src="/js/bots/schotten.js"></script>
+<script src="/js/games/schotten.js"></script>
+<script src="/js/05-bots-init.js"></script>
+
+<!-- Replay player -->
+<script src="/js/replay-player.js"></script>
+</body>
+</html>

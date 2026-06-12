@@ -391,6 +391,11 @@ export class Room extends Server<Env> {
         // seats that are bots + their difficulty, so the HOST can drive them
         bots: botList,
         view: view(seat),
+        // Shareable replay handle for the in-progress game (or the most recently
+        // finished one, if we're between rounds). Lets the client surface a
+        // "📺 Watch / share replay" button without an extra round-trip.
+        replayId: this.currentReplay?.id ?? this.replayIndex[0]?.id ?? null,
+        roomCode: this.name,
       }));
     } else {
       conn.send(JSON.stringify({
