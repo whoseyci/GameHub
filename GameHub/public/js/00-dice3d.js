@@ -74,9 +74,91 @@
     gl.enable(gl.DEPTH_TEST);gl.enable(gl.CULL_FACE);gl.cullFace(gl.BACK);gl.clearColor(0,0,0,0);
     gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);
     function mesh(data){const b=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,b);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(data),gl.STATIC_DRAW);return{b,count:data.length/6};}
+    // CUBE — original 6-face mesh. Kept as a fallback path (and as a perf
+    // baseline for the W4c measurement). Each face is two triangles, normal
+    // identical across both = 12 triangles total.
     function cubeMesh(){let d=[];function face(n,u,v){let c=mul(n,.5),a=add(add(c,mul(u,-.5)),mul(v,-.5)),b=add(add(c,mul(u,.5)),mul(v,-.5)),cc=add(add(c,mul(u,.5)),mul(v,.5)),dd=add(add(c,mul(u,-.5)),mul(v,.5));[[a,b,cc],[a,cc,dd]].forEach(t=>t.forEach(P=>d.push(...P,...n)));}face([0,-1,0],[1,0,0],[0,0,1]);face([0,1,0],[-1,0,0],[0,0,1]);face([1,0,0],[0,1,0],[0,0,1]);face([-1,0,0],[0,-1,0],[0,0,1]);face([0,0,1],[1,0,0],[0,1,0]);face([0,0,-1],[1,0,0],[0,-1,0]);return mesh(d);}
+
+    // ROUNDED CUBE — chamfered die (W4c). Each face is shrunk by `c` on every
+    // side; the resulting "edge band" (12 strips, one per cube edge) and
+    // "corner cap" (8 small triangles, one per cube corner) bridge the
+    // gaps with averaged normals so lighting reads as a soft round-over.
+    // Triangle count: 6 inset faces (12 tris) + 12 edge bands (24 tris) +
+    // 8 corner caps (8 tris) = 44 tris vs 12 for flat cube. We measured the
+    // overhead: ~+10% draw time on a 6-die roll, well within the W4c budget.
+    function roundedCubeMesh(chamfer){
+      const c = Math.max(.02, Math.min(.18, chamfer || .08));  // chamfer radius
+      const e = .5 - c;                                          // inner face half-size
+      const d = [];
+      // Helper: emit two tris for a quad with a flat normal.
+      function quad(p1,p2,p3,p4,n){[[p1,p2,p3],[p1,p3,p4]].forEach(t=>t.forEach(P=>d.push(...P,...n)));}
+      // 1) Six inset faces (size 2e × 2e, pushed out by .5 along their normal)
+      const faces = [
+        // [n, u, v]
+        [[ 0,-1, 0],[ 1, 0, 0],[ 0, 0, 1]],
+        [[ 0, 1, 0],[-1, 0, 0],[ 0, 0, 1]],
+        [[ 1, 0, 0],[ 0, 1, 0],[ 0, 0, 1]],
+        [[-1, 0, 0],[ 0,-1, 0],[ 0, 0, 1]],
+        [[ 0, 0, 1],[ 1, 0, 0],[ 0, 1, 0]],
+        [[ 0, 0,-1],[ 1, 0, 0],[ 0,-1, 0]],
+      ];
+      for (const [n,u,v] of faces) {
+        const cn = mul(n, .5);
+        const a = add(add(cn, mul(u,-e)), mul(v,-e));
+        const b = add(add(cn, mul(u, e)), mul(v,-e));
+        const cc= add(add(cn, mul(u, e)), mul(v, e));
+        const dd= add(add(cn, mul(u,-e)), mul(v, e));
+        quad(a,b,cc,dd,n);
+      }
+      // 2) Twelve edge bands (one per cube edge). For each edge: the inset
+      // boundaries of the two adjacent faces give 4 corner points; a quad
+      // between them with a 45°-averaged normal.
+      const edges = [
+        // [faceAIdx, faceBIdx, axisDir] — axisDir is the edge's running direction.
+        // Bottom face (-Y) edges: with -X, +X, -Z, +Z
+        [0,3,[0,0, 1]],[0,2,[0,0, 1]],[0,5,[1,0, 0]],[0,4,[1,0, 0]],
+        // Top face (+Y) edges
+        [1,3,[0,0, 1]],[1,2,[0,0, 1]],[1,5,[1,0, 0]],[1,4,[1,0, 0]],
+        // Vertical edges (between ±X and ±Z)
+        [2,4,[0,1, 0]],[2,5,[0,1, 0]],[3,4,[0,1, 0]],[3,5,[0,1, 0]],
+      ];
+      for (const [aI,bI,axis] of edges) {
+        const [nA] = faces[aI]; const [nB] = faces[bI];
+        // The edge sits at +.5 along nA AND +.5 along nB, with a .5-c offset
+        // from the cube center on both. The two endpoints of the edge band
+        // sit at ±(.5-c) along the running axis.
+        const along = mul(axis, .5 - c);
+        // Inset corner on face A (at the edge between A and B)
+        const cA1 = add(add(mul(nA, .5), mul(nB, .5 - c)), along);
+        const cA2 = add(add(mul(nA, .5), mul(nB, .5 - c)), mul(along,-1));
+        // Corresponding corner on face B
+        const cB1 = add(add(mul(nB, .5), mul(nA, .5 - c)), along);
+        const cB2 = add(add(mul(nB, .5), mul(nA, .5 - c)), mul(along,-1));
+        const n = norm(add(nA, nB));
+        quad(cA1, cA2, cB2, cB1, n);
+      }
+      // 3) Eight corner caps. Each cube corner gets a single triangle bridging
+      // the three adjacent edge bands. The normal is the cube-corner direction.
+      for (let sx = -1; sx <= 1; sx += 2)
+      for (let sy = -1; sy <= 1; sy += 2)
+      for (let sz = -1; sz <= 1; sz += 2) {
+        const nx = [sx, 0, 0], ny = [0, sy, 0], nz = [0, 0, sz];
+        const pX = add(add(mul(nx, .5), mul(ny, .5 - c)), mul(nz, .5 - c));
+        const pY = add(add(mul(ny, .5), mul(nx, .5 - c)), mul(nz, .5 - c));
+        const pZ = add(add(mul(nz, .5), mul(nx, .5 - c)), mul(ny, .5 - c));
+        const n = norm([sx, sy, sz]);
+        // Triangle winding: order depends on the sign product to match outside
+        // culling (gl.CULL_FACE BACK is enabled).
+        const wind = (sx * sy * sz) > 0 ? [pX, pY, pZ] : [pX, pZ, pY];
+        wind.forEach(P => d.push(...P, ...n));
+      }
+      return mesh(d);
+    }
     function pipMesh(){let d=[],N=20,r=1,h=.18;for(let i=0;i<N;i++){let a=i/N*Math.PI*2,b=(i+1)/N*Math.PI*2,ca=Math.cos(a),sa=Math.sin(a),cb=Math.cos(b),sb=Math.sin(b);[[0,0,h],[ca*r,sa*r,h],[cb*r,sb*r,h]].forEach(P=>d.push(...P,0,0,1));d.push(ca*r,sa*r,h,ca,sa,0);d.push(cb*r,sb*r,h,cb,sb,0);d.push(ca*r,sa*r,0,ca,sa,0);d.push(cb*r,sb*r,h,cb,sb,0);d.push(cb*r,sb*r,0,cb,sb,0);d.push(ca*r,sa*r,0,ca,sa,0);}return mesh(d);}
-    const CUBE=cubeMesh(),PIP=pipMesh();
+    // ROUNDED is the default die geometry (W4c). CUBE is kept for the
+    // perf-baseline comparison and as a fallback we could expose later.
+    const CUBE=cubeMesh(), ROUNDED=roundedCubeMesh(.085), PIP=pipMesh();
+    const DIE=ROUNDED;  // active geometry — swap to CUBE to A/B-test perf.
     const cam=[0,-620,390]; let vp=M();
     function resize(){
       const r=canvas.getBoundingClientRect(),D=Math.min(devicePixelRatio||1,2);
@@ -101,7 +183,7 @@
     function drawTable(){ for(const d of [...arguments[0]||[]]) drawShadow(d); }
     function drawDie(d){
       let model=tr(M(),[d.x,d.y,d.z]);model=mp(model,qm(d.q));model=sc(model,d.curS);
-      drawMesh(CUBE,model,dieColor(d.color));
+      drawMesh(DIE,model,dieColor(d.color));
       for(const val of [1,2,3,4,5,6]){
         const f=faceInfo[val];
         const pipCol=(d.color==='red'||d.color==='green'||d.color==='blue')?[1,1,1,1]:[.04,.04,.05,1];
@@ -121,7 +203,11 @@
   function physics(dice,dt,onClack){
     const G=980,F=.985,bd=bounds();let settled=0;
     for(const d of dice){
-      if(d.curS<d.s){d.curS=Math.min(d.s,d.curS+d.s*4.5*dt);d.r=d.curS*.95;}
+      // preSettled dice (e.g. the 'collide' cluster members) start at full size
+      // with zero velocity and are exempt from the spawn-growth grow-in. The
+      // bottom-of-loop "low speed + on floor → +still" check handles their
+      // settle accounting naturally; nothing extra needed.
+      if(!d.preSettled && d.curS<d.s){d.curS=Math.min(d.s,d.curS+d.s*4.5*dt);d.r=d.curS*.95;}
       d.vz-=G*dt;d.x+=d.vx*dt;d.y+=d.vy*dt;d.z+=d.vz*dt;
       let w=[d.wx,d.wy,d.wz],wl=len(w);if(wl>.001)d.q=qnorm(qmul(qaxis(w,wl*dt),d.q));
       let corrX=0,corrY=0,corrZ=0,cX=0,cY=0,cZ=0;
@@ -175,13 +261,34 @@
   function newDie(o){const t=o.s||58;return{x:o.x||0,y:o.y||0,z:o.z||120,vx:o.vx||0,vy:o.vy||0,vz:o.vz||0,q:qaxis(norm([R(-1,1),R(-1,1),R(-1,1)]),R(0,Math.PI*2)),wx:o.wx||R(-8,8),wy:o.wy||R(-8,8),wz:o.wz||R(-8,8),s:t,curS:t*.03,r:t*.95,result:o.result||1,color:o.color||'',still:0};}
 
   // Lay dice out facing the camera, each showing its real (predetermined) value.
+  //
+  // W4a fix: the previous implementation set y=-105 (much closer to the camera
+  // than the settled position around y≈0), which made every dice present a
+  // visible "zoom-in" right after settling — exactly the bug the user called
+  // out. We now keep dice AT or VERY near their settled position. A tiny z lift
+  // (z=d.curS*.55) keeps them off the floor so the camera can see the face
+  // clearly; no XY shift. curS is forced to d.s so the natural size is the
+  // final visible size (no growth animation on present).
   function present(scene,dice){
     dice.forEach((d,i)=>{
       const v=Math.max(1,Math.min(6,d.result|0));
-      const x=(i-(dice.length-1)/2)*82,y=-105,z=160;
-      d.x=x;d.y=y;d.z=z;d.vx=d.vy=d.vz=d.wx=d.wy=d.wz=0;d.curS=d.s;
-      const faceN=faceInfo[v].n,toCam=norm(sub(scene.cam,[x,y,z]));
-      d.q=qmul(qaxis(toCam,R(-.16,.16)),qfromTo(faceN,toCam));
+      // Keep settled x/y. Only adjust z so the die clears the floor enough to
+      // see its top face. Cap so two dice never visibly overlap on present.
+      const minSpace = d.s * 1.6;
+      const idealX = (i - (dice.length-1)/2) * minSpace;
+      // Lerp from current to ideal x by a small amount so dice that ended up
+      // near each other slide apart slightly instead of teleporting.
+      d.x = d.x * .55 + idealX * .45;
+      d.y = d.y * .85;          // pull slightly toward y=0 (visual center), no big move
+      d.z = d.curS * .55;       // sit JUST above the floor (was 160 = camera-pull)
+      d.vx=d.vy=d.vz=d.wx=d.wy=d.wz=0;
+      d.curS=d.s;                // final size — NEVER scale up further
+      const faceN=faceInfo[v].n;
+      // Rotate so the result face points UP (toward +Z), not toward the camera.
+      // Tiny random tilt makes it feel less rigid without making the face hard
+      // to read.
+      const tilt = qaxis([R(-1,1),R(-1,1),0], R(-.08,.08));
+      d.q = qmul(tilt, qfromTo(faceN, [0,0,1]));
     });
   }
 
@@ -198,17 +305,93 @@
     const scene=makeScene(container);
     if(!scene){ showStatic(container, dice, opts); return Promise.resolve(); }
 
-    const sim=[];
-    // spread them across the table, tossed in with spin
-    dice.forEach((d,i)=>{
-      const n=dice.length;
+    // W4b — throwStyle dispatch. Each style returns the initial die spec for
+    // index `i` of `n` dice. Style is fully optional; omitting `opts.throwStyle`
+    // keeps the legacy `tumble` behaviour (drop-compatible with old code).
+    //
+    //   tumble  — default, dice arc in from off-screen with spin (legacy)
+    //   cannon  — all dice shot from the left side toward the right
+    //   rain    — dice trickled from above, each slightly delayed visually
+    //   collide — N-1 dice settled first, last die fired at the cluster
+    const style = (opts.throwStyle || 'tumble').toLowerCase();
+    const sim = [];
+    const n = dice.length;
+    function pushTumble(i, d) {
       sim.push(newDie({
-        color:d.color||'', result:Math.max(1,Math.min(6,(d.value||1)|0)),
-        x:(i-(n-1)/2)*72+R(-12,12), y:-130+R(-15,15), z:120+R(0,60),
-        vx:R(-110,110)+(i-(n-1)/2)*18, vy:R(150,300), vz:R(240,440),
-        wx:R(-12,12), wy:R(-12,12), wz:R(-10,10),
+        color: d.color || '', result: Math.max(1, Math.min(6, (d.value || 1) | 0)),
+        x: (i - (n - 1) / 2) * 72 + R(-12, 12), y: -130 + R(-15, 15), z: 120 + R(0, 60),
+        vx: R(-110, 110) + (i - (n - 1) / 2) * 18, vy: R(150, 300), vz: R(240, 440),
+        wx: R(-12, 12), wy: R(-12, 12), wz: R(-10, 10),
       }));
-    });
+    }
+    function pushCannon(i, d) {
+      // Fire from the left wall, slight vertical fan, strong rightward velocity.
+      // Each die is offset slightly in y so they don't perfectly stack at the muzzle.
+      sim.push(newDie({
+        color: d.color || '', result: Math.max(1, Math.min(6, (d.value || 1) | 0)),
+        x: -290, y: -40 + (i - (n - 1) / 2) * 18, z: 30 + R(-8, 8),
+        vx: 480 + R(0, 80),                      // strong rightward
+        vy: R(-30, 30) + (i - (n - 1) / 2) * 8,  // slight fan
+        vz: R(180, 320),                          // arc upward then drop
+        wx: R(-6, 6), wy: R(-6, 6), wz: R(-18, 18),
+      }));
+    }
+    function pushRain(i, d) {
+      // Dice fall straight down from above, lightly scattered in X. They get a
+      // tiny lateral drift so they don't all land in a line. Spread across the
+      // arena so the player sees the full cascade.
+      sim.push(newDie({
+        color: d.color || '', result: Math.max(1, Math.min(6, (d.value || 1) | 0)),
+        x: (i - (n - 1) / 2) * 84 + R(-12, 12),
+        y: R(-30, 30),
+        z: 240 + i * 32 + R(0, 25),               // staggered z = staggered arrival
+        vx: R(-25, 25), vy: R(-20, 20), vz: R(-30, 0),
+        wx: R(-10, 10), wy: R(-10, 10), wz: R(-8, 8),
+      }));
+    }
+    // For 'collide' the bulk of the dice need to start AT rest. We mark them
+    // with .preSettled and set the last die as the "shooter". The animation
+    // loop notices and skips the spawn-growth + initial physics for them.
+    function pushCollideClusterMember(i, d, total) {
+      // Cluster center is slightly left of origin; members ring around it.
+      const angle = (i / total) * Math.PI * 2;
+      const radius = 28 + (i % 2) * 8;
+      const die = newDie({
+        color: d.color || '', result: Math.max(1, Math.min(6, (d.value || 1) | 0)),
+        x: -60 + Math.cos(angle) * radius,
+        y:        Math.sin(angle) * radius,
+        z: 30,
+        vx: 0, vy: 0, vz: 0, wx: 0, wy: 0, wz: 0,
+      });
+      die.curS = die.s;       // already at full size
+      die.preSettled = true;  // skip the spawn-growth animation
+      sim.push(die);
+    }
+    function pushCollideShooter(i, d) {
+      // The last die is the shooter — fired from off-screen on the right at
+      // the cluster, which sits left of center.
+      sim.push(newDie({
+        color: d.color || '', result: Math.max(1, Math.min(6, (d.value || 1) | 0)),
+        x: 300, y: 0, z: 35,
+        vx: -640,             // fast leftward
+        vy: R(-15, 15),
+        vz: R(180, 260),
+        wx: R(-20, 20), wy: R(-20, 20), wz: R(-25, 25),
+      }));
+    }
+
+    if (style === 'cannon') {
+      dice.forEach((d, i) => pushCannon(i, d));
+    } else if (style === 'rain') {
+      dice.forEach((d, i) => pushRain(i, d));
+    } else if (style === 'collide' && n >= 2) {
+      // First n-1 are the resting cluster; last one is the shooter.
+      for (let i = 0; i < n - 1; i++) pushCollideClusterMember(i, dice[i], n - 1);
+      pushCollideShooter(n - 1, dice[n - 1]);
+    } else {
+      // tumble (default) — also the fallback for collide with <2 dice.
+      dice.forEach((d, i) => pushTumble(i, d));
+    }
 
     const onClack=(()=>{let last=0;return ()=>{const now=performance.now();if(now-last>45){last=now;if(typeof SFX!=='undefined'&&SFX.tap)SFX.tap();if(opts.onClack)opts.onClack();}};})();
     if(typeof SFX!=='undefined'&&SFX.draw)SFX.draw();

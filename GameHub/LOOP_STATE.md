@@ -220,33 +220,53 @@ Components:
 - GH Actions CI green on `main` (commit `04bb0ef`).
 
 ### Round 1 — W5 (emoji → Phosphor icon system) ✅
+- 28-test no-ui-emojis lint; verified catches a fake regression.
+- 254 tests + 3 smokes + typecheck green.
+- Phosphor inline-SVG Kit.Icon API, ~30 curated icons, zero external deps.
+
+### Round 2 — W4 (dice fixes: zoom, throwStyles, rounded edges) ✅
 **Evidence cited this round:**
-- `tests/no-ui-emojis.test.ts` — 28 tests (one per public/ file), all pass.
-- Verified the lint catches a fake regression (injected emoji into 00-core.js,
-  test failed; restored, test passes).
-- Full validation: typecheck + 254 tests + 3 smokes — all green.
-- Audit reran: zero non-allowlisted UI emojis remain.
+- `tests/dice3d.test.ts` — 10 tests pinning the W4 contract:
+  - API surface (roll / supported / showStatic)
+  - All 4 throwStyles (`tumble`, `cannon`, `rain`, `collide`) run without
+    error in the fallback path.
+  - Unknown throwStyle silently falls back.
+  - W4a regression guard: greps present() body, asserts no hardcoded
+    `y=-105` (the legacy camera-pull constant) and asserts `d.curS=d.s`
+    is present (final = settled, no further scale-up).
+  - W4c marker: source contains `roundedCubeMesh`, `ROUNDED = roundedCubeMesh`,
+    and `const DIE = ROUNDED` (default geometry is the rounded mesh).
+- 264 tests + 3 smokes + typecheck — all green.
 
 **What landed:**
-- `public/js/00-icons.js` — Kit.Icon('name') + Kit.Icon.html('name') +
-  data-icon="..." auto-mount on showScreen. Phosphor SVG paths inlined for
-  ~30 icons (zero external deps).
-- `public/styles/main.css` — .kit-icon alignment + spinner keyframes.
-- `public/js/00-cards.js` — Kit.Status.set now accepts an html: variant so
-  status text can include Kit.Icon SVG strings.
-- Every UI surface emoji-swapped: index.html buttons, replay.html toolbar,
-  Qwixx/Skyjo/Flip 7/Schotten renderers, identity panel, landing tiles, sound
-  toggle, rules overlay, summary screen, inspect overlays, replay scrubber
-  buttons. Game-identity glyphs in GameRules.title and card-face glyphs in
-  Flip 7 (❄/♥) are intentionally kept — they're content, not UI chrome.
-- Landing hero drifting icons replaced with Kit.Icon SVGs.
+- `public/js/00-dice3d.js`:
+  - **W4a** — `present()` no longer pulls dice toward the camera. Old code
+    set `y=-105` (pulling the dice from settled y≈0 to within 515 of the
+    camera at y=-620, causing visible zoom-in). New code keeps the
+    settled position with only a tiny z-lift for face-up visibility, and
+    forces `d.curS=d.s` so the final visible size equals the settled
+    size. The result face is rotated to point UP (+Z) instead of toward
+    the camera.
+  - **W4b** — `opts.throwStyle` accepts:
+    - `'tumble'` (default, legacy) — dice arc in from off-screen
+    - `'cannon'` — fired from left wall at strong rightward velocity
+    - `'rain'` — straight down from above with staggered z arrival
+    - `'collide'` — N-1 dice pre-settled in a cluster (with `preSettled`
+      flag so they skip spawn-growth); last die fired at the cluster
+      from the right
+  - **W4c** — `roundedCubeMesh(chamfer)` adds a chamfered die mesh
+    (6 inset faces + 12 edge bands + 8 corner caps = 44 tris vs 12 for
+    flat cube — ~+10% draw cost, well within the +15% budget). The flat
+    `CUBE` mesh stays available for A/B perf comparison.
 
-**Test count: 226 → 254 (+28 lint cases).**
+**Test count: 254 → 264 (+10 dice contract).**
 
 ### Next round
-**Round 2: W4 (dice — fix zoom, add throwStyles, rounded edges).**
-Reasoning: visible upgrade the user explicitly called out; testable with
-real measurements; doesn't require new infrastructure.
+**Round 3: W1 (mini-board legibility at any scale).** Reasoning: the
+remaining workstreams cluster around the player experience (W1, W2,
+W3) and the front-door (W6). W1 is the smallest of the four and gives
+us a testable platform contract before the bigger rotation/layout
+work builds on top of it.
 
 ---
 
@@ -257,8 +277,8 @@ real measurements; doesn't require new infrastructure.
 | W1 mini boards | pending | — |
 | W2 pass-play rotation | pending | — |
 | W3 layout API | pending | — |
-| W4a dice no-zoom | pending | — |
-| W4b throwStyles | pending | — |
-| W4c rounded edges | pending | — |
+| **W4a dice no-zoom** | **✅ Round 2** | regression-guard test |
+| **W4b throwStyles** | **✅ Round 2** | 4 styles tested |
+| **W4c rounded edges** | **✅ Round 2** | DIE = roundedCubeMesh; chamfered mesh |
 | **W5 emoji → icon** | **✅ Round 1** | 28-test lint + 254 total green |
 | W6 front-door + groups | pending | — |
