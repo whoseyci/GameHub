@@ -396,6 +396,11 @@ export class Room extends Server<Env> {
         // "📺 Watch / share replay" button without an extra round-trip.
         replayId: this.currentReplay?.id ?? this.replayIndex[0]?.id ?? null,
         roomCode: this.name,
+        // Seat → identity map (pid + name + bot flag). Powers the client-side
+        // recent-players social graph: when a game ends, the client records
+        // every non-bot opponent so it can suggest them next time. Only
+        // public fields, identical to what's already in the 'room' broadcast.
+        seats: this.members.map((m, i) => ({ seat: i, pid: m.id, name: m.name, bot: !!m.bot })),
       }));
     } else {
       conn.send(JSON.stringify({

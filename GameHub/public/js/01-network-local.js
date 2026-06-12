@@ -51,6 +51,22 @@ function handleNet(m){
     window._controlledViews=m.views||[];
     // Shareable replay handle (server pushes it with every game broadcast).
     window._currentReplay={ roomCode:m.roomCode||net.room||'', id:m.replayId||null };
+    // Seat → identity map so the client knows who's at the table.
+    window._currentSeats=m.seats||[];
+    // Identity: record everyone (non-bot) we're playing with as a "recent".
+    if(window.Identity && Array.isArray(m.seats)){
+      for(const s of m.seats){ if(!s.bot && s.pid && s.name) Identity.recordEncounter({pid:s.pid,name:s.name}); }
+    }
+    // Identity: when the game ends and we have a summary, lock in head-to-head.
+    const wasOver = !!(window._lastFinalGame && window._lastFinalGame.game===m.view.game && window._lastFinalGame.over);
+    if(window.Identity && m.view.over && m.view.summary && Array.isArray(m.view.summary.winners) && !wasOver){
+      Identity.recordGameResult({
+        gameId: m.view.game,
+        winners: m.view.summary.winners,
+        players: (m.seats||[]).map(s=>({seat:s.seat,pid:s.pid})),
+      });
+    }
+    window._lastFinalGame = { game:m.view.game, over:!!m.view.over };
     $('gameRoomTag').textContent=net.room||'';$('gameRoomTag').classList.toggle('hidden',!net.room);
     $('spectateTag').classList.toggle('hidden',!net.spectating);
     if(!$('gameScreen').classList.contains('active'))showScreen('gameScreen');
@@ -65,6 +81,9 @@ function removeBot(){net.send({type:'remove_bot'});}
 function renderRoom(m){
   $('roomCode').textContent=m.code;
   $('roomVis').textContent=(m.quickGame?'⚡ Quick Play · ':'')+(m.isPublic?'🌍 Public room':'🔒 Private room');
+  // Identity: record every human in the room as a "recent" so they appear on
+  // the menu next time. Bots and ourselves are skipped inside recordEncounter.
+  if(window.Identity){ for(const p of (m.members||[])){ if(!p.bot && p.id && p.name) Identity.recordEncounter({pid:p.id,name:p.name}); } }
   $('roomMembers').innerHTML=m.members.map(p=>`<span class="chip"${p.bot?' style="background:#312e81;color:#c7d2fe"':''}>${esc(p.name)}${p.id===getPid()?' (You)':''}${p.bot?' · '+esc(p.difficulty||'med'):''}</span>`).join('')||'<span class="muted">Just you so far…</span>';
   $('hostArea').classList.toggle('hidden',!m.isHost);
   $('guestArea').classList.toggle('hidden',m.isHost);

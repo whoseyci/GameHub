@@ -24,6 +24,9 @@
       <button class="btn purple" onclick="goOnline()">Play Online</button>
       <button class="btn secondary" onclick="showScreen('localPick')">Local (Pass &amp; Play)</button>
       <button class="btn secondary" onclick="showRulesMenu()" style="background:transparent;box-shadow:none;border:2px solid var(--border)">📖 How to Play</button>
+
+      <!-- Identity & Recent Players (populated by /js/00-identity-ui.js) -->
+      <div id="identityPanel" style="margin-top:22px;padding-top:18px;border-top:1px solid var(--border);text-align:left"></div>
     </div>
   </div>
 
@@ -172,10 +175,12 @@
 </div>
 
 <script src="/js/00-game-modules.js"></script>
+<script src="/js/00-identity.js"></script>
 <script src="/js/00-core.js"></script>
 <script src="/js/00-cards.js"></script>
 <script src="/js/00-dice3d.js"></script>
 <script src="/js/01-network-local.js"></script>
+<script src="/js/00-identity-ui.js"></script>
 <script src="/js/02-qwixx.js"></script>
 <script src="/js/03-skyjo.js"></script>
 <script src="/js/04-flip7.js"></script>

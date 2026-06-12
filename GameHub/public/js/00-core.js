@@ -707,8 +707,23 @@ let _vis='public',_maxPlayers=8;
 function setVis(v){_vis=v;document.querySelectorAll('#visSeg button').forEach(b=>b.classList.toggle('on',b.dataset.vis===v));}
 function bumpMax(d){_maxPlayers=Math.max(2,Math.min(8,_maxPlayers+d));$('maxVal').textContent=_maxPlayers;}
 function randomCode(){const w=['CREW','SKY','BLUE','STAR','MOON','FOX','PEAR','WAVE','GOLD','NEON'];$('hostRoom').value=w[Math.floor(Math.random()*w.length)]+Math.floor(Math.random()*90+10);}
-function ensureName(){myName=$('onlineName').value.trim();if(!myName){myName='Player_'+Math.floor(Math.random()*1000);$('onlineName').value=myName;}return myName;}
-function goOnline(){if(typeof syncOnlinePrimaryName==='function'){syncOnlinePrimaryName();renderOnlineDevicePlayers();}showScreen('onlineSetup');}
+function ensureName(){
+  // Prefer the typed value; fall back to the saved Identity name; fall back to
+  // a random Player_NNN — and remember whatever we end up with for next time.
+  myName=$('onlineName').value.trim();
+  if(!myName && window.Identity) myName = (window.Identity.getName()||'').trim();
+  if(!myName){myName='Player_'+Math.floor(Math.random()*1000);}
+  $('onlineName').value=myName;
+  if(window.Identity) Identity.setName(myName);
+  return myName;
+}
+function goOnline(){
+  // Restore saved name from Identity into the input so users don't retype it.
+  const inp=$('onlineName');
+  if(inp && !inp.value && window.Identity){ inp.value = Identity.getName() || ''; }
+  if(typeof syncOnlinePrimaryName==='function'){syncOnlinePrimaryName();renderOnlineDevicePlayers();}
+  showScreen('onlineSetup');
+}
 
 
 /* ====================== SHARED TABLE SHELL / SEAT MODEL ====================== */
