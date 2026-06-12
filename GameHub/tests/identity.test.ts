@@ -113,4 +113,54 @@ describe("Identity", () => {
     expect(s).toMatch(/0–1/);
     expect(s).toMatch(/just now/);
   });
+
+  // ─── ELO (Unlock #3) ───────────────────────────────────────────────
+  it("starts every game at ELO 1200", () => {
+    const I = loadIdentity();
+    expect(I.getElo("skyjo")).toBe(1200);
+    expect(I.getElo("flip7")).toBe(1200);
+  });
+
+  it("a sole win raises ELO; a loss lowers it; ties barely move it", () => {
+    const I = loadIdentity();
+    const players = [{ seat: 0, pid: I.pid }, { seat: 1, pid: "p_b" }];
+    const a = I.updateElo({ gameId: "skyjo", winners: [0], players });
+    expect(a.delta).toBeGreaterThan(0);
+    expect(I.getElo("skyjo")).toBe(a.after);
+    const b = I.updateElo({ gameId: "skyjo", winners: [1], players });
+    expect(b.delta).toBeLessThan(0);
+    expect(I.getElo("skyjo")).toBe(b.after);
+    // shared win = ½ point — should round to 0 or tiny positive at base
+    const c = I.updateElo({ gameId: "qwixx", winners: [0, 1], players });
+    expect(Math.abs(c.delta)).toBeLessThanOrEqual(1);
+  });
+
+  it("ELO updates only when our pid is in the field (spectators skipped)", () => {
+    const I = loadIdentity();
+    const r = I.updateElo({ gameId: "skyjo", winners: [0], players: [
+      { seat: 0, pid: "p_alice" }, { seat: 1, pid: "p_bob" },
+    ]});
+    expect(r).toBeNull();
+    expect(I.getElo("skyjo")).toBe(1200);
+  });
+
+  it("ELO floor is 100 (can't go below)", () => {
+    const I = loadIdentity();
+    const players = [{ seat: 0, pid: I.pid }, { seat: 1, pid: "p_b" }];
+    // Pump losses until the floor pins it. ~250 losses of 24 K-factor
+    // would push past 0 if unbounded; we should plateau ≥100.
+    for (let i = 0; i < 200; i++) {
+      I.updateElo({ gameId: "skyjo", winners: [1], players });
+    }
+    expect(I.getElo("skyjo")).toBeGreaterThanOrEqual(100);
+    expect(I.getElo("skyjo")).toBeLessThan(1200);
+  });
+
+  it("ELO is namespaced per game (skyjo and flip7 ratings don't cross)", () => {
+    const I = loadIdentity();
+    const players = [{ seat: 0, pid: I.pid }, { seat: 1, pid: "p_b" }];
+    I.updateElo({ gameId: "skyjo", winners: [0], players });
+    expect(I.getElo("skyjo")).toBeGreaterThan(1200);
+    expect(I.getElo("flip7")).toBe(1200);
+  });
 });

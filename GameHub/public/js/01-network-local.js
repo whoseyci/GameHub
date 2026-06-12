@@ -57,14 +57,15 @@ function handleNet(m){
     if(window.Identity && Array.isArray(m.seats)){
       for(const s of m.seats){ if(!s.bot && s.pid && s.name) Identity.recordEncounter({pid:s.pid,name:s.name}); }
     }
-    // Identity: when the game ends and we have a summary, lock in head-to-head.
+    // Identity: when the game ends and we have a summary, lock in head-to-head AND ELO.
     const wasOver = !!(window._lastFinalGame && window._lastFinalGame.game===m.view.game && window._lastFinalGame.over);
     if(window.Identity && m.view.over && m.view.summary && Array.isArray(m.view.summary.winners) && !wasOver){
-      Identity.recordGameResult({
-        gameId: m.view.game,
-        winners: m.view.summary.winners,
-        players: (m.seats||[]).map(s=>({seat:s.seat,pid:s.pid})),
-      });
+      const players = (m.seats||[]).map(s=>({seat:s.seat,pid:s.pid}));
+      Identity.recordGameResult({ gameId: m.view.game, winners: m.view.summary.winners, players });
+      // Unlock #3: ELO update. Stored under Identity.elo[gameId]; surfaced on
+      // the menu. Skips automatically if we weren't a player (spectator) since
+      // Identity.updateElo() returns null when our pid isn't in the field.
+      try { Identity.updateElo({ gameId: m.view.game, winners: m.view.summary.winners, players }); } catch {}
     }
     window._lastFinalGame = { game:m.view.game, over:!!m.view.over };
     $('gameRoomTag').textContent=net.room||'';$('gameRoomTag').classList.toggle('hidden',!net.room);

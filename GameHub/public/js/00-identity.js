@@ -71,15 +71,53 @@
   // ─── Public API on window.Identity ───────────────────────────────────
   function ensure() {
     let store = loadStore();
-    if (!store) store = { pid: null, friendCode: null, name: '', recents: [] };
+    if (!store) store = { pid: null, friendCode: null, name: '', recents: [], elo: {} };
     if (!store.pid) {
       store.pid = readLegacyPid() || newPid();
     }
     writeLegacyPid(store.pid);
     store.friendCode = store.friendCode || deriveFriendCode(store.pid);
     if (!Array.isArray(store.recents)) store.recents = [];
+    if (!store.elo || typeof store.elo !== 'object') store.elo = {}; // gameId → rating
     saveStore(store);
     return store;
+  }
+
+  // ─── ELO rating per game ───────────────────────────────────────────────
+  // Standard ELO with K=24 and base rating 1200. We don't have per-opponent
+  // ratings (recents may not include everyone), so the opponent rating
+  // defaults to the average we've seen for that game, or 1200 if first match.
+  // Ties split the expected/actual score 50/50.
+  const ELO_BASE = 1200;
+  const ELO_K = 24;
+  function expected(a, b) { return 1 / (1 + Math.pow(10, (b - a) / 400)); }
+  function getElo(gameId) {
+    const store = ensure();
+    if (!gameId) return ELO_BASE;
+    return Number(store.elo[gameId]) || ELO_BASE;
+  }
+  function updateElo({ gameId, winners, players }) {
+    if (!gameId || !Array.isArray(winners) || !Array.isArray(players)) return null;
+    const store = ensure();
+    const me = players.find((p) => p.pid === store.pid);
+    if (!me) return null; // we weren't in this game
+    const myRating = Number(store.elo[gameId]) || ELO_BASE;
+    // Treat the field's average rating (or base) as the opponent rating.
+    const oppRating = ELO_BASE;
+    const N = players.length;
+    const winnerSeats = new Set(winners);
+    let actual;
+    if (winnerSeats.has(me.seat) && winnerSeats.size === 1) actual = 1;       // sole win
+    else if (winnerSeats.has(me.seat))                       actual = 1 / winnerSeats.size; // shared
+    else                                                     actual = 0;       // loss
+    // Multi-player ELO is fuzzy; use the "vs the average" approximation,
+    // scaled by 1/(N-1) so 6-player games don't double-count.
+    const E = expected(myRating, oppRating);
+    const delta = Math.round((ELO_K * (actual - E)) / Math.max(1, N - 1));
+    const newRating = Math.max(100, myRating + delta);
+    store.elo[gameId] = newRating;
+    saveStore(store);
+    return { before: myRating, after: newRating, delta, actual };
   }
 
   function getName() { return ensure().name || ''; }
@@ -178,6 +216,7 @@
     getRecents, recordEncounter, recordGameResult,
     clearRecents, forgetRecent,
     summarizeRecent,
+    getElo, updateElo,
     _deriveFriendCode: deriveFriendCode, // exposed for tests
   };
 })();

@@ -14,6 +14,14 @@
     return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   }
 
+  // Read the stored elo map for a player. Identity exposes getElo(gameId)
+  // (per-game), but for the panel we want the whole map at once — read from
+  // localStorage directly so we don't have to expand the public API.
+  function loadElo(_id) {
+    try { return JSON.parse(localStorage.getItem('gh.identity') || '{}').elo || {}; }
+    catch { return {}; }
+  }
+
   function render() {
     const panel = $('identityPanel');
     if (!panel || !window.Identity) return;
@@ -43,6 +51,25 @@
         </div>
       </div>
       ${winRate != null ? `<div style="font-size:.78rem;color:var(--text-dim);margin-bottom:10px">Tracked: <b style="color:var(--text)">${totalW}W–${totalL}L</b> (${winRate}%)</div>` : ''}
+      ${(() => {
+        // ELO chips (one per game we've played). Only render if at least one
+        // game has a non-base rating.
+        const elos = window.Identity?.getElo ? (loadElo(me) || {}) : {};
+        const keys = Object.keys(elos).filter((k) => elos[k] != null && elos[k] !== 1200);
+        if (!keys.length) return '';
+        const cat = window.GameCatalogue || [];
+        const cells = keys.map((id) => {
+          const meta = cat.find((g) => g.id === id);
+          const emoji = meta?.emoji || '🎲';
+          const name = meta?.name || id;
+          const rating = Math.round(elos[id]);
+          return `<span class="elo-chip" title="${esc(name)} rating"><span style="opacity:.8;margin-right:4px">${esc(emoji)}</span><b>${rating}</b></span>`;
+        }).join('');
+        return `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;align-items:center">
+          <span style="font-size:.7rem;color:var(--text-dim);font-weight:700;letter-spacing:.06em;text-transform:uppercase;margin-right:4px">ELO</span>
+          ${cells}
+        </div>`;
+      })()}
       <div style="font-size:.72rem;color:var(--text-dim);font-weight:700;letter-spacing:.06em;text-transform:uppercase;margin-bottom:8px;display:flex;align-items:center;gap:8px">
         <span>Recent Players</span>
         ${recents.length ? `<button onclick="window.Identity._clearWithConfirm()" style="margin-left:auto;background:none;border:none;color:var(--text-dim);font-size:.7rem;cursor:pointer;font-weight:700">Clear</button>` : ''}

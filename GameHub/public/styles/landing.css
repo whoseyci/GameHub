@@ -188,6 +188,14 @@
   border:1px solid var(--border);
   background:linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.0));
 }
+.elo-chip{
+  display:inline-flex; align-items:center; gap:2px;
+  padding:3px 8px; border-radius:999px;
+  background:linear-gradient(135deg, rgba(167,139,250,.18), rgba(96,165,250,.14));
+  border:1px solid rgba(167,139,250,.35);
+  font-size:.78rem; font-weight:700; color:var(--text);
+  font-family:'SF Mono', Menlo, monospace;
+}
 .landing-identity-wrap > #identityPanel{
   /* The panel's own internal border-top is redundant inside the card. */
   border-top:0 !important; padding-top:0 !important; margin-top:0 !important;
