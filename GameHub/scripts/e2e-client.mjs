@@ -150,9 +150,18 @@ async function runMobileSuite(browser, baseUrl) {
   // main.css). Real users have no trouble hitting it; only stability-checking
   // automation does.
   await page.locator('#qwixxThrowBtn').click({ force: true });
-  await page.waitForTimeout(2600);
+  // Poll instead of a fixed timeout — the WebGL dice physics can take 1.5–4s
+  // (the hard cap in Kit.Dice3D.roll is 4.2s), and CI is slower than local
+  // sandboxes. We wait up to 8s for the bot to act, polling every 200ms.
+  // Total round-trip on a typical run is <2s; the cap protects against
+  // genuinely-stuck states (e.g. bot strategy bug).
   pending = await readPending();
-  assert(!pending.includes(1), 'Mobile: Qwixx bot did not act after the throw');
+  const tStart = Date.now();
+  while (pending.includes(1) && Date.now() - tStart < 8000) {
+    await page.waitForTimeout(200);
+    pending = await readPending();
+  }
+  assert(!pending.includes(1), `Mobile: Qwixx bot did not act after the throw (waited ${Date.now()-tStart}ms; pending=${JSON.stringify(pending)})`);
   await screenshot(page, 'mobile-qwixx-after-throw');
 
   page.once('dialog', (d) => d.accept());
