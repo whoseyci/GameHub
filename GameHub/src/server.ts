@@ -58,7 +58,15 @@ const RATE_BURST = 30;
 type Bucket = { tokens: number; last: number };
 
 type ConnState = { pid?: string; pids?: string[] };
-interface Member { id: string; name: string; bot?: boolean; difficulty?: string; }
+interface Member {
+  id: string; name: string;
+  bot?: boolean; difficulty?: string;
+  // W6: per-member ready flag for quick-play / group lobbies. Defaults to
+  // false; cleared back to false whenever a game ends. Auto-true for bots
+  // (they're always ready). When ALL non-bot members are ready AND the
+  // count is in the game's [min..max] range, maybeQuickStart() launches.
+  ready?: boolean;
+}
 interface Pending { id: string; name: string; }
 
 /* ============================================================
@@ -72,6 +80,10 @@ export class Room extends Server<Env> {
   hostId: string | null = null;
   isPublic = false;
   quickGame: string | null = null; // if set, this is a quick-play room for that game
+  // W6: a group is a persistent multi-game room hosted by one player. Group
+  // rooms (public) appear in the lobby as "join the group" tiles rather than
+  // "join the game" tiles. Variants pass through launch_game.
+  isGroup = false;
   maxPlayers = 8;
   lastActivity = Date.now();
   actionLog: ReplayEntry[] = [];
@@ -102,6 +114,7 @@ export class Room extends Server<Env> {
       this.pending = m.pending ?? [];
       this.hostId = m.hostId ?? null;
       this.isPublic = m.isPublic ?? false;
+      this.isGroup = m.isGroup ?? false;
       this.quickGame = m.quickGame ?? null;
       this.maxPlayers = m.maxPlayers ?? 8;
       this.lastActivity = m.lastActivity ?? Date.now();
@@ -128,7 +141,7 @@ export class Room extends Server<Env> {
   private async persistMeta() {
     await this.ctx.storage.put("meta", {
       members: this.members, pending: this.pending, hostId: this.hostId,
-      isPublic: this.isPublic, quickGame: this.quickGame, maxPlayers: this.maxPlayers,
+      isPublic: this.isPublic, isGroup: this.isGroup, quickGame: this.quickGame, maxPlayers: this.maxPlayers,
       lastActivity: this.lastActivity, actionLog: this.actionLog,
       gameId: this.gameId, tickAt: this.tickAt,
       replayCounter: this.replayCounter,
@@ -238,10 +251,11 @@ export class Room extends Server<Env> {
       code: this.name,
       now: Date.now(),
       liveConnections: [...this.getConnections()].length,
-      members: this.members.map((m, seat) => ({ seat, id: m.id, name: m.name, bot: !!m.bot, difficulty: m.difficulty })),
+      members: this.members.map((m, seat) => ({ seat, id: m.id, name: m.name, bot: !!m.bot, difficulty: m.difficulty, ready: !!m.ready })),
       pending: this.pending,
       hostId: this.hostId,
       isPublic: this.isPublic,
+      isGroup: this.isGroup,
       quickGame: this.quickGame,
       maxPlayers: this.maxPlayers,
       lastActivity: this.lastActivity,
@@ -331,6 +345,10 @@ export class Room extends Server<Env> {
   }
 
   /* ---- Lobby discovery (only called on membership/status change) ---- */
+  /** Count humans + ready humans (used by ready-gating + lobby counters). */
+  private humanCount() { return this.members.filter((m) => !m.bot).length; }
+  private readyCount() { return this.members.filter((m) => !m.bot && m.ready).length; }
+
   private async lobbyUpdate(remove = false) {
     if (!this.isPublic) return;
     try {
@@ -342,9 +360,15 @@ export class Room extends Server<Env> {
           code: this.name,
           hostName: this.members.find((m) => m.id === this.hostId)?.name ?? "?",
           players: this.members.length + this.pending.length,
+          humans: this.humanCount(),
+          ready: this.readyCount(),
           maxPlayers: this.maxPlayers,
           gameId: this.quickGame ?? this.gameId,   // what they're playing/queuing for
           inGame: !!this.gameId,
+          // W6: groups are persistent multi-game rooms hosted by one player.
+          // For now we just propagate the visibility + host name; group-shard
+          // routing happens later (see W6 part-2).
+          isGroup: !!this.isGroup,
         }),
       });
     } catch {}
@@ -424,10 +448,13 @@ export class Room extends Server<Env> {
         isHost,
         code: this.name,
         isPublic: this.isPublic,
+        isGroup: this.isGroup,
         quickGame: this.quickGame,
         maxPlayers: this.maxPlayers,
         catalogue: GAME_CATALOGUE,
-        members: this.members.map((m) => ({ id: m.id, name: m.name, bot: !!m.bot, difficulty: m.difficulty })),
+        // W6: ready flag on each member so the client can render the ready-up
+        // checklist in quick-play / group lobbies.
+        members: this.members.map((m) => ({ id: m.id, name: m.name, bot: !!m.bot, difficulty: m.difficulty, ready: !!m.ready })),
       }));
     }
   }
@@ -474,11 +501,16 @@ export class Room extends Server<Env> {
           if (this.members.length === 0) {
             this.hostId = pid;
             this.isPublic = !!msg.isPublic;
+            this.isGroup = !!msg.isGroup;
             this.quickGame = msg.quickGame ?? null;
             this.maxPlayers = Math.max(2, Math.min(8, msg.maxPlayers || 8));
           }
           if (this.members.length >= this.maxPlayers) { conn.send(JSON.stringify({ type: "room_full", message: "Room is full." })); return; }
-          this.members.push({ id: pid, name });
+          // W6: in quick-play rooms, the host is auto-ready (they joined
+          // explicitly with intent to play). In persistent groups + custom
+          // rooms, ready stays false so all members opt in deliberately.
+          const autoReady = !!this.quickGame && pid === this.hostId;
+          this.members.push({ id: pid, name, ready: autoReady });
         }
         this.log({ kind: "join", actor: pid, gameId: this.gameId, detail: { name, seat: this.memberIdx(pid), pending: this.pendingIdx(pid) >= 0 } });
       }
@@ -503,9 +535,11 @@ export class Room extends Server<Env> {
         const diff = ["easy", "medium", "hard"].includes(msg.difficulty) ? msg.difficulty : "medium";
         const n = this.members.filter((m) => m.bot).length + 1;
         const names = ["Botley", "Chip", "Ada", "Turing", "Pixel", "Nova", "Echo", "Zar"];
-          this.members.push({ id: "bot_" + Math.random().toString(36).slice(2, 8), name: (names[n - 1] || "Bot " + n) + " 🤖", bot: true, difficulty: diff });
+        // W6: bots are always ready (they don't need to opt in).
+        this.members.push({ id: "bot_" + Math.random().toString(36).slice(2, 8), name: names[n - 1] || "Bot " + n, bot: true, difficulty: diff, ready: true });
         this.log({ kind: "add_bot", actor: pid, detail: { difficulty: diff } });
         await this.persistMeta(); await this.lobbyUpdate(); this.broadcastState();
+        if (this.quickGame) await this.maybeQuickStart();
       }
       return;
     }
@@ -515,11 +549,44 @@ export class Room extends Server<Env> {
       return;
     }
 
+    /* ---- W6: per-member ready toggle ---- */
+    if (msg.type === "set_ready" && !this.gameId) {
+      // Each connection may carry several seats (pass-and-play). Apply the
+      // ready flag to every controlled seat the connection is asking about,
+      // or to all of them if msg.seat is omitted.
+      const controlled = this.controlledPids(conn);
+      const targetPid = msg.pid && controlled.includes(String(msg.pid)) ? String(msg.pid) : null;
+      const wanted = !!msg.ready;
+      for (const m of this.members) {
+        if (m.bot) continue;
+        if (targetPid && m.id !== targetPid) continue;
+        if (!targetPid && !controlled.includes(m.id)) continue;
+        m.ready = wanted;
+      }
+      this.log({ kind: "set_ready", actor: pid, detail: { ready: wanted, pid: targetPid } });
+      await this.persistMeta();
+      // Lobby cares about ready counts; refresh the row so landing tiles
+      // reflect "3 ready of 4 needed" live.
+      if (this.isPublic) await this.lobbyUpdate();
+      this.broadcastState();
+      // If we hit the all-ready gate for a quick-play / group lobby, launch.
+      if ((this.quickGame || this.isGroup) && this.canAllReadyStart()) {
+        const launchGameId = this.quickGame || msg.gameId;
+        if (launchGameId) this.startGame(launchGameId);
+      }
+      return;
+    }
+
     /* ---- host: launch a game from the room lobby ---- */
     if (msg.type === "launch_game" && isHost && !this.gameId) {
-      const err = this.startGame(msg.gameId);
+      // W6: variant is an opt-in string the game module may read off
+      // state.variant (e.g. "extreme" for a Skyjo Extreme rules set).
+      // Validation is the game's job; we just pass through a sanitized
+      // string. Games that don't implement variants ignore it.
+      const variant = msg.variant ? cleanId(msg.variant) : null;
+      const err = this.startGame(msg.gameId, variant || undefined);
       if (err) { conn.send(JSON.stringify({ type: "error", message: err })); return; }
-      this.log({ kind: "launch_game", actor: pid, gameId: this.gameId, detail: { players: this.members.length } });
+      this.log({ kind: "launch_game", actor: pid, gameId: this.gameId, detail: { players: this.members.length, variant } });
       await this.persistRoom(); await this.lobbyUpdate();
       this.broadcastState();
       return;
@@ -552,6 +619,9 @@ export class Room extends Server<Env> {
     /* ---- host: return to room lobby (keep the group together) ---- */
     if (msg.type === "to_room" && isHost) {
       this.log({ kind: "to_room", actor: pid, seat, gameId: this.gameId });
+      // W6: clear all ready flags when returning to the room lobby so the
+      // next game requires explicit re-opt-in. Bots stay ready.
+      for (const m of this.members) if (!m.bot) m.ready = false;
       // Make sure the replay for the game just finished is preserved before
       // we drop the game state.
       if (this.currentReplay) this.finalizeCurrentReplay();
@@ -601,7 +671,7 @@ export class Room extends Server<Env> {
     }
   }
 
-  private startGame(gameId: string): string | null {
+  private startGame(gameId: string, variant?: string): string | null {
     const g = getGame(gameId);
     if (!g) return "Unknown game.";
     if (this.members.length < g.meta.minPlayers) return `${g.meta.name} needs at least ${g.meta.minPlayers} players.`;
@@ -613,6 +683,12 @@ export class Room extends Server<Env> {
     if (this.currentReplay) this.finalizeCurrentReplay();
     this.gameId = gameId;
     this.gameState = g.create(this.members.map((m) => m.name));
+    // W6: stash the chosen variant on state so the game module can branch on
+    // it. Games that don't implement variants ignore the field; the platform
+    // never enforces a variant catalogue (each module owns its own set).
+    if (variant && this.gameState && typeof this.gameState === "object") {
+      this.gameState.variant = variant;
+    }
     this.actionSeq = 0;
     this.replayCounter += 1;
     this.currentReplay = newReplayBundle({
@@ -661,15 +737,30 @@ export class Room extends Server<Env> {
     this.currentReplay = null;
   }
 
+  /**
+   * W6: returns true when this quick-play / group room can auto-launch the
+   * pending game. The gate is:
+   *   1. We have a game id (quickGame or, for groups, msg-supplied)
+   *   2. Player count is in the game's [min..max] range
+   *   3. EVERY human member has set ready=true (bots auto-ready)
+   *   4. There's at least one human (no all-bot lobbies launching ghosts)
+   */
+  private canAllReadyStart(): boolean {
+    const gid = this.quickGame; // group launches come through msg.gameId path
+    if (!gid) return false;
+    const g = getGame(gid);
+    if (!g) return false;
+    const n = this.members.length;
+    if (n < g.meta.minPlayers || n > g.meta.maxPlayers) return false;
+    const humans = this.humanCount();
+    if (humans === 0) return false;
+    return this.readyCount() === humans;
+  }
+
   private async maybeQuickStart() {
-    const g = this.quickGame ? getGame(this.quickGame) : null;
-    if (!g) return;
-    // Auto-start when we reach a comfortable size; host can start earlier.
-    const target = Math.min(g.meta.maxPlayers, Math.max(g.meta.minPlayers, 3));
-    if (this.members.length >= target) {
-      this.startGame(this.quickGame!);
-      await this.persistRoom(); await this.lobbyUpdate(); this.broadcastState();
-    }
+    if (!this.canAllReadyStart()) return;
+    this.startGame(this.quickGame!);
+    await this.persistRoom(); await this.lobbyUpdate(); this.broadcastState();
   }
 
   async onClose(conn: Connection<ConnState>) {
@@ -705,6 +796,10 @@ export class Room extends Server<Env> {
 interface RoomInfo {
   code: string; hostName: string; players: number; maxPlayers: number;
   gameId: string | null; inGame: boolean; updatedAt: number;
+  // W6: richer fields for landing-tile counts + ready-state visibility.
+  humans?: number;      // non-bot member count
+  ready?: number;       // how many humans have set ready=true
+  isGroup?: boolean;    // persistent group room (vs ephemeral quick-play)
 }
 const STALE_MS = 30_000;
 
@@ -726,6 +821,22 @@ export class Lobby extends Server<Env> {
       .filter((r) => r.players < r.maxPlayers)
       .sort((a, b) => Number(a.inGame) - Number(b.inGame) || b.updatedAt - a.updatedAt);
   }
+  /** W6: per-game aggregator for landing-tile counts. */
+  private counts() {
+    this.prune();
+    const out: Record<string, { gameId: string; waiting: number; inGame: number; rooms: number; ready: number; humans: number }> = {};
+    for (const r of Object.values(this.rooms)) {
+      if (!r.gameId) continue;
+      const slot = out[r.gameId] = out[r.gameId] || { gameId: r.gameId, waiting: 0, inGame: 0, rooms: 0, ready: 0, humans: 0 };
+      slot.rooms += 1;
+      const players = r.players || 0;
+      if (r.inGame) slot.inGame += players;
+      else slot.waiting += players;
+      slot.humans += r.humans || 0;
+      slot.ready += r.ready || 0;
+    }
+    return Object.values(out);
+  }
   async onRequest(req: Request) {
     if (req.method === "POST") {
       const url = new URL(req.url);
@@ -739,20 +850,29 @@ export class Lobby extends Server<Env> {
       else {
         const maxPlayers = cleanInt(b.maxPlayers, 2, 8) ?? 8;
         const players = cleanInt(b.players, 0, maxPlayers) ?? 1;
+        const humans = cleanInt(b.humans, 0, maxPlayers) ?? players;
+        const ready = cleanInt(b.ready, 0, humans) ?? 0;
         const gameId = b.gameId == null ? null : cleanId(b.gameId);
         this.rooms[code] = {
           code, hostName: cleanName(b.hostName, "?"), players,
-          maxPlayers, gameId: gameId && getGame(gameId) ? gameId : null, inGame: !!b.inGame, updatedAt: Date.now(),
+          humans, ready,
+          maxPlayers, gameId: gameId && getGame(gameId) ? gameId : null, inGame: !!b.inGame,
+          isGroup: !!b.isGroup,
+          updatedAt: Date.now(),
         };
       }
       await this.ctx.storage.put("rooms", this.rooms);
-      this.broadcast(JSON.stringify({ type: "rooms", rooms: this.list() }));
+      // Broadcast both the legacy room list AND the per-game counts so the
+      // landing can light up its tiles in real time without polling.
+      const rooms = this.list();
+      const counts = this.counts();
+      this.broadcast(JSON.stringify({ type: "rooms", rooms, counts }));
       return Response.json({ ok: true });
     }
-    return Response.json({ rooms: this.list() });
+    return Response.json({ rooms: this.list(), counts: this.counts() });
   }
   onConnect(conn: Connection) {
-    conn.send(JSON.stringify({ type: "rooms", rooms: this.list() }));
+    conn.send(JSON.stringify({ type: "rooms", rooms: this.list(), counts: this.counts() }));
   }
 }
 

@@ -30,16 +30,44 @@
             <div class="lt-title">${esc(g.name)}</div>
             <div class="lt-meta">${esc(g.minPlayers)}–${esc(g.maxPlayers)} players</div>
           </div>
+          <!-- W6: per-game live count chip. Populated by renderTileCounts()
+               from the lobby socket; hidden when there's nothing to show. -->
+          <div class="lt-counts" data-counts="${esc(g.id)}" hidden></div>
         </div>
         <div class="lt-desc">${esc(g.description || '')}</div>
         <div class="lt-actions">
-          <button class="ltbtn primary" data-act="bot" data-game="${esc(g.id)}">${Kit.Icon.html('rocket',{size:14,cls:'kit-icon-inline'})}Play vs Bot</button>
+          <button class="ltbtn primary" data-act="quick" data-game="${esc(g.id)}">${Kit.Icon.html('rocket',{size:14,cls:'kit-icon-inline'})}Play Online</button>
+          <button class="ltbtn ghost" data-act="bot" data-game="${esc(g.id)}">${Kit.Icon.html('robot',{size:14,cls:'kit-icon-inline'})}vs Bot</button>
           <button class="ltbtn ghost" data-act="rules" data-game="${esc(g.id)}">${Kit.Icon.html('book',{size:14,cls:'kit-icon-inline'})}Rules</button>
         </div>
       </div>
     `).join('');
 
     container.addEventListener('click', onTileClick, { passive: true });
+    renderTileCounts();
+  }
+
+  // W6: paint the lt-counts chip on each tile from the latest counts payload.
+  function renderTileCounts() {
+    for (const id of Object.keys(lastCounts)) {
+      const slot = document.querySelector(`[data-counts="${CSS.escape(id)}"]`);
+      if (!slot) continue;
+      const c = lastCounts[id];
+      const waiting = c.waiting || 0;
+      const inGame = c.inGame || 0;
+      if (!waiting && !inGame) { slot.hidden = true; slot.innerHTML = ''; continue; }
+      slot.hidden = false;
+      const parts = [];
+      if (waiting) parts.push(`<span class="lt-count lt-count-waiting" title="${waiting} waiting in lobby">${Kit.Icon.html('users',{size:11})}${waiting}</span>`);
+      if (inGame)  parts.push(`<span class="lt-count lt-count-ingame" title="${inGame} playing right now">${Kit.Icon.html('play',{size:11})}${inGame}</span>`);
+      slot.innerHTML = parts.join('');
+    }
+    // Tiles whose game has zero presence get their chip cleared (in case a
+    // game emptied out since the last render).
+    for (const slot of document.querySelectorAll('[data-counts]')) {
+      const id = slot.getAttribute('data-counts');
+      if (!lastCounts[id]) { slot.hidden = true; slot.innerHTML = ''; }
+    }
   }
 
   function onTileClick(e) {
@@ -53,6 +81,13 @@
     }
     if (act === 'bot') {
       instantBotPlay(gameId);
+      return;
+    }
+    if (act === 'quick') {
+      // W6: click-to-join quick-play. Hops into the quick-<game>-1 shard;
+      // the room handles fallback to -2 / -3 on full.
+      if (typeof window.ensureName === 'function') window.ensureName();
+      if (typeof window.quickPlay === 'function') window.quickPlay(gameId);
       return;
     }
   }
@@ -91,6 +126,8 @@
   // ─── Live stats counter (lobby WebSocket) ───────────────────────────
   let lobbyWs = null;
   let lastStats = { rooms: 0, players: 0 };
+  // W6: per-game queue counts. Keyed by gameId: { waiting, inGame, ready, ... }
+  let lastCounts = {};
   // Track whether we've confirmed there's a real PartyServer behind us. A
   // static dev server (e.g. scripts/e2e-client.mjs's local file-serving
   // harness) will return HTML for /parties/* via SPA fallback, which causes
@@ -134,6 +171,12 @@
             const rooms = m.rooms.length;
             const players = m.rooms.reduce((sum, r) => sum + (r.players || 0), 0);
             lastStats = { rooms, players };
+            // W6: per-game queue counts ride alongside the rooms list.
+            if (Array.isArray(m.counts)) {
+              lastCounts = {};
+              for (const c of m.counts) if (c && c.gameId) lastCounts[c.gameId] = c;
+              renderTileCounts();
+            }
             renderStats();
           }
         } catch { /* ignore non-JSON / unknown messages */ }
@@ -175,6 +218,26 @@
     bg.innerHTML = picks.map((p) => `<div class="float-card ${p.cls}" aria-hidden="true">${Kit.Icon.html(p.icon, { size: p.size })}</div>`).join('');
   }
 
+  // W6: invite-link routing. URL like /?join=ABC drops the user straight
+  // into room ABC (any visibility — host's invite link works for private
+  // rooms too because the code itself IS the invite). Cleaned from the URL
+  // after acting so a refresh doesn't loop.
+  function tryInviteJoin() {
+    try {
+      const p = new URLSearchParams(location.search);
+      const code = (p.get('join') || '').trim().toUpperCase();
+      if (!/^[A-Z0-9_-]{1,64}$/.test(code)) return;
+      // Strip the query so refresh doesn't replay this.
+      const url = new URL(location.href);
+      url.searchParams.delete('join');
+      history.replaceState({}, '', url.toString());
+      // Hop through the normal join path so name capture + reconnect-resilient
+      // flow stay consistent.
+      if (typeof window.ensureName === 'function') window.ensureName();
+      if (typeof window.connectRoom === 'function') window.connectRoom(code, {});
+    } catch { /* malformed URL — ignore */ }
+  }
+
   // ─── Bootstrap ───────────────────────────────────────────────────────
   function boot() {
     if (!$('landingGameTiles')) return; // page without landing layout
@@ -182,6 +245,7 @@
     renderTiles();
     renderStats();
     startStatsSocket();
+    tryInviteJoin();
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);

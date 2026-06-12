@@ -24,6 +24,29 @@ function joinPublic(code){ensureName();connectRoom(code,{});}
 // the next shard so players pool together until a room fills, then overflow opens a new one.
 function quickPlay(gameId,shard=1){ensureName();connectRoom('quick-'+gameId+'-'+shard,{isPublic:true,quickGame:gameId,shard});}
 
+// W6: invite-link helper. Copies "${origin}/?join=${roomCode}" to the
+// clipboard so the host can paste it anywhere. The landing page boots,
+// sees ?join=CODE and auto-joins (see public/js/00-landing.js).
+function copyInviteLink(){
+  if(!net.room) return;
+  const url=location.origin+'/?join='+encodeURIComponent(net.room);
+  const btn=$('inviteBtn'); const original=btn?btn.innerHTML:'';
+  const finish=(ok)=>{
+    if(btn){
+      btn.innerHTML='';
+      btn.appendChild(Kit.Icon(ok?'check':'x',{size:18}));
+      setTimeout(()=>{ btn.innerHTML=original; },1400);
+    }
+    toast(ok?'Invite link copied':'Copy failed',1400);
+  };
+  if(navigator.clipboard?.writeText){
+    navigator.clipboard.writeText(url).then(()=>finish(true),()=>finish(false));
+  } else {
+    try { const ta=document.createElement('textarea');ta.value=url;document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);finish(true); }
+    catch { finish(false); }
+  }
+}
+
 function handleNet(m){
   if(m.type==='hello')return;
   if(m.type==='error'){toast(m.message);return;}
@@ -86,7 +109,45 @@ function renderRoom(m){
   // Identity: record every human in the room as a "recent" so they appear on
   // the menu next time. Bots and ourselves are skipped inside recordEncounter.
   if(window.Identity){ for(const p of (m.members||[])){ if(!p.bot && p.id && p.name) Identity.recordEncounter({pid:p.id,name:p.name}); } }
-  $('roomMembers').innerHTML=m.members.map(p=>`<span class="chip"${p.bot?' style="background:#312e81;color:#c7d2fe"':''}>${esc(p.name)}${p.id===getPid()?' (You)':''}${p.bot?' · '+esc(p.difficulty||'med'):''}</span>`).join('')||'<span class="muted">Just you so far…</span>';
+  // W6: render members with a ready check pip when in a quick-play / group
+  // lobby (anywhere ready-gating matters). Plain chips for custom rooms.
+  const isReadyLobby = !!(m.quickGame || m.isGroup);
+  $('roomMembers').innerHTML=m.members.map(p=>{
+    const ready = p.bot || !!p.ready;
+    const readyMark = isReadyLobby
+      ? (ready
+          ? '<span class="ready-pip on" title="Ready">'+Kit.Icon.html('check',{size:11})+'</span>'
+          : '<span class="ready-pip" title="Not ready">'+Kit.Icon.html('spinner',{size:11,cls:'kit-icon-spinner'})+'</span>')
+      : '';
+    const botStyle = p.bot?' style="background:#312e81;color:#c7d2fe"':'';
+    return `<span class="chip"${botStyle}>${readyMark}${esc(p.name)}${p.id===getPid()?' (You)':''}${p.bot?' · '+esc(p.difficulty||'med'):''}</span>`;
+  }).join('')||'<span class="muted">Just you so far…</span>';
+  // W6: ready button — visible in quick-play / group lobbies for the current
+  // viewer. Stays prominent until everyone's ready (server then auto-starts).
+  let readyBox=$('readyBox');
+  if(isReadyLobby){
+    if(!readyBox){
+      readyBox=document.createElement('div');readyBox.id='readyBox';readyBox.style.cssText='margin:10px 0;display:flex;align-items:center;gap:10px;justify-content:center;flex-wrap:wrap';
+      $('roomMembers').parentNode.appendChild(readyBox);
+    }
+    const me = (m.members||[]).find(p=>p.id===getPid());
+    const iAmReady = !!(me && me.ready);
+    const humans = (m.members||[]).filter(p=>!p.bot).length;
+    const readyHumans = (m.members||[]).filter(p=>!p.bot && p.ready).length;
+    const need = m.quickGame
+      ? Math.max(2, (window.GameCatalogue||[]).find(g=>g.id===m.quickGame)?.minPlayers || 2)
+      : 2;
+    const gateText = humans < need
+      ? `Waiting for ${need - humans} more · ${readyHumans}/${humans} ready`
+      : `${readyHumans}/${humans} ready — game starts when all ready`;
+    readyBox.innerHTML = `
+      <button class="btn ${iAmReady?'secondary':'green'}" style="margin:0;flex:0 0 auto;display:inline-flex;align-items:center;gap:6px"
+              onclick="net.send({type:'set_ready',ready:${!iAmReady}})">
+        ${iAmReady ? Kit.Icon.html('check',{size:14})+'Ready' : Kit.Icon.html('play',{size:14})+"I'm ready"}
+      </button>
+      <span class="muted" style="font-size:.85rem">${gateText}</span>
+    `;
+  } else if(readyBox){ readyBox.remove(); }
   $('hostArea').classList.toggle('hidden',!m.isHost);
   $('guestArea').classList.toggle('hidden',m.isHost);
   // bot controls (host only)

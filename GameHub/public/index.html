@@ -162,7 +162,13 @@
   <div id="roomScreen" class="screen">
     <div class="menu-card">
       <button class="btn secondary backbtn" onclick="leaveOnline()">←</button>
-      <h2 style="margin-top:0">Room <span id="roomCode" style="color:var(--accent)"></span></h2>
+      <h2 style="margin-top:0;display:flex;align-items:center;gap:8px;justify-content:center">
+        <span>Room</span>
+        <span id="roomCode" style="color:var(--accent)"></span>
+        <!-- W6: copy invite link. Lands the recipient straight into this
+             room via /?join=CODE handling on the landing page. -->
+        <button id="inviteBtn" class="icon-btn" title="Copy invite link" onclick="copyInviteLink()" style="margin-left:4px" data-icon="link" data-icon-mode="replace" data-icon-size="18"></button>
+      </h2>
       <div id="roomVis" class="muted" style="margin-bottom:4px"></div>
       <div style="margin:10px 0"><span class="muted">In this room:</span><div id="roomMembers" style="margin-top:6px"></div></div>
       <div id="hostArea">

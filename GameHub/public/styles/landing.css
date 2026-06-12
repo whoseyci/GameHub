@@ -139,6 +139,28 @@
 .landing-tile .lt-head{
   display:flex; align-items:center; gap:10px;
 }
+.lt-counts{
+  margin-left:auto; display:inline-flex; gap:4px; align-items:center;
+  flex-shrink:0;
+}
+.lt-count{
+  display:inline-flex; align-items:center; gap:3px;
+  padding:2px 7px; border-radius:999px;
+  font-size:.72rem; font-weight:800; line-height:1;
+  background:rgba(255,255,255,.06); color:var(--text-dim);
+  border:1px solid var(--border);
+}
+.lt-count-waiting{ color:#a7f3d0; background:rgba(16,185,129,.10); border-color:rgba(16,185,129,.30); }
+.lt-count-ingame{  color:#fde68a; background:rgba(245,158,11,.10); border-color:rgba(245,158,11,.30); }
+
+/* W6: ready-up pip on member chips inside quick-play / group lobbies. */
+.ready-pip{
+  display:inline-flex; align-items:center; justify-content:center;
+  width:14px; height:14px; border-radius:50%;
+  background:rgba(255,255,255,.08); color:var(--text-dim);
+  margin-right:5px; vertical-align:-1px;
+}
+.ready-pip.on{ background:#10b981; color:#0b0d18; box-shadow:0 0 0 2px rgba(16,185,129,.18); }
 .landing-tile .lt-emoji{ font-size:2rem; line-height:1; }
 .landing-tile .lt-title{
   font-size:1.05rem; font-weight:900; margin:0;
@@ -152,8 +174,9 @@
   line-height:1.4;
 }
 .landing-tile .lt-actions{
-  display:flex; gap:6px; margin-top:auto;
+  display:flex; gap:6px; margin-top:auto; flex-wrap:wrap;
 }
+.landing-tile .lt-actions .ltbtn{ flex:1 1 0; min-width:0; }
 .landing-tile .lt-actions .ltbtn{
   flex:1;
   background:rgba(255,255,255,.05);
