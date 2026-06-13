@@ -1,22 +1,19 @@
-/* local-seat-editor.js — UX redesign Phase 6.
+/* local-seat-editor.js — Seat configuration for local play.
  *
- * Replaces the killed #localPick screen with an inline drawer that lives
- * above the game board. Lets the user:
- *   • Rename their own seat
- *   • Add / remove human or bot seats (within the game's min/max range)
- *   • Pick bot difficulty per seat
- *   • Restart the game with the new seats (one button, never auto-restarts
- *     mid-game)
+ * Two contexts, one render core:
+ *   1. PRE-GAME screen  (#seatScreen) — full-screen, reached when the
+ *      user clicks a Local landing tile. Lets them set up seats before
+ *      the engine ever spins. Default: 1 human (just you). Add/remove
+ *      humans or bots, then tap "Start".
+ *   2. IN-GAME overlay  (#seatOverlay) — modal popup, reached via the
+ *      Seats button on the game topbar. Same UI; the action button reads
+ *      "Restart with these seats" since a game is already running.
  *
- * The editor is local-mode-only: in online play, seats are server-owned
- * and the room screen handles add/remove. We surface the #seatsBtn in
- * the game topbar only when mode === 'local' and there's an active local
- * engine.
- *
- * Data model: reads + writes the existing window.localSeats array
- * (managed by 01-network-local.js). Restart goes through
- * window.startLocalGame() so all the existing lifecycle (resetGameUi,
- * GameShell.unmount, etc.) runs unchanged.
+ * Both contexts read + write the same window.localSeats array (managed
+ * by 01-network-local.js). Pre-game "Start" sets the chosen game id
+ * (window._localPick) and calls window.startLocalGame(); the in-game
+ * "Restart" just calls window.startLocalGame() (same flow, just keeps
+ * the existing game id).
  */
 (function () {
   'use strict';
@@ -25,8 +22,10 @@
 
   const BOT_NAMES = ['Botley', 'Chip', 'Ada', 'Turing', 'Pixel', 'Nova', 'Echo', 'Zar'];
 
+  // Which game are we configuring? Pre-game uses window._pendingLocalGame
+  // (set by openSeatScreen). In-game falls back to the live engine's id.
   function gameMeta() {
-    const gid = window.localGameId || (window.curView && window.curView.game);
+    const gid = window._pendingLocalGame || window.localGameId || (window.curView && window.curView.game);
     if (!gid || !window.GameCatalogue) return null;
     return window.GameCatalogue.find((g) => g.id === gid) || null;
   }
@@ -38,7 +37,7 @@
   function setSeats(next) {
     if (typeof window.setLocalSeats === 'function') window.setLocalSeats(next);
     else if (Array.isArray(window.localSeats)) { window.localSeats.length = 0; for (const s of next) window.localSeats.push(s); }
-    render();
+    renderAll();
   }
 
   function addHuman() {
@@ -55,8 +54,13 @@
     setSeats([...seats(), { name: BOT_NAMES[nBots] || ('Bot ' + (nBots + 1)), bot: true, difficulty }]);
   }
   function removeSeat(i) {
+    // Pre-game allows shrinking down to 1 (so the user can switch a
+    // single player to a bot etc. before adding others). In-game we
+    // honour the engine's hard minimum. Both paths still let the user
+    // confirm with the "Need N players" hint and a disabled Start.
     const meta = gameMeta();
-    const min = meta?.minPlayers ?? 2;
+    const isPre = !!window._pendingLocalGame;
+    const min = isPre ? 1 : (meta?.minPlayers ?? 2);
     if (seats().length <= min) return;
     setSeats(seats().filter((_, j) => j !== i));
   }
@@ -70,45 +74,135 @@
     const s = seats();
     if (!s[i] || !s[i].bot) return;
     s[i].difficulty = diff;
-    render();
+    renderAll();
   }
 
-  function restart() {
+  // Start (pre-game) / Restart (in-game). Both funnel through the
+  // existing window.startLocalGame which handles engine + UI reset.
+  function commit() {
     if (typeof window.startLocalGame !== 'function') return;
-    close();
+    const isPre = !!window._pendingLocalGame;
+    if (isPre) {
+      // Set the game id the start helper reads. setLocalPick is the
+      // public setter exposed by 01-network-local.js.
+      if (typeof window.setLocalPick === 'function') {
+        window.setLocalPick(window._pendingLocalGame);
+      }
+      window._pendingLocalGame = null;
+    }
+    closeOverlay();
+    closeScreen();
     window.startLocalGame();
   }
 
-  function isVisible() {
-    const ed = $('localSeatEditor');
-    return !!ed && !ed.classList.contains('hidden');
+  // ─── Pre-game seat SCREEN ────────────────────────────────────────────
+  /**
+   * Open the dedicated pre-game seat screen for a game. Sets up the
+   * defaults (1 human) and navigates to #seatScreen.
+   */
+  function openSeatScreen(gameId) {
+    if (!gameId) return;
+    window._pendingLocalGame = gameId;
+    const myName = (window.Identity?.getName() || 'You').trim() || 'You';
+    setSeats([{ name: myName, bot: false }]);
+    renderScreen();
+    if (typeof window.showScreen === 'function') window.showScreen('seatScreen');
   }
-  function open() {
-    const ed = $('localSeatEditor');
-    if (!ed) return;
-    render();
-    ed.classList.remove('hidden');
-    ed.setAttribute('aria-hidden', 'false');
+  function closeScreen() {
+    window._pendingLocalGame = null;
   }
-  function close() {
-    const ed = $('localSeatEditor');
-    if (!ed) return;
-    ed.classList.add('hidden');
-    ed.setAttribute('aria-hidden', 'true');
-  }
-  function toggle() { isVisible() ? close() : open(); }
 
-  function render() {
-    const ed = $('localSeatEditor');
-    if (!ed) return;
+  function renderScreen() {
+    const host = $('seatScreenBody');
+    if (!host) return;
     const meta = gameMeta();
-    const min = meta?.minPlayers ?? 2;
-    const max = meta?.maxPlayers ?? 8;
+    if (!meta) {
+      host.innerHTML = '<div class="muted">No game selected.</div>';
+      return;
+    }
     const list = seats();
-    const canRemove = list.length > min;
+    const min = meta.minPlayers || 2;
+    const max = meta.maxPlayers || 8;
     const canAdd = list.length < max;
+    const enoughPlayers = list.length >= min;
+    const glyph = Kit.Icon.forGame(meta, { size: 36, cls: 'kit-icon-tile' });
 
-    const rows = list.map((s, i) => {
+    host.innerHTML = `
+      <div class="seat-screen-head">
+        <div class="seat-screen-glyph">${glyph}</div>
+        <div>
+          <div class="seat-screen-eyebrow">Local game</div>
+          <h2 class="seat-screen-title">${esc(meta.name)}</h2>
+          <div class="muted seat-screen-meta">${esc(meta.description || '')}</div>
+        </div>
+      </div>
+      <div class="seat-screen-rows">${renderRowsHtml(list, { canRemove: list.length > 1 })}</div>
+      <div class="seat-screen-add-row">
+        <button class="btn secondary" ${canAdd ? '' : 'disabled'} onclick="LocalSeatEditor.addHuman()">${Kit.Icon.html('plus', { size: 14, cls: 'kit-icon-inline' })}Player</button>
+        <button class="btn secondary" ${canAdd ? '' : 'disabled'} onclick="LocalSeatEditor.addBot()">${Kit.Icon.html('robot', { size: 14, cls: 'kit-icon-inline' })}Bot</button>
+      </div>
+      <button class="btn green seat-screen-start" ${enoughPlayers ? '' : 'disabled'} onclick="LocalSeatEditor.commit()">
+        ${Kit.Icon.html('play', { size: 16, cls: 'kit-icon-inline' })}Start${enoughPlayers ? '' : ` · need ${min - list.length} more`}
+      </button>
+      <div class="seat-screen-foot muted">${esc(meta.name)} plays with ${min}–${max} players.</div>
+    `;
+    wireRowHandlers(host);
+  }
+
+  // ─── In-game seat OVERLAY (modal popup) ──────────────────────────────
+  function openOverlay() {
+    const ov = $('seatOverlay');
+    if (!ov) return;
+    renderOverlay();
+    ov.classList.remove('hidden');
+    ov.setAttribute('aria-hidden', 'false');
+  }
+  function closeOverlay() {
+    const ov = $('seatOverlay');
+    if (!ov) return;
+    ov.classList.add('hidden');
+    ov.setAttribute('aria-hidden', 'true');
+  }
+  function toggleOverlay() {
+    const ov = $('seatOverlay');
+    if (!ov) return;
+    ov.classList.contains('hidden') ? openOverlay() : closeOverlay();
+  }
+  function isOverlayOpen() {
+    const ov = $('seatOverlay');
+    return !!ov && !ov.classList.contains('hidden');
+  }
+
+  function renderOverlay() {
+    const host = $('seatOverlayBody');
+    if (!host) return;
+    const meta = gameMeta();
+    if (!meta) { host.innerHTML = ''; return; }
+    const list = seats();
+    const min = meta.minPlayers || 2;
+    const max = meta.maxPlayers || 8;
+    const canAdd = list.length < max;
+    const enough = list.length >= min;
+
+    host.innerHTML = `
+      <div class="lse-head">
+        <div class="lse-title">${Kit.Icon.html('users', { size: 16 })}<span>Seats</span> <span class="muted">${list.length}/${max}</span></div>
+        <button class="icon-btn" onclick="LocalSeatEditor.closeOverlay()" title="Close — keep current seats">${Kit.Icon.html('x', { size: 16 })}</button>
+      </div>
+      <div class="lse-seats">${renderRowsHtml(list, { canRemove: list.length > min })}</div>
+      <div class="lse-actions">
+        <button class="btn secondary" ${canAdd ? '' : 'disabled'} onclick="LocalSeatEditor.addHuman()">${Kit.Icon.html('plus', { size: 13, cls: 'kit-icon-inline' })}Player</button>
+        <button class="btn secondary" ${canAdd ? '' : 'disabled'} onclick="LocalSeatEditor.addBot()">${Kit.Icon.html('robot', { size: 13, cls: 'kit-icon-inline' })}Bot</button>
+        <button class="btn green" ${enough ? '' : 'disabled'} onclick="LocalSeatEditor.commit()">${Kit.Icon.html('play', { size: 13, cls: 'kit-icon-inline' })}Restart with these seats</button>
+      </div>
+      <div class="lse-hint muted">${esc(meta.name)} needs ${min}–${max} players · Close to keep playing with the current seats.</div>
+    `;
+    wireRowHandlers(host);
+  }
+
+  // ─── Shared row rendering + handler wiring ───────────────────────────
+  function renderRowsHtml(list, { canRemove }) {
+    return list.map((s, i) => {
       const isBot = !!s.bot;
       const diff = s.difficulty || 'medium';
       const nameInput = isBot
@@ -126,51 +220,33 @@
         : '';
       return `<div class="seat-row ${isBot ? 'is-bot' : 'is-human'}">${nameInput}${diffPicker}${removeBtn}</div>`;
     }).join('');
-
-    ed.innerHTML = `
-      <div class="lse-head">
-        <div class="lse-title">${Kit.Icon.html('users', { size: 16 })}<span>Seats</span> <span class="muted">${list.length}/${max}</span></div>
-        <button class="icon-btn" onclick="LocalSeatEditor.close()" title="Close — keep seats and play">${Kit.Icon.html('x', { size: 16 })}</button>
-      </div>
-      <div class="lse-seats">${rows}</div>
-      <div class="lse-actions">
-        <button class="btn secondary" ${canAdd ? '' : 'disabled'} onclick="LocalSeatEditor.addHuman()">${Kit.Icon.html('plus', { size: 13, cls: 'kit-icon-inline' })}Player</button>
-        <button class="btn secondary" ${canAdd ? '' : 'disabled'} onclick="LocalSeatEditor.addBot()">${Kit.Icon.html('robot', { size: 13, cls: 'kit-icon-inline' })}Bot</button>
-        <button class="btn green" onclick="LocalSeatEditor.restart()">${Kit.Icon.html('play', { size: 13, cls: 'kit-icon-inline' })}Restart with these seats</button>
-      </div>
-      <div class="lse-hint muted">${esc(meta?.name || 'Game')} needs ${min}–${max} players · Close (×) to play with the current seats.</div>
-    `;
-
-    // Wire delegated handlers (avoids inline onclicks for dynamic rows).
-    ed.querySelectorAll('.seat-name-input').forEach((inp) => {
-      inp.addEventListener('input', (e) => renameSeat(Number(inp.dataset.seat), inp.value));
+  }
+  function wireRowHandlers(host) {
+    host.querySelectorAll('.seat-name-input').forEach((inp) => {
+      inp.addEventListener('input', () => renameSeat(Number(inp.dataset.seat), inp.value));
     });
-    ed.querySelectorAll('.seat-remove').forEach((btn) => {
+    host.querySelectorAll('.seat-remove').forEach((btn) => {
       btn.addEventListener('click', () => removeSeat(Number(btn.dataset.seat)));
     });
-    ed.querySelectorAll('.seat-diff button').forEach((btn) => {
+    host.querySelectorAll('.seat-diff button').forEach((btn) => {
       const seg = btn.parentElement;
       const i = Number(seg.dataset.seat);
       btn.addEventListener('click', () => changeDifficulty(i, btn.dataset.d));
     });
   }
 
-  // Show/hide the topbar seats button when the active screen + mode
-  // changes. The button is only useful in local mode while a game screen
-  // is active. We poll on showScreen via the icons.js auto-mount hook
-  // (already patched) — simplest is a small refresher.
+  // Re-render whichever surface is currently visible. Called after every
+  // mutating action so the count, disabled-states, and difficulty
+  // segments update in place.
+  function renderAll() {
+    if (window._pendingLocalGame) renderScreen();
+    if (isOverlayOpen()) renderOverlay();
+  }
+
+  // ─── Topbar seats button visibility (in-game only) ───────────────────
   function refreshButton() {
     const btn = $('seatsBtn');
     if (!btn) return;
-    // The script-scoped `mode` and `localEngine` from 00-core.js /
-    // 01-network-local.js live in the shared classic-script global
-    // lexical environment — bare references work across files, but
-    // window.mode / window.localEngine do NOT (top-level `let` isn't
-    // exposed as a window property). Wrap the lookup in a try so we
-    // gracefully no-op if those scripts haven't loaded yet.
-    // window.mode and window.localEngine are kept in sync by the
-    // setters in 01-network-local.js (Phase 6). Fall back to bare
-    // references for safety if those haven't been mirrored yet.
     let runtimeMode = window.mode;
     if (runtimeMode == null) {
       try { runtimeMode = (typeof mode !== 'undefined') ? mode : 'online'; } catch {}
@@ -182,10 +258,9 @@
     const active = document.querySelector('.screen.active')?.id;
     const inLocalGame = (active === 'gameScreen') && (runtimeMode === 'local') && engineLive;
     btn.classList.toggle('hidden', !inLocalGame);
-    if (!inLocalGame) close();
+    if (!inLocalGame) closeOverlay();
   }
 
-  // Patch showScreen so the seats button toggles whenever we navigate.
   function patchShowScreen() {
     if (typeof window.showScreen !== 'function' || window._lseShowScreenPatched) return;
     window._lseShowScreenPatched = true;
@@ -193,14 +268,28 @@
     window.showScreen = function (id) {
       const r = orig.apply(this, arguments);
       refreshButton();
+      // Render the pre-game seat screen whenever it becomes active
+      // (covers reload + back-navigation cases).
+      if (id === 'seatScreen' && window._pendingLocalGame) renderScreen();
       return r;
     };
     refreshButton();
   }
 
+  // Public API: open* + close* + the row mutators (the rendered buttons
+  // call these via onclick="LocalSeatEditor.…"). `toggle` is kept as an
+  // alias for backwards-compat with the existing #seatsBtn onclick in
+  // index.html.
   window.LocalSeatEditor = {
-    open, close, toggle, render, refreshButton,
-    addHuman, addBot, removeSeat, changeDifficulty, restart,
+    openSeatScreen, closeScreen,
+    openOverlay, closeOverlay, toggleOverlay,
+    toggle: toggleOverlay, // alias used by the topbar #seatsBtn
+    commit,
+    addHuman, addBot, removeSeat, changeDifficulty,
+    renderAll, refreshButton,
+    // Kept for back-compat with the in-game smoke that called .open()/.close()
+    // directly. Both map to the overlay (the only in-game surface now).
+    open: openOverlay, close: closeOverlay,
   };
 
   if (document.readyState === 'loading') {

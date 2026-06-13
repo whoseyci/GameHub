@@ -196,23 +196,34 @@
     </div>
   </div>
 
+  <!-- Pre-game seat screen.
+       Per user request, clicking a Local landing tile no longer drops
+       straight into the game with a popup on top — it opens this
+       dedicated screen first. The user picks seats (default: 1 human),
+       hits Start, THEN the engine spins. Rendered by LocalSeatEditor
+       (00-local-seat-editor.js → openSeatScreen / renderScreen). -->
+  <div id="seatScreen" class="screen">
+    <div class="menu-card seat-screen-card">
+      <button class="btn secondary backbtn" onclick="LocalSeatEditor.closeScreen(); showScreen('menuScreen')">←</button>
+      <div id="seatScreenBody"></div>
+    </div>
+  </div>
+
   <!-- Game Screen -->
   <div id="gameScreen" class="screen">
     <div class="game-topbar">
       <button class="icon-btn" onclick="leaveGameToRoom()" title="Back to room">←</button>
       <div id="gameRoomTag" class="room-tag hidden"></div>
-      <!-- Phase 6: seats button (only visible in local mode — script-toggled
-           by LocalSeatEditor in 00-core.js). Opens the inline drawer below. -->
+      <!-- In-game seats button: opens a modal #seatOverlay (per user
+           request: 'make the seat assertion a pop-up/overlay'). The button
+           is script-toggled to visible only when active screen = #gameScreen
+           AND mode = local AND a localEngine is alive. -->
       <button id="seatsBtn" class="icon-btn hidden" onclick="LocalSeatEditor.toggle()" title="Seats" data-icon="users" data-icon-mode="replace" data-icon-size="20"></button>
       <div class="topbar-spacer"></div>
       <div id="spectateTag" class="spectate-tag hidden" data-icon="eye">Spectating</div>
       <button id="rulesBtn" class="icon-btn" onclick="openRules(curView&&curView.game)" title="Rules" data-icon="book" data-icon-mode="replace" data-icon-size="20"></button>
       <button id="soundBtn" class="icon-btn" onclick="toggleSound()" title="Sound" data-icon="sound-on" data-icon-mode="replace" data-icon-size="20"></button>
     </div>
-    <!-- Phase 6: inline seat editor for local mode. Hidden by default;
-         toggled by #seatsBtn. Lets the user change seats/bot difficulty
-         and restart the game without leaving the screen. -->
-    <div id="localSeatEditor" class="local-seat-editor hidden" aria-hidden="true"></div>
     <div id="miniBoardsContainer" class="mini-boards-container"></div>
     <div id="topArea" class="top-area">
       <div class="piles">
@@ -237,6 +248,13 @@
 
   <div id="overlay" class="overlay hidden"><div id="overlayBox" class="overlay-box"></div></div>
   <div id="rulesOverlay" class="overlay hidden"><div id="rulesBox" class="overlay-box"></div></div>
+  <!-- In-game seat editor as a modal overlay (per user request: "make
+       the seat assertion a pop-up/overlay"). Dim background prevents
+       interaction with the game behind. Closed by the × in the editor
+       header OR by clicking outside the overlay-box. -->
+  <div id="seatOverlay" class="overlay hidden" aria-hidden="true" onclick="if(event.target===this)LocalSeatEditor.closeOverlay()">
+    <div id="seatOverlayBody" class="overlay-box seat-overlay-box"></div>
+  </div>
   <div id="toast" class="toast hidden"></div>
   <div id="investigateOverlay" class="overlay hidden" onclick="this.classList.add('hidden')">
     <div class="boards-container" id="investigateBox" onclick="event.stopPropagation()"></div>

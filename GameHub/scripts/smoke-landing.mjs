@@ -159,53 +159,68 @@ async function run() {
   assert(cta && /vs Bot/i.test(cta.textContent || ''), `Local-mode CTA should say "vs Bot" (got "${cta?.textContent}")`);
   firstTile.click();
   await sleep(40);
+  // Per the seat-screen redesign: clicking a Local tile NO LONGER drops
+  // straight into the game. It opens the pre-game #seatScreen.
+  const seatScreen = window.document.getElementById('seatScreen');
+  assert(seatScreen?.classList.contains('active'),
+    'seatScreen did not activate after Local tile click (pre-game seat selection redesign)');
+  const seatScreenBody = window.document.getElementById('seatScreenBody');
+  assert(seatScreenBody, '#seatScreenBody missing');
+  // Default seats: ONE human (just you). User explicitly picks more.
+  const seatRows = seatScreenBody.querySelectorAll('.seat-row');
+  assert(seatRows.length === 1,
+    `pre-game seat screen should default to 1 human, got ${seatRows.length} rows`);
+  const startBtn = seatScreenBody.querySelector('.seat-screen-start');
+  assert(startBtn, 'pre-game seat screen missing Start button');
+  // Below the game's minimum players, Start should be disabled.
+  assert(startBtn.hasAttribute('disabled'),
+    'Start should be disabled when below minPlayers');
+
+  // Add a bot, then a player, then commit.
+  window.LocalSeatEditor.addBot();
+  await sleep(10);
+  window.LocalSeatEditor.addHuman();
+  await sleep(10);
+  const updatedRows = window.document.querySelectorAll('#seatScreenBody .seat-row');
+  assert(updatedRows.length === 3, `expected 3 seat rows after add x2, got ${updatedRows.length}`);
+  const updatedStart = window.document.querySelector('#seatScreenBody .seat-screen-start');
+  assert(!updatedStart.hasAttribute('disabled'),
+    'Start should re-enable once we hit minPlayers');
+  window.LocalSeatEditor.commit();
+  await sleep(60);
+
+  // Now the game screen should be active.
   const gameScreen = window.document.getElementById('gameScreen');
-  assert(gameScreen?.classList.contains('active'), 'gameScreen did not activate after tile click');
-  // After entering the game, mode header hides and body gets .in-game.
+  assert(gameScreen?.classList.contains('active'), 'gameScreen did not activate after Start');
   assert(window.document.body.classList.contains('in-game'), 'body.in-game not set after entering game screen');
   assert(modeHeader.classList.contains('hidden'), 'mode header still visible inside the game');
 
-  // ── Phase 6 + bugfix: pass-and-play is the default; editor auto-opens ──
-  // Clicking a Local tile now sets up YOU + 1 other HUMAN (pass-and-play
-  // by default) and auto-opens the seat editor so the user can review/
-  // edit BEFORE making their first move. If they want bots they add one,
-  // then hit "Restart with these seats". If they're happy they close the
-  // drawer and play.
+  // ── In-game seat editor is a MODAL overlay now (was a slide-down drawer) ──
   const seatsBtn = window.document.getElementById('seatsBtn');
-  const seatEditor = window.document.getElementById('localSeatEditor');
+  const seatOverlay = window.document.getElementById('seatOverlay');
   assert(seatsBtn, '#seatsBtn missing');
-  assert(seatEditor, '#localSeatEditor missing');
+  assert(seatOverlay, '#seatOverlay missing');
   assert(!seatsBtn.classList.contains('hidden'), 'seats button should be visible in local game');
-  // Give the auto-open setTimeout one tick to fire.
-  await sleep(20);
-  assert(!seatEditor.classList.contains('hidden'),
-    'seat editor should auto-open on first land in local mode (pass-and-play first-class)');
-  const seatRows = seatEditor.querySelectorAll('.seat-row');
-  assert(seatRows.length >= 2, `expected ≥2 seat rows in editor, got ${seatRows.length}`);
-  // Default seats should be all HUMAN (no bots).
-  const botRows = seatEditor.querySelectorAll('.seat-row.is-bot');
-  assert(botRows.length === 0,
-    `default Local seats should be pure pass-and-play (no bots), got ${botRows.length} bot rows`);
-  // Close + reopen still works.
-  window.LocalSeatEditor.close();
-  assert(seatEditor.classList.contains('hidden'), 'seat editor did not close');
+  assert(seatOverlay.classList.contains('hidden'), 'seat overlay should start hidden');
+  // Toggle opens the overlay.
   window.LocalSeatEditor.toggle();
-  assert(!seatEditor.classList.contains('hidden'), 'seat editor did not reopen on toggle');
-  // Adding a bot then restarting installs the bot into the live engine.
-  window.LocalSeatEditor.addBot();
-  window.LocalSeatEditor.restart();
-  await sleep(120);
-  const seatsAfter = window.eval('window.localSeats');
-  assert(seatsAfter && seatsAfter.some((s) => s.bot),
-    'after addBot()+restart(), live seats should include a bot');
+  assert(!seatOverlay.classList.contains('hidden'), 'seat overlay did not open on toggle');
+  const overlayRows = seatOverlay.querySelectorAll('.seat-row');
+  assert(overlayRows.length === 3, `seat overlay should show all 3 seats, got ${overlayRows.length}`);
+  // One should be a bot (we added one above).
+  assert(seatOverlay.querySelector('.seat-row.is-bot'),
+    'seat overlay missing the bot row we just added');
+  // Close.
+  window.LocalSeatEditor.closeOverlay();
+  assert(seatOverlay.classList.contains('hidden'), 'seat overlay did not close');
 
-  // ── Bot regression guard (preserved from Phase 8) ──
-  // Now that we explicitly added a bot above, it must act within 3s of
-  // the restart. Catches both the W6 part 2 set_ready latent bug AND
-  // the Skyjo p.cards/p.board legalActions bug from the most recent
-  // fix (the bot strategy reads the same engine state).
+  // ── Bot regression guard (Skyjo bot reveals within 3s) ──
+  // The bot we set up above must act on its REVEAL turn promptly.
+  // Catches both the W6 part 2 set_ready latent bug AND the Skyjo
+  // p.cards/p.board legalActions bug.
   await sleep(3000);
   const view = window.eval('localEngine && localEngine.viewFor(0)');
+  const seatsAfter = window.eval('window.localSeats');
   const botSeatIdx = seatsAfter.findIndex((s) => s.bot);
   const botRevealCount = view?.skyjo?.players?.[botSeatIdx]?.revealCount ?? 0;
   assert(botRevealCount >= 2,

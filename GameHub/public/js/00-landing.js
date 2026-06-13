@@ -137,43 +137,19 @@
   /**
    * Click-to-play in Local mode.
    *
-   * Default seats: YOU + 1 other HUMAN (pass-and-play). The previous
-   * default added 2 bots which made it impossible for the user to start
-   * a pure human-only game without manually deleting the bots first.
-   * We now default to humans and let the user add bots via the inline
-   * seat editor.
-   *
-   * Flow:
-   *   1. Set the default seats.
-   *   2. Start the game (lands on #gameScreen).
-   *   3. Auto-open LocalSeatEditor so the user reviews/edits seats
-   *      before making their first move. If they're happy with the
-   *      defaults they can close the drawer immediately and play.
-   *      If they want bots they tap "+ Bot" then "Restart".
+   * Per user request (June): clicking a Local landing tile no longer
+   * spins the engine + pops a drawer. It opens the dedicated pre-game
+   * #seatScreen so the user picks seats EXPLICITLY before the game
+   * starts. Default: 1 human (just you). They add players/bots and
+   * tap "Start".
    */
   function instantBotPlay(gameId) {
     if (!window.GameCatalogue) return;
     const g = window.GameCatalogue.find((x) => x.id === gameId);
     if (!g) return;
-    const myName = (window.Identity?.getName() || 'You').trim() || 'You';
-    // Default to the smallest legal human-only setup. Most games are 2+
-    // so this means [you, Player 2]. Games with minPlayers > 2 get
-    // [you, Player 2, ...] up to min.
-    const minPlayers = Math.max(2, g.minPlayers || 2);
-    const seats = [{ name: myName, bot: false }];
-    for (let i = 1; i < minPlayers; i++) {
-      seats.push({ name: 'Player ' + (i + 1), bot: false });
-    }
-    if (typeof window.setLocalSeats === 'function') window.setLocalSeats(seats);
-    if (typeof window.startLocalForGame === 'function') {
-      window.startLocalForGame(gameId);
-    }
-    // Auto-open the seat editor so the user sees the configuration
-    // before their first move. This is the "always intentional"
-    // pattern picked over the previous auto-2-bots default.
-    if (window.LocalSeatEditor && typeof window.LocalSeatEditor.open === 'function') {
-      // Defer one tick so the game screen + seats button are mounted.
-      setTimeout(() => window.LocalSeatEditor.open(), 0);
+    // LocalSeatEditor.openSeatScreen seeds defaults + navigates.
+    if (window.LocalSeatEditor && typeof window.LocalSeatEditor.openSeatScreen === 'function') {
+      window.LocalSeatEditor.openSeatScreen(gameId);
     }
   }
 

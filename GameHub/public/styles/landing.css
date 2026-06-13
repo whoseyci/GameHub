@@ -483,32 +483,15 @@ body:not(.in-game) .landing-screen{ padding-top:var(--mode-header-h) !important;
 /* ─── UX redesign Phase 6: inline local seat editor ────────────────── */
 /* Lives above the boards on the game screen; only shown in local mode.
    Replaces the killed #localPick screen. Slides down from the topbar. */
-.local-seat-editor{
-  background:rgba(15,23,42,.96);
-  border-bottom:1px solid var(--border);
-  padding:10px 12px 12px;
-  display:flex; flex-direction:column; gap:8px;
-  animation:lseSlide .18s cubic-bezier(.18,.9,.3,1.05) both;
-}
-.local-seat-editor.hidden{ display:none; }
-@keyframes lseSlide{
-  from{ transform:translateY(-6px); opacity:0; }
-  to  { transform:translateY(0);    opacity:1; }
-}
-.local-seat-editor .lse-head{
-  display:flex; align-items:center; justify-content:space-between; gap:8px;
-}
-.local-seat-editor .lse-title{
-  display:inline-flex; align-items:center; gap:6px;
-  font-weight:900; font-size:.95rem;
-}
-.local-seat-editor .lse-seats{
-  display:flex; flex-direction:column; gap:5px;
-}
-.local-seat-editor .seat-row{
+/* Shared seat row primitives — used by BOTH the pre-game #seatScreen
+   and the in-game #seatOverlay (was scoped to .local-seat-editor before
+   the modal redesign). Bumping the visibility-scope to the catch-all
+   .seat-row/.seat-diff/.seat-name selectors so they style consistently
+   wherever the editor mounts. */
+.seat-row{
   display:flex; align-items:center; gap:8px;
 }
-.local-seat-editor .seat-name{
+.seat-name{
   display:inline-flex; align-items:center; gap:5px;
   font-weight:700; padding:7px 10px;
   flex:1; min-width:0;
@@ -517,17 +500,17 @@ body:not(.in-game) .landing-screen{ padding-top:var(--mode-header-h) !important;
   border-radius:8px;
   overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
 }
-.local-seat-editor .seat-name-input{
+.seat-name-input{
   margin:0 !important;
   padding:7px 10px;
   flex:1; min-width:0;
   font-size:.9rem;
 }
-.local-seat-editor .seat-diff{
+.seat-diff{
   display:inline-flex; gap:0;
   flex:0 0 auto;
 }
-.local-seat-editor .seat-diff button{
+.seat-diff button{
   appearance:none;
   background:rgba(255,255,255,.05);
   border:1px solid var(--border);
@@ -536,22 +519,93 @@ body:not(.in-game) .landing-screen{ padding-top:var(--mode-header-h) !important;
   font-size:.72rem; font-weight:800;
   cursor:pointer;
 }
-.local-seat-editor .seat-diff button:first-child{ border-radius:8px 0 0 8px; }
-.local-seat-editor .seat-diff button:last-child{ border-radius:0 8px 8px 0; }
-.local-seat-editor .seat-diff button + button{ border-left:0; }
-.local-seat-editor .seat-diff button.on{
+.seat-diff button:first-child{ border-radius:8px 0 0 8px; }
+.seat-diff button:last-child{ border-radius:0 8px 8px 0; }
+.seat-diff button + button{ border-left:0; }
+.seat-diff button.on{
   background:var(--accent); color:#fff; border-color:var(--accent);
 }
-.local-seat-editor .seat-remove{
+.seat-remove{
   width:28px; height:28px; flex:0 0 auto;
 }
-.local-seat-editor .lse-actions{
-  display:flex; gap:6px; flex-wrap:wrap;
+
+/* In-game seat editor (modal overlay). The overlay shell already
+   provides backdrop + centering (.overlay / .overlay-box from main.css).
+   This sizes the box and styles its internal head/seats/actions. */
+.seat-overlay-box{
+  max-width:520px;
+  width:100%;
+  text-align:left;
+  padding:18px !important;
 }
-.local-seat-editor .lse-actions .btn{
+.seat-overlay-box .lse-head{
+  display:flex; align-items:center; justify-content:space-between; gap:8px;
+  margin-bottom:10px;
+}
+.seat-overlay-box .lse-title{
+  display:inline-flex; align-items:center; gap:6px;
+  font-weight:900; font-size:1rem;
+}
+.seat-overlay-box .lse-seats{
+  display:flex; flex-direction:column; gap:6px;
+  margin-bottom:12px;
+}
+.seat-overlay-box .lse-actions{
+  display:flex; gap:6px; flex-wrap:wrap;
+  margin-bottom:8px;
+}
+.seat-overlay-box .lse-actions .btn{
   margin:0; padding:9px 14px; font-size:.85rem;
 }
-.local-seat-editor .lse-actions .btn:last-child{ margin-left:auto; }
-.local-seat-editor .lse-hint{
+.seat-overlay-box .lse-actions .btn:last-child{ margin-left:auto; }
+.seat-overlay-box .lse-hint{
   font-size:.72rem; text-align:right;
+}
+
+/* Pre-game seat SCREEN: full-screen flow, more breathing room than the
+   modal. The card uses the existing .menu-card layout (centered + bordered)
+   from main.css and adds its own internal structure on top. */
+.seat-screen-card{
+  max-width:520px;
+  text-align:left;
+}
+.seat-screen-head{
+  display:flex; align-items:center; gap:14px;
+  margin:10px 0 18px;
+}
+.seat-screen-glyph{
+  flex:0 0 auto;
+  width:54px; height:54px;
+  display:inline-flex; align-items:center; justify-content:center;
+  background:linear-gradient(135deg, rgba(59,130,246,.18), rgba(139,92,246,.12));
+  border:1px solid var(--border);
+  border-radius:14px;
+}
+.seat-screen-eyebrow{
+  font-size:.7rem; font-weight:800; letter-spacing:.08em; text-transform:uppercase;
+  color:var(--text-dim);
+}
+.seat-screen-title{
+  margin:2px 0 4px;
+  font-size:1.4rem; font-weight:900;
+}
+.seat-screen-meta{
+  font-size:.82rem; line-height:1.4;
+}
+.seat-screen-rows{
+  display:flex; flex-direction:column; gap:8px;
+  margin-bottom:12px;
+}
+.seat-screen-add-row{
+  display:flex; gap:8px; margin-bottom:18px;
+}
+.seat-screen-add-row .btn{ margin:0; flex:1; padding:11px; }
+.seat-screen-start{
+  width:100%;
+  margin:0 0 10px;
+  padding:14px;
+  font-size:1.05rem;
+}
+.seat-screen-foot{
+  font-size:.74rem; text-align:center;
 }
