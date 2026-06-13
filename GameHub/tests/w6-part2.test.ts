@@ -148,7 +148,12 @@ describe("W6 part 2 — client wiring", () => {
     expect(ui).toMatch(/connectRoom\([^)]*isGroup:\s*true/);
   });
 
-  it("Online setup has a Host a Group button", () => {
-    expect(idx).toMatch(/onclick="hostGroup\(\)"/);
+  it("Group picker exposes 'Create new group' which delegates to hostGroup()", () => {
+    // UX redesign Phase 4: the old #onlineSetup 'Host a Group' button is
+    // gone — the Group picker dropdown in the sticky header replaces it.
+    // GroupPicker.createNew() in 00-mode.js calls window.hostGroup().
+    expect(idx).toMatch(/onclick="GroupPicker\.createNew\(\)"/);
+    const mode = readFileSync("public/js/00-mode.js", "utf8");
+    expect(mode).toMatch(/function\s+createNew\b[\s\S]{0,400}window\.hostGroup/);
   });
 });

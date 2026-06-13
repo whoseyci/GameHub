@@ -176,7 +176,9 @@
     const orig = window.showScreen;
     window.showScreen = function (id) {
       const r = orig.apply(this, arguments);
-      if (id === 'menuScreen' || id === 'onlineSetup') render();
+      // Phase 4: #onlineSetup is gone — only menuScreen still hosts the
+      // identity panel.
+      if (id === 'menuScreen') render();
       return r;
     };
   }

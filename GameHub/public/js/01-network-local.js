@@ -256,7 +256,15 @@ function pickVariantAndLaunch(gameId, variantId){
   $('rulesOverlay').classList.add('hidden');
   net.send({type:'launch_game',gameId,variant:variantId});
 }
-function leaveOnline(){if(net.ws){try{net.ws.close();}catch(e){}net.ws=null;}net.room=null;net.isHost=false;net.spectating=false;window._currentBots=[];resetGameUi();showScreen('onlineSetup');}
+function leaveOnline(){
+  // UX redesign Phase 4: leaving an online room returns to the landing
+  // (menuScreen) — the previous Online Setup screen no longer exists.
+  if(net.ws){try{net.ws.close();}catch(e){}net.ws=null;}
+  net.room=null;net.isHost=false;net.spectating=false;
+  window._currentBots=[];
+  resetGameUi();
+  showScreen('menuScreen');
+}
 function leaveGameToRoom(){ // back arrow in game
   if(mode==='local'){ if(confirm('Leave the game?')){ resetLocalSession(); resetGameUi(); showScreen('menuScreen'); } return; }
   if(net.isHost){ if(confirm('Return everyone to the room lobby?')) net.send({type:'to_room'}); }

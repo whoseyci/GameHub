@@ -158,11 +158,11 @@
     if (typeof window.setLocalSeats === 'function') window.setLocalSeats(seats);
     if (typeof window.startLocalForGame === 'function') {
       window.startLocalForGame(gameId);
-    } else if (typeof window.showScreen === 'function') {
-      // Fall back to the manual picker if the public setters aren't there
-      // (defensive — shouldn't happen in a coherent build).
-      window.showScreen('localPick');
     }
+    // No fallback: the local picker screen was killed in Phase 4. If the
+    // network module didn't load (impossible in a coherent build), the
+    // user just stays on the landing — better than navigating to a
+    // screen that no longer exists.
   }
 
   // ─── Live stats counter (lobby WebSocket, owned by OnlineSession) ───

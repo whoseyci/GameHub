@@ -750,11 +750,17 @@ function ensureName(){
   return myName;
 }
 function goOnline(){
-  // Restore saved name from Identity into the input so users don't retype it.
+  // UX redesign Phase 4: #onlineSetup screen is gone. Calling goOnline()
+  // now just flips the header Mode toggle to 'online' — the landing tiles
+  // and the Group picker (in the header) replace the old setup screen.
+  // We keep the function for backwards-compat with any external linkers.
+  if(window.Mode && typeof window.Mode.set === 'function') window.Mode.set('online');
+  // Restore saved name into the hidden legacy input so existing helpers
+  // (syncOnlinePrimaryName, ensureName) keep working.
   const inp=$('onlineName');
   if(inp && !inp.value && window.Identity){ inp.value = Identity.getName() || ''; }
   if(typeof syncOnlinePrimaryName==='function'){syncOnlinePrimaryName();renderOnlineDevicePlayers();}
-  showScreen('onlineSetup');
+  showScreen('menuScreen');
 }
 
 

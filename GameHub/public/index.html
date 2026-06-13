@@ -84,10 +84,16 @@
           <span class="dot live"></span>
           <span id="landingStatLive">Connecting…</span>
         </div>
+        <!-- UX redesign Phase 4: hero CTAs simplified. Mode is set in the
+             sticky header (Local / Online), so the previous Play Online +
+             Pass & Play buttons are redundant. Just one tip line + a Rules
+             link. The whole landing is now a one-tap entry: pick a mode in
+             the header, click a tile, play. -->
         <div class="landing-cta-row">
-          <button class="btn purple" style="margin:0" onclick="goOnline()" data-icon="play">Play Online</button>
-          <button class="btn secondary" style="margin:0" onclick="showScreen('localPick')" data-icon="phone">Pass &amp; Play</button>
-          <button class="btn secondary" style="margin:0;background:transparent;box-shadow:none;border:2px solid var(--border)" onclick="showRulesMenu()" data-icon="book">Rules</button>
+          <span class="landing-hero-tip muted">
+            Pick a mode in the header above, then tap a game below.
+          </span>
+          <button class="btn secondary landing-rules-btn" style="margin:0;background:transparent;box-shadow:none;border:2px solid var(--border)" onclick="showRulesMenu()" data-icon="book">Rules</button>
         </div>
       </div>
 
@@ -119,95 +125,50 @@
     </div>
   </div>
 
-  <!-- Online entry -->
-  <div id="onlineSetup" class="screen">
-    <div class="menu-card">
-      <button class="btn secondary backbtn" onclick="showScreen('menuScreen')">←</button>
-      <h2 style="margin-top:0">Play Online</h2>
-      <label class="label">Your Name</label>
-      <input type="text" id="onlineName" class="input" placeholder="Enter your name">
-      <div class="muted" style="text-align:left;font-size:.82rem;margin:4px 0">Same-device online seats</div>
-      <div id="onlineDevicePlayers" style="margin-bottom:8px"></div>
-      <button class="btn secondary" style="font-size:.9rem;padding:8px;margin:0 0 12px" onclick="addOnlineDevicePlayer()">+ Add same-device player</button>
-      <div style="display:flex;gap:10px">
-        <button class="btn green" style="margin-top:0" onclick="showScreen('quickPick')" data-icon="rocket">Quick Play</button>
-        <button class="btn purple" style="margin-top:0" onclick="showScreen('hostSetup')" data-icon="users">Make a Room</button>
-      </div>
-      <!-- W6 part 2: one-tap group host. Spins a GROUP-XXXXXX code, lands
-           the user in a persistent group room ready to invite friends. -->
-      <button class="btn" onclick="hostGroup()" data-icon="users">Host a Group</button>
-      <button class="btn" onclick="showScreen('joinSetup')">Join a Room</button>
-    </div>
+  <!-- UX redesign Phase 4: #onlineSetup + #quickPick + #localPick screens
+       removed. The header's Mode toggle + landing tiles replace them entirely.
+       Hidden fallback elements preserved below for backwards-compat with code
+       that still reads from #onlineName / #onlineDevicePlayers (the name
+       input is also surfaced inline in the identity panel). -->
+  <div id="legacyOnlineInputs" hidden>
+    <input type="text" id="onlineName" autocomplete="off">
+    <div id="onlineDevicePlayers"></div>
+    <!-- quickTiles is consumed by 05-bots-init.js' bootstrap call
+         renderTiles('quickTiles', quickPlay); we keep it hidden so that
+         module's top-level init doesn't throw on the missing container. -->
+    <div id="quickTiles" hidden></div>
   </div>
 
-  <!-- Quick Play: pick a game to matchmake into -->
-  <div id="quickPick" class="screen">
-    <div class="menu-card">
-      <button class="btn secondary backbtn" onclick="showScreen('onlineSetup')">←</button>
-      <h2 style="margin-top:0" data-icon="rocket" data-icon-size="22">Quick Play</h2>
-      <p class="muted" style="margin:0 0 8px">Pick a game — we'll drop you in with others waiting to play.</p>
-      <div id="quickTiles" class="game-tiles"></div>
+  <!-- UX redesign Phase 4: #hostSetup + #joinSetup removed. Their
+       functionality is fully covered by the header's Group picker
+       (Create new group / Recent groups / Join by code). The legacy
+       hostRoom() / joinByCode() / randomCode() / setVis() / bumpMax()
+       helpers still exist for any external callers but are unreachable
+       from the UI. Hidden DOM slots preserved so those helpers don't
+       throw on missing #hostRoom / #joinRoom / #visSeg / #maxVal nodes. -->
+  <div id="legacyHostInputs" hidden>
+    <input type="text" id="hostRoom" autocomplete="off">
+    <input type="text" id="joinRoom" autocomplete="off">
+    <div id="visSeg">
+      <button data-vis="public"></button>
+      <button data-vis="private"></button>
     </div>
+    <div id="maxVal">8</div>
+    <div id="publicList"></div>
   </div>
 
-  <!-- Make a Room -->
-  <div id="hostSetup" class="screen">
-    <div class="menu-card">
-      <button class="btn secondary backbtn" onclick="showScreen('onlineSetup')">←</button>
-      <h2 style="margin-top:0">Make a Room</h2>
-      <p class="muted" style="margin:0 0 12px">Create a lasting room for your group — play game after game without rejoining.</p>
-      <label class="label">Visibility</label>
-      <div class="seg" id="visSeg">
-        <button class="on" data-vis="public" onclick="setVis('public')" data-icon="globe">Public</button>
-        <button data-vis="private" onclick="setVis('private')" data-icon="lock">Private</button>
-      </div>
-      <label class="label">Max players <span class="muted" style="font-weight:600">(4 is a sweet spot)</span></label>
-      <div style="display:flex;align-items:center;gap:12px;margin:0 0 16px;justify-content:center">
-        <button class="icon-btn" onclick="bumpMax(-1)">−</button>
-        <div id="maxVal" style="font-weight:900;font-size:1.5rem;min-width:28px;text-align:center">8</div>
-        <button class="icon-btn" onclick="bumpMax(1)">+</button>
-      </div>
-      <label class="label">Room Code</label>
-      <div style="display:flex;gap:8px">
-        <input type="text" id="hostRoom" class="input" placeholder="e.g. CREW" style="margin-bottom:0">
-        <button class="btn secondary" style="width:auto;margin:8px 0 18px;padding:14px 16px" onclick="randomCode()" data-icon="dice" data-icon-mode="replace" data-icon-size="20" data-icon-title="Random room code"></button>
-      </div>
-      <button class="btn green" onclick="hostRoom()">Create Room</button>
-    </div>
-  </div>
-
-  <!-- Join a Room -->
-  <div id="joinSetup" class="screen">
-    <div class="menu-card">
-      <button class="btn secondary backbtn" onclick="showScreen('onlineSetup')">←</button>
-      <h2 style="margin-top:0">Join a Room</h2>
-      <label class="label">Room Code</label>
-      <div style="display:flex;gap:8px">
-        <input type="text" id="joinRoom" class="input" placeholder="Enter code" style="margin-bottom:0">
-        <button class="btn" style="width:auto;margin:8px 0 18px;padding:14px 20px" onclick="joinByCode()">Join</button>
-      </div>
-      <h3 style="margin:16px 0 6px;text-align:left">Public Rooms</h3>
-      <div id="publicList" class="room-list"><div class="muted">Connecting…</div></div>
-    </div>
-  </div>
-
-  <!-- Local pick -->
-  <div id="localPick" class="screen">
-    <div class="menu-card">
-      <button class="btn secondary backbtn" onclick="showScreen('menuScreen')">←</button>
-      <h2 style="margin-top:0">Local Game</h2>
-      <div id="localTiles" class="game-tiles"></div>
-      <div id="localPlayers" style="margin-top:8px"></div>
-      <div class="seg" id="localBotDiff" style="margin:6px 0">
-        <button data-d="easy" onclick="setLocalBotDiff('easy')" data-icon="smile">Easy</button>
-        <button data-d="medium" class="on" onclick="setLocalBotDiff('medium')" data-icon="happy">Medium</button>
-        <button data-d="hard" onclick="setLocalBotDiff('hard')" data-icon="robot">Hard</button>
-      </div>
-      <div style="display:flex;gap:8px">
-        <button class="btn secondary" onclick="addLocalPlayer()" style="font-size:1rem;padding:10px;margin:0" data-icon="plus">Player</button>
-        <button class="btn secondary" onclick="addLocalBot()" style="font-size:1rem;padding:10px;margin:0" data-icon="robot">Bot</button>
-      </div>
-      <button class="btn" onclick="startLocalGame()" style="margin-top:16px">Start</button>
+  <!-- UX redesign Phase 4: #localPick removed. Phase 6 adds an inline seat
+       editor above the local game board for users who want to customise
+       seats / bot difficulty before / between local games. Hidden DOM
+       slots preserved so 05-bots-init.js' top-level renderLocalSeats() /
+       refreshLocalTiles() / setLocalBotDiff() bootstrap calls don't throw. -->
+  <div id="legacyLocalInputs" hidden>
+    <div id="localTiles"></div>
+    <div id="localPlayers"></div>
+    <div id="localBotDiff">
+      <button data-d="easy" onclick="setLocalBotDiff('easy')"></button>
+      <button data-d="medium" class="on" onclick="setLocalBotDiff('medium')"></button>
+      <button data-d="hard" onclick="setLocalBotDiff('hard')"></button>
     </div>
   </div>
 
