@@ -30,7 +30,7 @@
     container.innerHTML = window.GameCatalogue.map((g) => `
       <button class="landing-tile" data-game="${esc(g.id)}" type="button" aria-label="Play ${esc(g.name)}">
         <div class="lt-head">
-          <div class="lt-emoji">${esc(g.emoji || '')}</div>
+          <div class="lt-emoji">${Kit.Icon.forGame(g, { size: 30, cls: 'kit-icon-tile' })}</div>
           <div class="lt-titles">
             <div class="lt-title">${esc(g.name)}</div>
             <div class="lt-meta">${esc(g.minPlayers)}–${esc(g.maxPlayers)} players</div>

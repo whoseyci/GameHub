@@ -79,7 +79,14 @@ export interface GameMeta {
   minPlayers: number;
   maxPlayers: number;
   description: string;
-  emoji: string;         // shown in the hub picker
+  emoji: string;         // shown in the hub picker (legacy; replays use it)
+  /** Phosphor icon name that REPLACES the emoji in the hub UI.
+   *  The emoji stays as a fallback (server-side rendering, old clients
+   *  reading replays). When the hub renders a game's identity glyph
+   *  (landing tile, room banner, public list, etc.) it prefers Kit.Icon(icon)
+   *  if present, falls back to the emoji otherwise. Lets us keep the W5
+   *  no-emoji-in-UI principle while preserving back-compat. */
+  icon?: string;
   features?: GameFeatures; // optional capability manifest
   /** The action strings this game's applyAction() recognises. Used by the
    *  replay-determinism test (and useful as living documentation). Optional. */

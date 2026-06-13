@@ -453,6 +453,7 @@
       maxPlayers: 8,
       description: "Flip, swap and dump cards to get the lowest score.",
       emoji: "\u{1F0CF}",
+      icon: "cards",
       features: SkyjoFeatures,
       actionTypes: ["draw_deck", "take_discard", "discard_drawn", "swap", "reveal", "reveal_after_discard", "tiebreaker", "next_round"]
     },
@@ -981,6 +982,7 @@
       maxPlayers: 8,
       description: "Push your luck \u2014 flip cards, don't repeat a number, race to 200.",
       emoji: "\u{1F3B4}",
+      icon: "target",
       features: {
         hasBots: true,
         simultaneousTurns: false,
@@ -1245,6 +1247,7 @@
       maxPlayers: 8,
       description: "Cross numbers left-to-right using dice sums.",
       emoji: "\u{1F3B2}",
+      icon: "dice",
       features: {
         hasBots: true,
         simultaneousTurns: true,
@@ -1459,6 +1462,7 @@
     maxPlayers: 2,
     description: "Win border stones with the best 3-card formations.",
     emoji: "\u{1FAA8}",
+    icon: "swords",
     features: {
       hasBots: true,
       simultaneousTurns: false,
@@ -1769,6 +1773,8 @@
     maxPlayers: g.meta.maxPlayers,
     description: g.meta.description,
     emoji: g.meta.emoji,
+    icon: g.meta.icon,
+    // Phosphor icon name; the hub UI prefers it over emoji.
     features: g.meta.features
   }));
 

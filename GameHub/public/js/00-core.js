@@ -930,7 +930,7 @@ const GameShell=(()=>{
    server still re-confirms its catalogue over the wire when you join a room. */
 catalogue = (window.GameCatalogue || []).map(g => ({
   id: g.id, name: g.name, minPlayers: g.minPlayers, maxPlayers: g.maxPlayers,
-  description: g.description, emoji: g.emoji, features: g.features,
+  description: g.description, emoji: g.emoji, icon: g.icon, features: g.features,
 }));
 
 /* ---- Rulebooks (accessible from menu, pickers, and inside a game) ---- */
@@ -943,10 +943,10 @@ function openRules(gameId){
   $('rulesOverlay').classList.remove('hidden');
 }
 function showRulesMenu(){
-  // Use Kit.Icon for the header glyph; rules-text emoji on game tiles is
-  // legacy game-meta and stays (each game module declares its own emoji).
+  // Game tile glyphs: Phosphor icon when meta.icon is set, fall back to
+  // emoji (legacy / replays). See Kit.Icon.forGame.
   $('rulesBox').innerHTML=`<h2 style="margin:0 0 12px;display:flex;align-items:center;gap:8px">${Kit.Icon.html('book',{size:22})}How to Play</h2>
-    <div class="game-tiles">${catalogue.map(g=>`<div class="game-tile" onclick="openRules('${esc(g.id)}')"><div class="emoji">${esc(g.emoji)}</div><div class="gname">${esc(g.name)}</div></div>`).join('')}</div>
+    <div class="game-tiles">${catalogue.map(g=>`<div class="game-tile" onclick="openRules('${esc(g.id)}')"><div class="emoji">${Kit.Icon.forGame(g,{size:28})}</div><div class="gname">${esc(g.name)}</div></div>`).join('')}</div>
     <button class="btn secondary" style="margin-top:14px" onclick="$('rulesOverlay').classList.add('hidden')">Close</button>`;
   $('rulesOverlay').classList.remove('hidden');
 }
@@ -960,7 +960,7 @@ function renderTiles(containerId,onPick,n=null){
     const why = n!=null && !fits ? (n<g.minPlayers?`Needs ${g.minPlayers}+`:`Max ${g.maxPlayers}`) : `${g.minPlayers}–${g.maxPlayers} players`;
     return `<div class="game-tile${fits?'':' disabled'}" data-g="${esc(g.id)}" data-fits="${fits}">
       <button class="tile-help" data-help="${esc(g.id)}" title="Rules">?</button>
-      <div class="emoji">${esc(g.emoji)}</div><div class="gname">${esc(g.name)}</div>
+      <div class="emoji">${Kit.Icon.forGame(g,{size:28})}</div><div class="gname">${esc(g.name)}</div>
       <div class="gdesc">${esc(g.description)}</div><div class="gsize">${esc(why)}</div></div>`;
   }).join('');
   el.querySelectorAll('.tile-help').forEach(b=>b.onclick=e=>{e.stopPropagation();openRules(b.dataset.help);});

@@ -346,7 +346,7 @@ function scoreRound(s: State) {
 
 export const Flip7: GameModule = {
   meta: { id: "flip7", name: "Flip 7", minPlayers: 2, maxPlayers: 8,
-    description: "Push your luck — flip cards, don't repeat a number, race to 200.", emoji: "🎴",
+    description: "Push your luck — flip cards, don't repeat a number, race to 200.", emoji: "🎴", icon: "target",
     features: {
       hasBots: true,
       simultaneousTurns: false,

@@ -375,6 +375,10 @@
 /* ─── Kit.Icon — inline-SVG icon system (Phosphor) ────────────────────── */
 .kit-icon{display:inline-block;vertical-align:-.18em;flex-shrink:0;line-height:1;color:currentColor}
 .kit-icon-inline{vertical-align:middle;margin-right:6px}
+/* Catalogue identity glyph: rendered via Kit.Icon.forGame on landing
+   tiles, room banners, rules menus. Subtle accent tint so it reads as a
+   "game" mark rather than UI chrome. */
+.kit-icon-tile{color:var(--accent);filter:drop-shadow(0 2px 6px rgba(59,130,246,.35))}
 /* When an icon sits inside a button, align it with the text baseline. */
 button .kit-icon,.btn .kit-icon{vertical-align:-.16em;margin-right:6px}
 .btn .kit-icon:last-child{margin-right:0;margin-left:6px}

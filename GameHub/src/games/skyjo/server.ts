@@ -78,6 +78,7 @@ export const Skyjo: GameModule = {
     maxPlayers: 8,
     description: "Flip, swap and dump cards to get the lowest score.",
     emoji: "🃏",
+    icon: "cards",
     features: SkyjoFeatures,
     actionTypes: ["draw_deck","take_discard","discard_drawn","swap","reveal","reveal_after_discard","tiebreaker","next_round"] as const,
   },

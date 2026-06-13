@@ -240,10 +240,11 @@ function renderRoom(m){
       // No picker — show a fixed banner identifying the queued game.
       const gMeta = (catalogue||[]).find(x=>x.id===m.quickGame);
       const gName = gMeta ? esc(gMeta.name) : esc(m.quickGame);
-      const gEmoji = gMeta ? esc(gMeta.emoji||'') : '';
+      // Icon-first; falls back to emoji for games that don't ship a Phosphor name.
+      const gGlyph = Kit.Icon.forGame(gMeta, { size: 32, cls: 'kit-icon-tile' });
       tilesHost.innerHTML = `
         <div class="quickplay-locked-banner" data-game="${esc(m.quickGame)}">
-          <div class="qplb-emoji">${gEmoji}</div>
+          <div class="qplb-emoji">${gGlyph}</div>
           <div class="qplb-body">
             <div class="qplb-eyebrow">${Kit.Icon.html('rocket',{size:12,cls:'kit-icon-inline'})}Quick Play queue</div>
             <div class="qplb-title">${gName}</div>
@@ -320,7 +321,11 @@ function connectLobby(){
   ws.onmessage=ev=>{let m;try{m=JSON.parse(ev.data);}catch(e){return;}if(m.type==='rooms')renderPublic(m.rooms);};
   ws.onerror=()=>{$('publicList').innerHTML='<div class="muted">Public list unavailable.</div>';};
 }
-function gameName(id){const g=catalogue.find(g=>g.id===id);return g?g.emoji+' '+g.name:(id||'game');}
+// Bugfix: catalogue glyphs use Phosphor icons; gameName returns plain
+// text so callers can prefix with Kit.Icon.forGame() when they want the
+// glyph.
+function gameName(id){const g=catalogue.find(g=>g.id===id);return g?g.name:(id||'game');}
+function gameGlyphHtml(id,opts){const g=catalogue.find(g=>g.id===id);return g?Kit.Icon.forGame(g,opts||{size:14,cls:'kit-icon-inline'}):'';}
 function renderPublic(rooms){
   const el=$('publicList');
   if(!rooms||!rooms.length){el.innerHTML='<div class="muted">No open public rooms right now.</div>';return;}

@@ -7,6 +7,7 @@ export const SchottenMeta: GameMeta = {
   maxPlayers: 2,
   description: "Win border stones with the best 3-card formations.",
   emoji: "🪨",
+  icon: "swords",
   features: {
     hasBots: true,
     simultaneousTurns: false,

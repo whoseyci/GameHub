@@ -22,6 +22,7 @@ export const GAME_CATALOGUE = Object.values(GAMES).map((g) => ({
   maxPlayers: g.meta.maxPlayers,
   description: g.meta.description,
   emoji: g.meta.emoji,
+  icon: g.meta.icon, // Phosphor icon name; the hub UI prefers it over emoji.
   features: g.meta.features,
 }));
 

@@ -151,6 +151,7 @@ export const Qwixx: GameModule = {
     maxPlayers: 8,
     description: "Cross numbers left-to-right using dice sums.",
     emoji: "🎲",
+    icon: "dice",
     features: {
       hasBots: true,
       simultaneousTurns: true,

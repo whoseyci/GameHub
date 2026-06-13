@@ -227,5 +227,28 @@
   // patch that from out here, but renderers that use data-icon strings in
   // innerHTML can call window.Kit.Icon.mountAll(theirContainer) themselves.
 
+  /**
+   * Bugfix: catalogue game identity. The hub used to render each game's
+   * meta.emoji as the identity glyph in the UI (landing tile, room
+   * banner, public list). That violated the W5 "no emoji in UI chrome"
+   * principle on the user's report. Now: meta.icon (Phosphor name) is
+   * preferred; meta.emoji stays as a fallback for older clients or
+   * replays that pre-date the icon field.
+   *
+   *   Kit.Icon.forGame({ icon: 'cards', emoji: '🃏' }, { size: 22 })
+   *     → '<svg .../>'    (icon SVG when icon present)
+   *     → '🃏'             (raw emoji when no icon — last-resort)
+   *
+   * Returns an HTML string so renderers can drop it straight into
+   * innerHTML templates next to other markup.
+   */
+  Icon.forGame = function (gMeta, opts) {
+    if (!gMeta) return '';
+    if (gMeta.icon && PATHS[gMeta.icon]) {
+      return Icon.html(gMeta.icon, opts || { size: 22 });
+    }
+    return String(gMeta.emoji || '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  };
+
   Kit.Icon = Icon;
 })();
