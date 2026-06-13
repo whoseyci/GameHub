@@ -235,7 +235,18 @@
     if(mode==='local'){
       const humanSeats=SeatModel.localHumanSeats();
       if(s.phase==='ROUND_END'||s.phase==='GAME_OVER')mainIdx=humanSeats.length?humanSeats:s.players.map((_,i)=>i);
-      else if(s.phase==='REVEAL') mainIdx=humanSeats.length?humanSeats:[viewer>=0?viewer:0];
+      else if(s.phase==='REVEAL'){
+        // Bugfix (user: 'on initial 2 card flip alternate between players
+        // if multiple players on one device'): show ONE human's board at a
+        // time during REVEAL. Pick the first human that still has fewer
+        // than 2 reveals — that's the one currently "up". Once a player
+        // hits 2 reveals, focus passes to the next human. The pass-and-
+        // play overlay (Kit.PassPlay) fires on the focus change.
+        const needsReveal = (i) => (s.players[i]?.revealCount || 0) < 2;
+        const next = humanSeats.find(needsReveal);
+        if (next != null) mainIdx = [next];
+        else mainIdx = humanSeats.length ? [humanSeats[0]] : [viewer>=0?viewer:0];
+      }
       else mainIdx=[ctx.focus?ctx.focus({actingSeat:s.currentPlayer,preferred:viewer}):(viewer>=0?viewer:(humanSeats[0]??s.currentPlayer??0))];
     }
     else if(viewer<0)mainIdx=[s.currentPlayer>=0?s.currentPlayer:0];
@@ -443,6 +454,30 @@
   }
 
   function unmount(){const mini=$('miniBoardsContainer');if(mini)mini.innerHTML='';}
-  window.GameClients['skyjo']={render,unmount,act:clientAct};
+
+  // Per-game focus override for pass-and-play. During REVEAL the engine
+  // reports currentPlayer=0 even though both seats can act in parallel
+  // — but the user wants ONE seat at a time. Pick the first human seat
+  // that still needs to flip cards. Once a human hits 2 reveals, the
+  // next human becomes the focus (Kit.PassPlay then runs its hand-off
+  // transition automatically on yourSeat change).
+  function localFocusSeat(state, humanSeats) {
+    if (!state || !Array.isArray(humanSeats) || humanSeats.length === 0) return -1;
+    if (state.phase === 'REVEAL') {
+      const next = humanSeats.find((i) => (state.players?.[i]?.revealCount || 0) < 2);
+      if (next != null) return next;
+    }
+    // For PLAY/FINAL_TURNS: defer to engine's currentPlayer if they're
+    // a human (most common case); otherwise show the first human (so
+    // we don't follow a bot turn around).
+    if (state.phase === 'PLAY' || state.phase === 'FINAL_TURNS') {
+      const cp = state.currentPlayer;
+      if (humanSeats.includes(cp)) return cp;
+      return humanSeats[0];
+    }
+    return -1; // fall back to localDisplaySeat's default
+  }
+
+  window.GameClients['skyjo']={render,unmount,act:clientAct,localFocusSeat};
 
 })();

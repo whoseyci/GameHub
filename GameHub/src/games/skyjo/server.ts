@@ -175,7 +175,16 @@ export const Skyjo: GameModule = {
       const ta = state.turnAction;
       if (ta === null) {
         out.push({ action: "draw_deck" });
-        if (state.discardTop !== null && state.discardTop !== undefined) {
+        // BUG FIX (Skyjo: 'can't pick cards from discard' in pass-and-play):
+        // state.discardTop is a VIEW-ONLY field built by getStateFor (the
+        // engine state stores state.discard as an array). Reading
+        // state.discardTop on the raw engine state always returned
+        // undefined, so take_discard was never offered as a legal action.
+        // Same shape as the earlier p.cards → p.board bug. Server-side
+        // play wasn't affected because applyAction accepts take_discard
+        // unconditionally — but the client gates on legalActions, so
+        // pass-and-play players couldn't tap the discard pile.
+        if (Array.isArray(state.discard) && state.discard.length > 0) {
           out.push({ action: "take_discard" });
         }
       } else if (ta === "deck") {

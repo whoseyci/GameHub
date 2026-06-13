@@ -243,10 +243,14 @@ window.GameClients = window.GameClients || {};
         sections: [
           // Opponent strip — squeezes first when room is tight.
           { id: 'minis',    min: 56,  preferred: minisPreferred, max: 280, priority: 3 },
-          // Dice tray + combo display.
-          { id: 'center',   min: 100, preferred: 200,            max: 320, priority: 5 },
-          // Focus scorecard — the main interactive surface.
-          { id: 'main',     min: 220, preferred: 420,            max: 9999, priority: 7 },
+          // Dice tray + combo display. Bumped after the user reported
+          // the throw button being clipped on mobile — center now
+          // PREFERS 260px and MIN is 180px, so the WebGL canvas + a
+          // 38px throw button + 56px sticky controls fit even at the
+          // squeeze floor.
+          { id: 'center',   min: 180, preferred: 260,            max: 360, priority: 6 },
+          // Focus scorecard — flexes to fill remaining space.
+          { id: 'main',     min: 200, preferred: 380,            max: 9999, priority: 7 },
           // Sticky controls (skip / pass / finish) — never below tap target.
           { id: 'controls', min: 48,  preferred: 56,             max: 72,  priority: 9 },
         ],

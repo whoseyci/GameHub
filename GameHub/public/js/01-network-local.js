@@ -521,6 +521,19 @@ function isLocalBotSeat(seat){return !!localSeats[seat]?.bot;}
 function firstLocalHumanSeat(){const i=localSeats.findIndex(s=>!s.bot);return i>=0?i:0;}
 function localDisplaySeat(preferred=null){
   if(!localEngine) return firstLocalHumanSeat();
+  // Per-game override: games where the active seat doesn't follow the
+  // engine's currentSeat (e.g. Skyjo REVEAL is simultaneous but pass-
+  // and-play wants to alternate humans one-at-a-time) can implement
+  // localFocusSeat(state, humanSeats) on their GameClient.
+  const humanSeats = SeatModel.localHumanSeats();
+  const clientFor = window.GameClients && window.GameClients[localGameId];
+  if (clientFor && typeof clientFor.localFocusSeat === 'function') {
+    try {
+      const stateForView = localEngine._state ? localEngine._state() : null;
+      const focus = clientFor.localFocusSeat(stateForView, humanSeats);
+      if (typeof focus === 'number' && focus >= 0) return focus;
+    } catch (e) { console.warn('localFocusSeat threw', e); }
+  }
   const actor=localEngine.actor();
   if(preferred!=null&&!isLocalBotSeat(preferred))return preferred;
   if(actor!=null&&!isLocalBotSeat(actor))return actor;

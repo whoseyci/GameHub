@@ -105,9 +105,13 @@ describe("shared game shell", () => {
   });
 
   it("exposes a consistent GameClients.act API across built-in games", () => {
-    expect(qwixx).toContain("window.GameClients['qwixx'] = { render, act, inspect, unmount }");
-    expect(skyjo).toContain("window.GameClients['skyjo']={render,unmount,act:clientAct}");
-    expect(flip7).toContain("window.GameClients['flip7']={render,inspect,unmount,act:clientAct}");
+    // Looser per-game assertions: each must expose render + act on its
+    // GameClients entry. Exact object-literal pinning got brittle when
+    // games added optional hooks (e.g. Skyjo's localFocusSeat for the
+    // pass-and-play alternation fix).
+    expect(qwixx).toMatch(/window\.GameClients\['qwixx'\]\s*=\s*\{[^}]*\brender\b[^}]*\bact\b/);
+    expect(skyjo).toMatch(/window\.GameClients\['skyjo'\]\s*=\s*\{[^}]*\brender\b[^}]*\bact:\s*clientAct/);
+    expect(flip7).toMatch(/window\.GameClients\['flip7'\]\s*=\s*\{[^}]*\brender\b[^}]*\bact:\s*clientAct/);
   });
 
   it("provides a shared GameActions helper and uses it in scaffolded clients", () => {

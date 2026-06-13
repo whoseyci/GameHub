@@ -996,9 +996,18 @@ button.kc-mini:hover{transform:translateY(-2px);box-shadow:0 6px 14px rgba(0,0,0
    the canvas fills it. Transparent background so it blends into the dice zone. */
 /* 3D dice blend INTO the scene: no boxed "window" — transparent canvas, no border or
    background, so the WebGL dice appear to roll directly on the dice-zone backdrop. */
-.qwixx-kit-dice.kit-dice3d{display:block;min-height:clamp(150px,26vh,240px);width:min(100%,520px);border:0;background:none;overflow:visible}
+/* Bugfix (user: 'dice throw button isn't visible'): the WebGL dice tray
+   was hogging 120-180px of vertical space EVEN WHEN no roll was in
+   flight, squeezing the throw button + sticky controls off-screen on
+   mobile. Use a smaller floor when the tray is in its 'awaiting-throw'
+   state (no canvas mounted yet) and a tighter cap during the roll. */
+.qwixx-kit-dice.kit-dice3d{display:block;min-height:clamp(120px,20vh,180px);width:min(100%,520px);border:0;background:none;overflow:visible}
 .kit-dice3d canvas{width:100%;height:100%;display:block;background:transparent}
-@media(max-width:760px){.qwixx-kit-dice.kit-dice3d{min-height:clamp(120px,20vh,180px)}}
+@media(max-width:760px){.qwixx-kit-dice.kit-dice3d{min-height:clamp(96px,14vh,140px)}}
+/* Before the WebGL canvas mounts (awaiting-throw state), the tray is an
+   empty slot. Don't reserve dice-canvas height there — let it collapse
+   to its placeholder min-height. The button next to it stays visible. */
+.qwixx-kit-dice:not(.kit-dice3d){min-height:0}
 
 /* Bugfix (user: 'don't see the button to skip on mobile'): make the
    Qwixx action controls (skip/finish/pass buttons) sticky-bottom on
@@ -1058,7 +1067,13 @@ button.kc-mini:hover{transform:translateY(-2px);box-shadow:0 6px 14px rgba(0,0,0
   max-height: var(--gs-fit-minis-h);
 }
 #gameScreen[style*="--gs-fit-center-h"] .qwixx-dice-zone {
+  /* Pin both ends so the dice zone takes EXACTLY its allocated budget.
+     Combined with overflow:hidden it guarantees the throw button + tray
+     fit (the bumped min: 180 / preferred: 260 in 02-qwixx.js gives them
+     enough room). */
+  height: var(--gs-fit-center-h);
   max-height: var(--gs-fit-center-h);
+  overflow: hidden;
 }
 /* The sticky controls already have an intrinsic height — but if the
    solver allocates a different min-height we honour it (touch target). */
@@ -1067,16 +1082,35 @@ button.kc-mini:hover{transform:translateY(-2px);box-shadow:0 6px 14px rgba(0,0,0
 }
 
 /* Skyjo / Flip 7 / any game using the shared #topArea (deck + discard +
-   held card piles): honour the fit budget when set. */
+   held card piles): pin top-area to its fit budget. Bumped min+max so
+   the dice/center zone actually claims its allocation instead of
+   collapsing to content-height (which leaves "soo much space below"
+   per the user report). */
 #gameScreen[style*="--gs-fit-center-h"] #topArea {
+  min-height: var(--gs-fit-center-h);
   max-height: var(--gs-fit-center-h);
+  overflow: hidden;
 }
 /* Main board container (the focused player board). Soft cap that lets
    the games keep their own min-height handling but never grow past
    what the solver allocated. */
 #gameScreen[style*="--gs-fit-main-h"] #mainBoardsContainer,
 #gameScreen[style*="--gs-fit-main-h"] .boards-container {
+  /* Bugfix (user: 'player board could be placed much lower / empty space
+     below'): the solver was already allocating ~480px for main, but the
+     CSS only CAPPED it at that height — didn't claim it. So the focus
+     board sat at its natural (smaller) height with empty space below.
+     Set BOTH min and max so the container fills its allocated budget;
+     the inner game CSS then stretches the player board to the full
+     height. Combined with #boards-container's justify-content:flex-end
+     on mobile, this pushes the board flush with the bottom. */
+  min-height: var(--gs-fit-main-h);
   max-height: var(--gs-fit-main-h);
+}
+/* Inner Qwixx table fills the main container so its scorecard
+   stretches the full allocated height (instead of floating up). */
+#gameScreen[style*="--gs-fit-main-h"] .qwixx-table {
+  height: 100%;
 }
 
 /* Mobile UX optimization: the player's focus board sits FLUSH WITH THE
@@ -1096,5 +1130,15 @@ button.kc-mini:hover{transform:translateY(-2px);box-shadow:0 6px 14px rgba(0,0,0
        status bar handles its own clearance via env(safe-area-inset-
        bottom). 96px was for desktop where the status bar floats. */
     padding-bottom: calc(16px + env(safe-area-inset-bottom,0px));
+    padding-top: 4px;
+  }
+  /* When the solver budget is set, the player board stretches to fill
+     the container's whole height (rather than sitting at content-size
+     in the middle). justify-content:flex-end still keeps it pinned to
+     the bottom for cases where it doesn't fill (single-row layouts). */
+  #gameScreen[style*="--gs-fit-main-h"] .boards-container > .player-board,
+  #gameScreen[style*="--gs-fit-main-h"] .boards-container > .qwixx-table {
+    flex: 1 1 auto;
+    min-height: 0;
   }
 }

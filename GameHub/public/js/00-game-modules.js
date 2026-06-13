@@ -535,7 +535,7 @@
         const ta = state.turnAction;
         if (ta === null) {
           out.push({ action: "draw_deck" });
-          if (state.discardTop !== null && state.discardTop !== void 0) {
+          if (Array.isArray(state.discard) && state.discard.length > 0) {
             out.push({ action: "take_discard" });
           }
         } else if (ta === "deck") {
