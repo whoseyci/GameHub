@@ -16,7 +16,11 @@
 .mode-header{
   position:fixed;
   top:0; left:0; right:0;
-  z-index:50;
+  /* Card overlays (Kit.CardManager) sit at body level and can ride up to
+     z-index 1000 during flight; the mode header + group picker must beat
+     them so an in-game overlay never paints on top. 1500 leaves headroom
+     for any future modal that needs to layer above the header. */
+  z-index:1500;
   background:rgba(15,23,42,.92);
   backdrop-filter:blur(8px) saturate(140%);
   -webkit-backdrop-filter:blur(8px) saturate(140%);
@@ -126,7 +130,10 @@ body.in-game .mode-header{ display:none; }
   border-top:0;
   border-radius:0 0 14px 14px;
   box-shadow:0 12px 32px rgba(0,0,0,.4);
-  z-index:51;
+  /* Sits one above the header so its shadow paints over the header's
+     bottom border but the picker itself is still in the header's stacking
+     context. */
+  z-index:1501;
 }
 .group-picker.hidden{ display:none; }
 .group-picker-inner{
