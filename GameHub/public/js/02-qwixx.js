@@ -255,16 +255,22 @@ window.GameClients = window.GameClients || {};
     const focused = s.allPlayers.find(p => p.seat === focusSeat) || s.allPlayers[0];
     const others = s.allPlayers.filter(p => p.seat !== focused.seat);
 
+    // Bugfix (user: 'I don't see the button to skip if I don't wanna take any/
+    // the remaining dice'): shortened the button labels — 'Skip color / pass
+    // to others' wrapped + clipped on mobile. CSS-side, the .qwixx-controls
+    // bar is sticky at the bottom of #gameScreen on mobile (see main.css)
+    // so the skip button is always visible regardless of how tall the dice
+    // tray + scorecard + minis grew.
     let controlsHtml = '';
     if(!diceRevealed){
       controlsHtml = `<span class="muted">Throw dice to reveal this turn.</span>`;
     } else if(isWhite){
-      if (pendingWhite) controlsHtml = `<button class="qwixx-ctrl-btn pri" onclick="window.GameClients['qwixx'].act('skip')">Skip white ${dice.w[0]+dice.w[1]}</button>`;
-      else if (isAct && !s.activeColorUsed) controlsHtml = `<button class="qwixx-ctrl-btn pri" onclick="window.GameClients['qwixx'].act('finishTurn')">Skip color / pass to others</button>`;
+      if (pendingWhite) controlsHtml = `<button class="qwixx-ctrl-btn pri" onclick="window.GameClients['qwixx'].act('skip')">${Kit.Icon.html('skip-forward',{size:14,cls:'kit-icon-inline'})}Skip white (${dice.w[0]+dice.w[1]})</button>`;
+      else if (isAct && !s.activeColorUsed) controlsHtml = `<button class="qwixx-ctrl-btn pri" onclick="window.GameClients['qwixx'].act('finishTurn')">${Kit.Icon.html('skip-forward',{size:14,cls:'kit-icon-inline'})}Pass color</button>`;
       else controlsHtml = `<span class="muted">Waiting for white-dice decisions…</span>`;
     } else if(isColor){
       controlsHtml = isAct
-        ? `<button class="qwixx-ctrl-btn pri" onclick="window.GameClients['qwixx'].act('finishTurn')">${!s.activeMarkedThisTurn ? 'Take Penalty / Finish' : 'Finish Turn'}</button>`
+        ? `<button class="qwixx-ctrl-btn pri" onclick="window.GameClients['qwixx'].act('finishTurn')">${Kit.Icon.html(!s.activeMarkedThisTurn ? 'warning' : 'check',{size:14,cls:'kit-icon-inline'})}${!s.activeMarkedThisTurn ? 'Take Penalty' : 'Finish'}</button>`
         : `<span class="muted">${esc(activeName)} may take one color mark…</span>`;
     }
 
