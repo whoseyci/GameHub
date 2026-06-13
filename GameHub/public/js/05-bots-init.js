@@ -137,6 +137,12 @@ function scheduleBot(view, bot, seat) {
 
 /* ====================== INIT ====================== */
 { const v = $('verStamp'); if (v) v.textContent = 'build ' + BUILD_VERSION; }
+// Phase 9: the #quickTiles / #localTiles / #localPlayers / #onlineDevicePlayers
+// containers are hidden legacy DOM slots (the menu screens that hosted them
+// were killed in Phase 4). Renderers still run so the helpers stay
+// initialised in case any code path later references them, but the output
+// goes into nodes the user never sees. Safe to remove entirely once we've
+// confirmed nothing reads them — flagged for a future pass.
 renderTiles('quickTiles', quickPlay);
 renderLocalSeats();
 refreshLocalTiles();
