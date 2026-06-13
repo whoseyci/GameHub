@@ -185,15 +185,18 @@
      1000). The floatUp keyframe already applies translate(-50%,…) for centering. */
   .floating-text-fixed{position:fixed;z-index:1200}
 
-  .mini-boards-container{display:flex;gap:10px;justify-content:flex-start;align-items:flex-start;width:100%;margin:8px 0 2px;padding:4px 12px;overflow-x:auto;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch}
-  .mini-boards-container::-webkit-scrollbar{height:6px}.mini-boards-container::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
-  @media(min-width:760px){.mini-boards-container{flex-wrap:wrap;justify-content:center;overflow:visible}}
-  .board-mini{padding:10px;cursor:pointer;flex:none;scroll-snap-align:start}
-  .board-mini .board-header{font-size:.9rem;margin-bottom:8px}
-  .board-mini .board-grid{grid-template-columns:repeat(4,35px);gap:5px}
-  .board-mini .kc-zone-skyjo{--kc-w:35px;box-shadow:0 2px 4px rgba(0,0,0,.3)}
-  .board-mini .board-card.revealed{border-color:#fff}.board-mini .board-card.face-down{border-color:#818cf8}
-  .board-mini .board-card.face-down::after{font-size:.8rem}.board-mini .score-badge{font-size:.72rem;padding:2px 6px}
+  /* Phase 7: legacy .mini-boards-container / .board-mini desktop defaults
+     deleted from this block. The canonical (and only) defaults now live
+     near line 420 below, paired with their breakpoint companions. The
+     old block created two competing definitions that the cascade had to
+     reconcile mid-render. Card-face polish (revealed border, face-down
+     glow + glyph) is mode-agnostic and lives with the card components,
+     not with mini-boards. */
+  .board-mini{padding:6px;cursor:pointer;}
+  .board-mini .board-card.revealed{border-color:#fff}
+  .board-mini .board-card.face-down{border-color:#818cf8}
+  .board-mini .board-card.face-down::after{font-size:.8rem}
+  .board-mini .score-badge{font-size:.7rem;padding:2px 6px}
 
   .overlay{position:fixed;inset:0;background:rgba(15,23,42,.85);backdrop-filter:blur(5px);display:flex;align-items:center;justify-content:center;z-index:200;padding:16px;transition:opacity .25s ease}
   .overlay.hidden{display:none}
@@ -289,8 +292,12 @@
    #gameScreen. These rules consume them with sensible fallbacks so a
    game that doesn't opt-in keeps working exactly as before. */
 #gameScreen .mini-boards-container{
-  max-height:var(--gs-minis-max-h, 22dvh);
-  gap:var(--gs-minis-gap, 4px);
+  /* Fallback bumped from 22dvh → 28dvh in Phase 7 to match the cleaned-up
+     non-W3 default below. Games that explicitly opt into a tighter budget
+     via Kit.Layout.apply({minis:{maxHeight}}) override this with their
+     own custom property. */
+  max-height:var(--gs-minis-max-h, 28dvh);
+  gap:var(--gs-minis-gap, 6px);
 }
 #gameScreen .mini-boards-container[class*="auto-fit"],
 #gameScreen .mini-boards-container.f7-mini-strip,
@@ -381,10 +388,19 @@ button .kit-icon,.btn .kit-icon{vertical-align:-.16em;margin-right:6px}
 @media(max-width:720px){.qwixx-score-row{grid-template-columns:34px minmax(0,1fr) 36px}.qwixx-row-hdr{font-size:.85rem}.qwixx-cell{font-size:.68rem;min-height:42px}.qwixx-hint{font-size:.48rem;padding:1px 3px}.qwixx-die{width:38px;height:38px;font-size:1.1rem}.qwixx-dice-zone{padding:.65rem}.qwixx-combo{font-size:.62rem;padding:3px 6px}}
 
 /* ===== mobile/table-fit pass ===== */
-html,body,#app{height:100%;max-height:100%;overflow:hidden}.screen{min-height:0}.game-topbar{flex:0 0 var(--topbar-h)}#gameScreen.active{display:flex;height:100dvh;max-height:100dvh;overflow:hidden;padding:6px;justify-content:flex-start}.top-area{flex:0 0 auto}.boards-container{flex:1 1 auto;min-height:0;overflow:hidden;width:100%;align-items:center;align-content:flex-start}.status-bar{flex:0 0 auto;margin:4px 0 0;padding:6px 10px;min-height:28px;font-size:.85rem}.mini-boards-container{flex:0 0 auto;max-height:18vh;overflow:hidden}.player-board{max-width:100%;overflow:hidden}.board-header{gap:8px}.score-badge{white-space:nowrap}
+html,body,#app{height:100%;max-height:100%;overflow:hidden}.screen{min-height:0}.game-topbar{flex:0 0 var(--topbar-h)}#gameScreen.active{display:flex;height:100dvh;max-height:100dvh;overflow:hidden;padding:6px;justify-content:flex-start}.top-area{flex:0 0 auto}.boards-container{flex:1 1 auto;min-height:0;overflow:hidden;width:100%;align-items:center;align-content:flex-start}.status-bar{flex:0 0 auto;margin:4px 0 0;padding:6px 10px;min-height:28px;font-size:.85rem}
+/* Phase 7: .mini-boards-container max-height removed from this mobile-fit
+   pass — it was clamping to 18vh and squashing opponent boards into
+   illegibility. The clean breakpoint progression near line 450 owns
+   this now. We do keep `flex:0 0 auto` + `overflow:hidden` since the
+   game-screen flex column relies on them. */
+.mini-boards-container{flex:0 0 auto;overflow:hidden}.player-board{max-width:100%;overflow:hidden}.board-header{gap:8px}.score-badge{white-space:nowrap}
 .qwixx-boards{height:100%;max-height:100%;overflow:hidden;gap:8px}.qwixx-player-board{flex:0 0 auto}.qwixx-player-board.compact{padding:8px;border-radius:14px;opacity:.92}.qwixx-player-board.compact .board-header{font-size:.78rem;margin-bottom:4px}.qwixx-scorecard.compact{border-radius:12px}.qwixx-scorecard.compact .qwixx-score-row{grid-template-columns:28px minmax(0,1fr) 30px}.qwixx-scorecard.compact .qwixx-cell{min-height:22px;font-size:.52rem;padding:0}.qwixx-scorecard.compact .qwixx-row-hdr{font-size:.65rem}.qwixx-scorecard.compact .qwixx-row-score{font-size:.56rem}.qwixx-scorecard.compact + .qwixx-player-foot{display:none}.qwixx-row-score{flex-direction:column;line-height:1}.qwixx-row-score small{font-size:.55rem;color:var(--text-dim)}.qwixx-hint.preview{opacity:.55;filter:saturate(.7)}
 @media(max-width:760px){:root{--topbar-h:42px;--slot-w:clamp(42px,12vw,58px);--bcard-w:clamp(34px,10vw,52px)}.screen{padding:10px}.game-topbar{height:var(--topbar-h);padding:4px 6px}.icon-btn{width:34px;height:34px;font-size:.95rem}.room-tag,.spectate-tag{font-size:.72rem;padding:4px 7px}.top-area{padding:4px;gap:6px}.held-area{padding:6px 8px;gap:8px}.held-text{font-size:.7rem}.held-sub{font-size:.58rem}.pile-label{font-size:.62rem}.boards-container{gap:6px}.player-board{padding:8px;border-radius:14px}.board-header{font-size:.76rem;margin-bottom:5px}.score-badge{font-size:.65rem;padding:3px 6px}.status-bar{font-size:.76rem}.qwixx-dice-zone{gap:.35rem;padding:.45rem}.qwixx-turn-head{font-size:.76rem}.qwixx-dice-rows{gap:.35rem;margin:.15rem 0}.qwixx-dice-row{gap:.25rem}.qwixx-dice-label{display:none}.qwixx-die{width:30px;height:30px;border-radius:8px;font-size:.9rem}.qwixx-combos{display:none}.qwixx-controls{margin:2px 0}.qwixx-ctrl-btn{padding:7px 10px;font-size:.75rem}.qwixx-boards{gap:5px}.qwixx-player-board:not(.compact){padding:7px}.qwixx-scorecard:not(.compact) .qwixx-score-row{grid-template-columns:30px minmax(0,1fr) 34px}.qwixx-scorecard:not(.compact) .qwixx-cell{min-height:34px;font-size:.6rem}.qwixx-scorecard:not(.compact) .qwixx-row-hdr{font-size:.72rem}.qwixx-hint{font-size:.42rem;padding:1px 2px}.qwixx-player-foot{font-size:.62rem;margin-top:2px}.qwixx-player-board.compact .qwixx-score-row{grid-template-columns:22px minmax(0,1fr) 24px}.qwixx-player-board.compact .qwixx-cell{min-height:13px;font-size:0}.qwixx-player-board.compact .qwixx-num{font-size:.44rem}.qwixx-player-board.compact .board-header{font-size:.62rem}.qwixx-player-board.compact{padding:4px}.menu-card{max-height:96dvh;overflow:hidden;padding:16px}.btn{padding:12px;margin:8px 0;font-size:.95rem}.input{padding:10px;margin:6px 0 10px}.game-tiles{gap:8px}.game-tile{padding:10px 8px}.game-tile .emoji{font-size:1.5rem}.gdesc{display:none}}
-@media(max-height:720px){#gameScreen.active{padding:3px}.top-area{padding:3px}.qwixx-dice-zone{padding:.3rem}.qwixx-player-board.compact .qwixx-cell{min-height:10px}.qwixx-scorecard:not(.compact) .qwixx-cell{min-height:28px}.status-bar{display:none}.mini-boards-container{max-height:14vh}.player-board{padding:6px}}
+/* Phase 7: removed the `.mini-boards-container{max-height:14vh}` override
+   from this short-viewport rule for the same reason — it fought the
+   28dvh→16dvh progression in the canonical block. */
+@media(max-height:720px){#gameScreen.active{padding:3px}.top-area{padding:3px}.qwixx-dice-zone{padding:.3rem}.qwixx-player-board.compact .qwixx-cell{min-height:10px}.qwixx-scorecard:not(.compact) .qwixx-cell{min-height:28px}.status-bar{display:none}.player-board{padding:6px}}
 
 /* ===== Qwixx Arena feel + miniature board system ===== */
 .qwixx-table{height:100%;width:min(1040px,100%);display:grid;grid-template-rows:minmax(0,1fr) auto;gap:8px;overflow:hidden;align-items:stretch}.qwixx-focus-card{min-height:0;display:flex;flex-direction:column;overflow:hidden}.qwixx-focus-card .qwixx-scorecard{flex:1 1 auto;min-height:0}.qwixx-reco{font-size:.78rem;font-weight:900;color:#c4b5fd;background:rgba(124,92,255,.1);border:1px solid rgba(124,92,255,.25);border-radius:10px;padding:5px 8px;margin:0 0 6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.qwixx-mini-strip{display:grid;grid-template-columns:repeat(auto-fit,minmax(132px,1fr));gap:6px;min-height:0}.qwixx-mini-wrap{border:0;background:transparent;color:inherit;padding:0;text-align:left;cursor:pointer;min-width:0}.qwixx-mini-wrap.active .qwixx-mini-board{border-color:#f59e0b;box-shadow:0 0 0 1px rgba(245,158,11,.35)}.qwixx-mini-board{background:linear-gradient(180deg,rgba(30,41,59,.95),rgba(15,23,42,.95));border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:5px;overflow:hidden}.qwixx-mini-head{display:flex;justify-content:space-between;gap:6px;align-items:center;font-size:.64rem;font-weight:900;color:var(--text);margin-bottom:3px;white-space:nowrap}.qwixx-mini-head b{overflow:hidden;text-overflow:ellipsis}.qwixx-mini-grid{display:flex;flex-direction:column;gap:2px}.qwixx-mini-row{display:grid;grid-template-columns:7px repeat(13,1fr);gap:2px;align-items:center}.qwixx-mini-row-key{width:6px;height:6px;border-radius:50%;display:block}.qwixx-mini-row-key.red{background:var(--qwixx-red)}.qwixx-mini-row-key.yellow{background:var(--qwixx-yellow)}.qwixx-mini-row-key.green{background:var(--qwixx-green)}.qwixx-mini-row-key.blue{background:var(--qwixx-blue)}.qwixx-mini-dot{height:6px;border-radius:999px;background:rgba(148,163,184,.25);box-shadow:inset 0 0 0 1px rgba(255,255,255,.04)}.qwixx-mini-dot.marked.red{background:var(--qwixx-red)}.qwixx-mini-dot.marked.yellow{background:var(--qwixx-yellow)}.qwixx-mini-dot.marked.green{background:var(--qwixx-green)}.qwixx-mini-dot.marked.blue{background:var(--qwixx-blue)}.qwixx-mini-dot.skipped{background:#1f2937}.qwixx-mini-dot.lock-on{background:#f59e0b}.qwixx-mini-dot.lock-off{background:rgba(245,158,11,.18)}.qwixx-mini-dot.spare{background:transparent}.qwixx-mini-pens{display:flex;gap:3px;justify-content:flex-end;margin-top:3px}.qwixx-mini-pen{font-size:.58rem;line-height:1;color:#334155;filter:grayscale(1)}.qwixx-mini-pen.on{color:#7f1d1d;filter:none}.qwixx-scorecard{background:#101827;border-color:rgba(255,255,255,.09)}.qwixx-cell.hintable{animation:none}.qwixx-cell.hintable .qwixx-num{color:#fff}.qwixx-hint{letter-spacing:.01em}.qwixx-hint.preview::after{content:'•';margin-left:2px}.qwixx-player-board.compact{display:none!important}
@@ -408,24 +424,123 @@ html,body,#app{min-height:100%;height:auto;max-height:none;overflow-x:hidden;ove
 @media(max-height:640px){.game-topbar{height:34px;flex-basis:34px}.icon-btn{width:30px;height:30px}.top-area{max-height:32dvh}.qwixx-top-mini-strip{max-height:12dvh}.qwixx-dice-zone{max-height:16dvh;gap:.15rem}.qwixx-combos,.qwixx-turn-head span:last-child,.qwixx-reco{display:none}.qwixx-scorecard:not(.compact) .qwixx-cell{min-height:20px}.qwixx-hint{display:none}.qwixx-player-foot,.status-bar{display:none!important}.qwixx-kit-dice{min-height:32px}.qwixx-focus-card .board-header{display:none}}
 @media(orientation:landscape) and (max-height:500px){#gameScreen.active{display:grid;grid-template-columns:38% 62%;grid-template-rows:auto 1fr;padding:4px}.game-topbar{grid-column:1/3}.top-area{grid-column:1;grid-row:2;max-height:calc(100dvh - 42px);align-self:start}.boards-container{grid-column:2;grid-row:2;height:calc(100dvh - 42px)}.qwixx-top-mini-strip{grid-template-columns:1fr;max-height:42dvh}.qwixx-dice-zone{max-height:52dvh}.qwixx-scorecard:not(.compact) .qwixx-cell{min-height:20px}}
 
-/* Ultra-compact opponent board presets */
-.mini-boards-container{width:100%;display:grid;grid-template-columns:repeat(auto-fit,minmax(72px,1fr));gap:4px;align-items:start;justify-items:stretch;overflow:hidden;max-height:22dvh}.board-mini{min-width:0!important;width:100%;padding:4px!important;border-radius:9px!important}.board-mini .board-header{font-size:.52rem!important;margin:0 0 2px!important;gap:2px}.board-mini .score-badge{font-size:.48rem!important;padding:1px 3px}.board-mini .board-grid{gap:1px!important;grid-template-columns:repeat(4,1fr)!important}.board-mini .kc-zone-skyjo{--kc-w:10px!important;min-width:0!important}.board-mini .board-card.face-down::after{font-size:.5rem}.board-mini .board-card.cleared{opacity:.25}
-.f7-mini-strip{width:100%;display:grid;grid-template-columns:repeat(auto-fit,minmax(92px,1fr));gap:4px;max-height:20dvh;overflow:hidden}.f7-focus-board{width:min(760px,100%);min-width:0!important}.f7-mini-head{display:grid;grid-template-columns:1fr auto;gap:2px;font-size:.53rem;line-height:1.05}.f7-mini-head b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.f7-mini-head em{grid-column:1/3;font-style:normal;color:var(--text-dim)}.f7-mini-cards{display:flex;gap:2px;overflow:hidden;margin-top:3px}.f7-mini-card{min-width:11px;height:16px;border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:.43rem;font-weight:900;background:#fff;color:#111}.f7-mini-card.mod{background:#ede9fe;color:#6d28d9}.f7-mini-card.act{background:#fed7aa;color:#9a3412}.f7-mini-bar{display:flex;justify-content:space-between;font-size:.48rem;color:var(--text-dim);margin-top:2px}.f7-focus-board .f7-row{max-width:100%;overflow:hidden;flex-wrap:wrap}.f7-focus-board .kc-zone-f7{transform-origin:center}
-.qwixx-mini-pens{display:flex!important}.qwixx-row-score small{display:block!important}.qwixx-scorecard:not(.compact) .qwixx-row-score small{display:block!important}.qwixx-full-pens{display:flex;gap:5px;justify-content:flex-end;margin-top:4px}.qwixx-full-pen{font-size:.7rem;color:#334155;filter:grayscale(1)}.qwixx-full-pen.on{color:#7f1d1d;filter:none}
-@media(max-width:430px){.mini-boards-container{grid-template-columns:repeat(auto-fit,minmax(54px,1fr));gap:2px;max-height:18dvh}.board-mini{padding:2px!important}.board-mini .board-header{display:none}.board-mini .kc-zone-skyjo{--kc-w:8px!important}.f7-mini-strip{grid-template-columns:repeat(auto-fit,minmax(70px,1fr));gap:3px;max-height:16dvh}.f7-mini-board{padding:3px}.f7-mini-head{font-size:.45rem}.f7-mini-card{min-width:8px;height:12px;font-size:.34rem}.f7-mini-bar{display:none}.qwixx-mini-pens{display:flex!important}.qwixx-row-score small{display:block!important;font-size:.42rem}.qwixx-full-pen{font-size:.55rem}}
-@media(max-height:640px){.mini-boards-container{max-height:14dvh}.f7-mini-strip{max-height:14dvh}.qwixx-mini-pens{display:flex!important}.qwixx-row-score small{display:block!important}.qwixx-full-pens{display:none}}
+/* UX redesign Phase 7: mini-board layout (cleaned up).
+ * Removed 6+ overlapping rules that fought the W1 tier system:
+ *   - one that hid the opponent header on mobile (so the user couldn't
+ *     see whose board they were looking at)
+ *   - one that shrank Skyjo cards to 8px wide (unreadable thumbnails)
+ *   - two non-mobile rules with conflicting grid template columns
+ *     that snapped tiles between sizes mid-frame
+ * Now: Kit.MiniBoard (W1) owns IN-tile adaptation via ResizeObserver
+ * tiers (xs / sm / md / lg). This block only owns the container
+ * layout and a CSS custom property knob for Skyjo card width.
+ */
+.mini-boards-container{
+  width:100%;
+  display:flex; flex-wrap:wrap;
+  justify-content:center; align-items:flex-start;
+  gap:6px;
+  overflow:hidden;
+  /* Default height budget — games using Kit.Layout.apply({minis:{maxHeight}})
+     can override per-game by setting --gs-minis-max-h on #gameScreen
+     (see the W3 rule a few hundred lines above). */
+  max-height:28dvh;
+}
+/* Each Skyjo mini stays at its natural width (4-card grid); flex shrinks
+   it down if needed but Kit.MiniBoard's tier system handles in-tile
+   layout (header / essentials / body) at every size. */
+.mini-boards-container .board-mini{
+  flex:0 1 auto;
+  min-width:0;
+  max-width:140px;
+}
+.mini-boards-container .board-mini .board-grid{
+  grid-template-columns:repeat(4, var(--mini-skyjo-w, 18px));
+  gap:2px;
+  justify-content:center;
+}
+.mini-boards-container .board-mini .kc-zone-skyjo{
+  --kc-w:var(--mini-skyjo-w, 18px);
+  min-width:0;
+}
+/* Narrower viewport: smaller Skyjo cards, more tiles per row. The
+   container's flex-wrap keeps everything visible. Headers stay visible
+   (Kit.MiniBoard tier-sm/xs handles legibility — see W1 contract). */
+@media(max-width:760px){
+  .mini-boards-container{ gap:4px; max-height:24dvh; }
+  .mini-boards-container .board-mini{ max-width:108px; }
+  .mini-boards-container{ --mini-skyjo-w:14px; }
+}
+@media(max-width:430px){
+  .mini-boards-container{ gap:3px; max-height:20dvh; }
+  .mini-boards-container .board-mini{ max-width:88px; }
+  .mini-boards-container{ --mini-skyjo-w:11px; }
+}
+@media(max-height:640px){
+  .mini-boards-container{ max-height:16dvh; }
+}
 
-.qwixx-mini-row{grid-template-columns:7px repeat(13,1fr) 14px!important}.qwixx-mini-row-pts{font-size:.48rem;font-weight:900;color:var(--text-dim);text-align:right;line-height:1}.qwixx-player-foot{display:flex;align-items:center;justify-content:space-between;gap:8px}
+/* Flip 7 keeps its own strip layout (the f7-row inside is wider than
+   a typical Skyjo grid). Container stretches the row, tile internals
+   are owned by Kit.MiniBoard. */
+.f7-mini-strip{
+  width:100%;
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(92px,1fr));
+  gap:4px;
+  max-height:24dvh;
+  overflow:hidden;
+}
+.f7-focus-board{ width:min(760px,100%); min-width:0; }
+.f7-focus-board .f7-row{ max-width:100%; overflow:hidden; flex-wrap:wrap; }
+.f7-focus-board .kc-zone-f7{ transform-origin:center; }
+@media(max-width:760px){
+  .f7-mini-strip{ grid-template-columns:repeat(auto-fit,minmax(78px,1fr)); }
+}
+@media(max-width:430px){
+  .f7-mini-strip{ grid-template-columns:repeat(auto-fit,minmax(64px,1fr)); gap:3px; max-height:18dvh; }
+}
+@media(max-height:640px){
+  .f7-mini-strip{ max-height:14dvh; }
+}
+
+/* Qwixx mini layout helpers (kept) — these are Qwixx-specific row
+   internals, not part of the Kit.MiniBoard tier system. */
+.qwixx-full-pens{display:flex;gap:5px;justify-content:flex-end;margin-top:4px}
+.qwixx-full-pen{font-size:.7rem;color:#334155;filter:grayscale(1)}
+.qwixx-full-pen.on{color:#7f1d1d;filter:none}
+.qwixx-mini-row{grid-template-columns:7px repeat(13,1fr) 14px!important}
+.qwixx-mini-row-pts{font-size:.48rem;font-weight:900;color:var(--text-dim);text-align:right;line-height:1}
+.qwixx-player-foot{display:flex;align-items:center;justify-content:space-between;gap:8px}
 @media(max-width:760px){.qwixx-mini-row{grid-template-columns:5px repeat(13,1fr) 11px!important}.qwixx-mini-row-pts{font-size:.4rem}}
-@media(max-height:640px){.qwixx-mini-row-pts{display:block!important}}
+@media(max-height:640px){.qwixx-full-pens{display:none}.qwixx-mini-row-pts{display:block!important}}
 
-/* Skyjo mini boards keep card aspect/ideal size; center instead of stretching */
-.mini-boards-container:not(.f7-mini-strip){display:flex;flex-wrap:wrap;justify-content:center;align-items:flex-start;gap:5px}.mini-boards-container:not(.f7-mini-strip) .board-mini{flex:0 1 auto;width:auto;max-width:118px}.mini-boards-container:not(.f7-mini-strip) .board-mini .board-grid{width:auto;grid-template-columns:repeat(4,16px)!important;justify-content:center}.mini-boards-container:not(.f7-mini-strip) .board-mini .kc-zone-skyjo{--kc-w:16px!important}.mini-boards-container:not(.f7-mini-strip) .board-mini .board-header{max-width:96px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
-@media(max-width:430px){.mini-boards-container:not(.f7-mini-strip) .board-mini{max-width:82px}.mini-boards-container:not(.f7-mini-strip) .board-mini .board-grid{grid-template-columns:repeat(4,11px)!important}.mini-boards-container:not(.f7-mini-strip) .board-mini .kc-zone-skyjo{--kc-w:11px!important}.mini-boards-container:not(.f7-mini-strip) .board-mini .board-header{display:none}}
-
-/* shared opponent inspect popup */
-#investigateBox{max-width:min(96vw,760px);width:fit-content;max-height:92dvh;overflow:hidden;background:var(--surface);border:2px solid var(--border);border-radius:18px;padding:10px;display:flex;flex-direction:column;gap:8px;align-items:center}.inspect-head{width:100%;display:grid;grid-template-columns:36px 1fr 36px 36px;gap:6px;align-items:center}.inspect-head b{text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.inspect-head .icon-btn{position:static!important}.board-mini .board-card{font-size:.58rem!important}.board-mini .board-card.revealed{font-size:.58rem!important}.mini-boards-container:not(.f7-mini-strip) .board-mini{max-width:150px}.mini-boards-container:not(.f7-mini-strip) .board-mini .board-grid{grid-template-columns:repeat(4,20px)!important}.mini-boards-container:not(.f7-mini-strip) .board-mini .kc-zone-skyjo{--kc-w:20px!important}.mini-boards-container:not(.f7-mini-strip) .board-mini .board-header{max-width:135px;font-size:.62rem!important;display:flex!important}
-@media(max-width:430px){#investigateBox{max-width:98vw;padding:6px}.mini-boards-container:not(.f7-mini-strip) .board-mini{max-width:118px}.mini-boards-container:not(.f7-mini-strip) .board-mini .board-grid{grid-template-columns:repeat(4,16px)!important}.mini-boards-container:not(.f7-mini-strip) .board-mini .kc-zone-skyjo{--kc-w:16px!important}.mini-boards-container:not(.f7-mini-strip) .board-mini .board-header{display:flex!important;font-size:.5rem!important}.board-mini .score-badge{display:none}}
+/* Shared opponent inspect popup (no changes to the popup itself;
+   removed the conflicting .board-mini overrides from this block). */
+#investigateBox{
+  max-width:min(96vw,760px); width:fit-content; max-height:92dvh;
+  overflow:hidden;
+  background:var(--surface); border:2px solid var(--border); border-radius:18px;
+  padding:10px;
+  display:flex; flex-direction:column; gap:8px; align-items:center;
+}
+.inspect-head{
+  width:100%;
+  display:grid; grid-template-columns:36px 1fr 36px 36px;
+  gap:6px; align-items:center;
+}
+.inspect-head b{text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.inspect-head .icon-btn{position:static!important}
+/* Inside the inspect popup, force a comfortable Skyjo grid size — the
+   popup has plenty of room, so override the container's narrow defaults. */
+#investigateBox .board-mini{ max-width:none; }
+#investigateBox .board-mini .board-grid{ grid-template-columns:repeat(4,24px); }
+#investigateBox .board-mini .kc-zone-skyjo{ --kc-w:24px; }
+@media(max-width:430px){
+  #investigateBox{ max-width:98vw; padding:6px; }
+  #investigateBox .board-mini .board-grid{ grid-template-columns:repeat(4,18px); }
+  #investigateBox .board-mini .kc-zone-skyjo{ --kc-w:18px; }
+}
 
 /* Qwixx throw button + stronger 3D dice */
 /* Qwixx throw button — pulses when it's YOUR turn to throw so the affordance

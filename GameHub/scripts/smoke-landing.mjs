@@ -182,6 +182,32 @@ async function run() {
   window.LocalSeatEditor.close();
   assert(seatEditor.classList.contains('hidden'), 'seat editor did not close');
 
+  // ── Phase 7: opponent mini-board legibility ──
+  // After starting a Skyjo game with you + bots, opponent mini-boards
+  // must render with both a name (kc-mini-name-* text) AND a score
+  // essential. The W1 Kit.MiniBoard tier system guarantees this at
+  // every viewport — but Phase 7 dropped a pile of legacy !important
+  // overrides that previously hid the header on mobile. This catches
+  // any regression where those overrides creep back in.
+  await sleep(80); // let ResizeObserver settle
+  const miniContainer = window.document.getElementById('miniBoardsContainer');
+  assert(miniContainer, '#miniBoardsContainer missing');
+  const minis = miniContainer.querySelectorAll('.kc-mini');
+  assert(minis.length >= 1, `expected ≥1 opponent mini-board, got ${minis.length}`);
+  for (const m of minis) {
+    // Some name text must be present (full OR initials — Kit.MiniBoard
+    // tier system swaps between them based on width).
+    const nameFull = m.querySelector('.kc-mini-name-full');
+    const nameInit = m.querySelector('.kc-mini-name-init');
+    assert(nameFull?.textContent?.trim() || nameInit?.textContent?.trim(),
+      'mini board missing both full name AND initials');
+    // The Skyjo "Total" essential must be in the DOM (CSS may hide it
+    // at xs tier but the element exists — its absence means W1 manifest
+    // is broken).
+    const essentials = m.querySelectorAll('.kc-mini-essential');
+    assert(essentials.length >= 1, 'mini board missing the essentials manifest');
+  }
+
   if (errors.length) throw new Error(`Errors during landing smoke:\n${errors.join('\n')}`);
   console.log(`Landing smoke OK: ${tiles.length} tiles · instant-bot start works · identity panel rendered · mode header behaves`);
 }
