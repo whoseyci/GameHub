@@ -182,6 +182,22 @@ async function run() {
   window.LocalSeatEditor.close();
   assert(seatEditor.classList.contains('hidden'), 'seat editor did not close');
 
+  // ── Phase 8: bot actually acts after landing tile click ──
+  // This is the user's reported regression path: pick mode = Local on
+  // the header, click a game tile, then the bot must take its REVEAL
+  // turn (Skyjo) within a few seconds. We give the scheduler 3s of
+  // think-time + jitter (bot delay is 450-950ms + random 0-250ms).
+  await sleep(3000);
+  const botRevealCount = window.eval('localEngine && localEngine.viewFor(0).skyjo.players[1].revealCount');
+  assert(botRevealCount >= 2,
+    `bot did not flip both reveal cards within 3s (revealCount=${botRevealCount})`);
+  // And by now the human's turn should be live (currentPlayer >= 0).
+  // (If the bot were stuck pre-reveal, currentPlayer would be -1 / phase
+  // would still be REVEAL with the bot having 0 reveals.)
+  const phase = window.eval('localEngine && localEngine.viewFor(0).skyjo.phase');
+  assert(phase === 'PLAY' || phase === 'REVEAL',
+    `unexpected Skyjo phase after bot reveal: ${phase}`);
+
   // ── Phase 7: opponent mini-board legibility ──
   // After starting a Skyjo game with you + bots, opponent mini-boards
   // must render with both a name (kc-mini-name-* text) AND a score
