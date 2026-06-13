@@ -56,14 +56,27 @@ async function screenshot(page, name) {
   await page.screenshot({ path: join(outDir, `${name}.png`), fullPage: true });
 }
 
+/**
+ * UX redesign Phase 9: the #localPick screen no longer exists. The new
+ * flow lands the user directly into a local game when they click a
+ * landing tile in Local mode. configureLocal() now sets up the seats
+ * + starts the game in one shot via the public window helpers, no
+ * intermediate screen needed.
+ *
+ * Returns a promise that resolves once #gameScreen is active.
+ */
 async function configureLocal(page, gameId, seats) {
   await page.evaluate(({ gameId, seats }) => {
-    localSeats = seats;
-    renderLocalSeats();
-    refreshLocalTiles();
-    _localPick = gameId;
-    markLocalPick();
+    if (typeof window.setLocalSeats === 'function') window.setLocalSeats(seats);
+    else {
+      // Defensive fallback for older builds.
+      localSeats = seats;
+      if (typeof renderLocalSeats === 'function') renderLocalSeats();
+      if (typeof refreshLocalTiles === 'function') refreshLocalTiles();
+    }
+    if (typeof window.startLocalForGame === 'function') window.startLocalForGame(gameId);
   }, { gameId, seats });
+  await page.waitForSelector('#gameScreen.active');
 }
 
 async function bootPage(page, baseUrl) {
@@ -73,8 +86,11 @@ async function bootPage(page, baseUrl) {
     if (msg.type() === 'error') consoleErrors.push(`console.${msg.type()}: ${msg.text()}`);
   });
   await page.goto(baseUrl, { waitUntil: 'networkidle' });
-  await page.locator('button:has-text("Pass & Play")').click();
-  await page.waitForSelector('#localPick.active');
+  // UX redesign Phase 1+4: the page lands on #menuScreen. The Local
+  // mode toggle is the default; landing tiles are the entry point.
+  // We don't need to navigate to any setup screen — configureLocal()
+  // jumps straight into the game.
+  await page.waitForSelector('#menuScreen.active');
   return consoleErrors;
 }
 
@@ -82,12 +98,12 @@ async function runDesktopSuite(browser, baseUrl) {
   const page = await browser.newPage({ viewport: { width: 1400, height: 950 } });
   const errors = await bootPage(page, baseUrl);
 
+  // configureLocal now starts the game in one shot (no more separate
+  // Start button click — the #localPick screen was killed in Phase 4).
   await configureLocal(page, 'flip7', [
     { name: 'P1', bot: false },
     { name: 'P2', bot: false },
   ]);
-  await page.locator('#localPick button:has-text("Start")').click();
-  await page.waitForSelector('#gameScreen.active');
   await screenshot(page, 'desktop-flip7-start');
   await page.locator('#f7Controls .btn.green').click();
   page.once('dialog', (d) => d.accept());
@@ -99,13 +115,10 @@ async function runDesktopSuite(browser, baseUrl) {
   assert(await page.locator('[data-f7-seat]').count() === 0, 'Desktop: Flip7 board nodes leaked back after quitting mid-animation');
   await screenshot(page, 'desktop-after-flip7-quit');
 
-  await page.locator('button:has-text("Pass & Play")').click();
   await configureLocal(page, 'skyjo', [
     { name: 'P1', bot: false },
     { name: 'P2', bot: false },
   ]);
-  await page.locator('#localPick button:has-text("Start")').click();
-  await page.waitForSelector('#gameScreen.active');
   assert(await page.locator('.qwixx-dice-zone').count() === 0, 'Desktop: Qwixx dice zone leaked into Skyjo');
   assert(await page.locator('#topArea .piles').evaluate((el) => getComputedStyle(el).display) !== 'none', 'Desktop: Skyjo piles should be visible');
   await screenshot(page, 'desktop-skyjo-start');
@@ -122,8 +135,6 @@ async function runMobileSuite(browser, baseUrl) {
     { name: 'Human', bot: false },
     { name: 'Bot', bot: true, difficulty: 'medium' },
   ]);
-  await page.locator('#localPick button:has-text("Start")').click();
-  await page.waitForSelector('#gameScreen.active');
   await screenshot(page, 'mobile-qwixx-before-throw');
 
   // "Pending white decision" used to be a raw field on view.state, but the
@@ -167,14 +178,11 @@ async function runMobileSuite(browser, baseUrl) {
   page.once('dialog', (d) => d.accept());
   await page.locator('#gameScreen .game-topbar .icon-btn').first().click();
   await page.waitForSelector('#menuScreen.active');
-  await page.locator('button:has-text("Pass & Play")').click();
 
   await configureLocal(page, 'flip7', [
     { name: 'H1', bot: false },
     { name: 'Bot', bot: true, difficulty: 'easy' },
   ]);
-  await page.locator('#localPick button:has-text("Start")').click();
-  await page.waitForSelector('#gameScreen.active');
   await page.locator('#f7Controls .btn.secondary').click();
   await page.waitForTimeout(2200);
   const seq = await page.evaluate(() => localEngine.viewFor(localDisplaySeat()).flip7.seq);
