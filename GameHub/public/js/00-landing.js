@@ -135,34 +135,46 @@
   }
 
   /**
-   * Friction-free "play vs bot": configure localSeats (you + 2 bots), pick
-   * the game, and start. Bypasses the local picker screen entirely so the
-   * user is one click away from playing.
+   * Click-to-play in Local mode.
    *
-   * Uses the public setters exported by 01-network-local.js so we never
-   * touch script-scoped lets directly.
+   * Default seats: YOU + 1 other HUMAN (pass-and-play). The previous
+   * default added 2 bots which made it impossible for the user to start
+   * a pure human-only game without manually deleting the bots first.
+   * We now default to humans and let the user add bots via the inline
+   * seat editor.
+   *
+   * Flow:
+   *   1. Set the default seats.
+   *   2. Start the game (lands on #gameScreen).
+   *   3. Auto-open LocalSeatEditor so the user reviews/edits seats
+   *      before making their first move. If they're happy with the
+   *      defaults they can close the drawer immediately and play.
+   *      If they want bots they tap "+ Bot" then "Restart".
    */
   function instantBotPlay(gameId) {
     if (!window.GameCatalogue) return;
     const g = window.GameCatalogue.find((x) => x.id === gameId);
     if (!g) return;
     const myName = (window.Identity?.getName() || 'You').trim() || 'You';
-    const desiredBots = Math.min(2, Math.max(g.minPlayers - 1, 1), (g.maxPlayers || 4) - 1);
+    // Default to the smallest legal human-only setup. Most games are 2+
+    // so this means [you, Player 2]. Games with minPlayers > 2 get
+    // [you, Player 2, ...] up to min.
+    const minPlayers = Math.max(2, g.minPlayers || 2);
     const seats = [{ name: myName, bot: false }];
-    const botNames = ['Botley', 'Chip', 'Ada', 'Turing', 'Pixel', 'Nova'];
-    for (let i = 0; i < desiredBots; i++) {
-      // No emoji in bot names — the bot badge is rendered as an icon by the
-      // chip renderer (see public/js/01-network-local.js renderRoom()).
-      seats.push({ name: botNames[i] || ('Bot ' + (i + 1)), bot: true, difficulty: 'medium' });
+    for (let i = 1; i < minPlayers; i++) {
+      seats.push({ name: 'Player ' + (i + 1), bot: false });
     }
     if (typeof window.setLocalSeats === 'function') window.setLocalSeats(seats);
     if (typeof window.startLocalForGame === 'function') {
       window.startLocalForGame(gameId);
     }
-    // No fallback: the local picker screen was killed in Phase 4. If the
-    // network module didn't load (impossible in a coherent build), the
-    // user just stays on the landing — better than navigating to a
-    // screen that no longer exists.
+    // Auto-open the seat editor so the user sees the configuration
+    // before their first move. This is the "always intentional"
+    // pattern picked over the previous auto-2-bots default.
+    if (window.LocalSeatEditor && typeof window.LocalSeatEditor.open === 'function') {
+      // Defer one tick so the game screen + seats button are mounted.
+      setTimeout(() => window.LocalSeatEditor.open(), 0);
+    }
   }
 
   // ─── Live stats counter (lobby WebSocket, owned by OnlineSession) ───

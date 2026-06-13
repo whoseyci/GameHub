@@ -165,38 +165,51 @@ async function run() {
   assert(window.document.body.classList.contains('in-game'), 'body.in-game not set after entering game screen');
   assert(modeHeader.classList.contains('hidden'), 'mode header still visible inside the game');
 
-  // ── Phase 6: seats button visible in local mode (drawer hidden by default) ──
+  // ── Phase 6 + bugfix: pass-and-play is the default; editor auto-opens ──
+  // Clicking a Local tile now sets up YOU + 1 other HUMAN (pass-and-play
+  // by default) and auto-opens the seat editor so the user can review/
+  // edit BEFORE making their first move. If they want bots they add one,
+  // then hit "Restart with these seats". If they're happy they close the
+  // drawer and play.
   const seatsBtn = window.document.getElementById('seatsBtn');
   const seatEditor = window.document.getElementById('localSeatEditor');
   assert(seatsBtn, '#seatsBtn missing');
   assert(seatEditor, '#localSeatEditor missing');
   assert(!seatsBtn.classList.contains('hidden'), 'seats button should be visible in local game');
-  assert(seatEditor.classList.contains('hidden'), 'seat editor drawer should start hidden');
-  // Toggle: opens, renders rows, closes.
-  window.LocalSeatEditor.toggle();
-  assert(!seatEditor.classList.contains('hidden'), 'seat editor did not open on toggle');
+  // Give the auto-open setTimeout one tick to fire.
+  await sleep(20);
+  assert(!seatEditor.classList.contains('hidden'),
+    'seat editor should auto-open on first land in local mode (pass-and-play first-class)');
   const seatRows = seatEditor.querySelectorAll('.seat-row');
   assert(seatRows.length >= 2, `expected ≥2 seat rows in editor, got ${seatRows.length}`);
-  // At least one row should be a bot (instantBotPlay adds you + bots).
-  assert(seatEditor.querySelector('.seat-row.is-bot'), 'expected at least one bot seat row');
+  // Default seats should be all HUMAN (no bots).
+  const botRows = seatEditor.querySelectorAll('.seat-row.is-bot');
+  assert(botRows.length === 0,
+    `default Local seats should be pure pass-and-play (no bots), got ${botRows.length} bot rows`);
+  // Close + reopen still works.
   window.LocalSeatEditor.close();
   assert(seatEditor.classList.contains('hidden'), 'seat editor did not close');
+  window.LocalSeatEditor.toggle();
+  assert(!seatEditor.classList.contains('hidden'), 'seat editor did not reopen on toggle');
+  // Adding a bot then restarting installs the bot into the live engine.
+  window.LocalSeatEditor.addBot();
+  window.LocalSeatEditor.restart();
+  await sleep(120);
+  const seatsAfter = window.eval('window.localSeats');
+  assert(seatsAfter && seatsAfter.some((s) => s.bot),
+    'after addBot()+restart(), live seats should include a bot');
 
-  // ── Phase 8: bot actually acts after landing tile click ──
-  // This is the user's reported regression path: pick mode = Local on
-  // the header, click a game tile, then the bot must take its REVEAL
-  // turn (Skyjo) within a few seconds. We give the scheduler 3s of
-  // think-time + jitter (bot delay is 450-950ms + random 0-250ms).
+  // ── Bot regression guard (preserved from Phase 8) ──
+  // Now that we explicitly added a bot above, it must act within 3s of
+  // the restart. Catches both the W6 part 2 set_ready latent bug AND
+  // the Skyjo p.cards/p.board legalActions bug from the most recent
+  // fix (the bot strategy reads the same engine state).
   await sleep(3000);
-  const botRevealCount = window.eval('localEngine && localEngine.viewFor(0).skyjo.players[1].revealCount');
+  const view = window.eval('localEngine && localEngine.viewFor(0)');
+  const botSeatIdx = seatsAfter.findIndex((s) => s.bot);
+  const botRevealCount = view?.skyjo?.players?.[botSeatIdx]?.revealCount ?? 0;
   assert(botRevealCount >= 2,
-    `bot did not flip both reveal cards within 3s (revealCount=${botRevealCount})`);
-  // And by now the human's turn should be live (currentPlayer >= 0).
-  // (If the bot were stuck pre-reveal, currentPlayer would be -1 / phase
-  // would still be REVEAL with the bot having 0 reveals.)
-  const phase = window.eval('localEngine && localEngine.viewFor(0).skyjo.phase');
-  assert(phase === 'PLAY' || phase === 'REVEAL',
-    `unexpected Skyjo phase after bot reveal: ${phase}`);
+    `bot did not flip both reveal cards within 3s of restart (revealCount=${botRevealCount})`);
 
   // ── Phase 7: opponent mini-board legibility ──
   // After starting a Skyjo game with you + bots, opponent mini-boards

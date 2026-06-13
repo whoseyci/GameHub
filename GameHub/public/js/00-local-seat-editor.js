@@ -130,15 +130,15 @@
     ed.innerHTML = `
       <div class="lse-head">
         <div class="lse-title">${Kit.Icon.html('users', { size: 16 })}<span>Seats</span> <span class="muted">${list.length}/${max}</span></div>
-        <button class="icon-btn" onclick="LocalSeatEditor.close()" title="Close">${Kit.Icon.html('x', { size: 16 })}</button>
+        <button class="icon-btn" onclick="LocalSeatEditor.close()" title="Close — keep seats and play">${Kit.Icon.html('x', { size: 16 })}</button>
       </div>
       <div class="lse-seats">${rows}</div>
       <div class="lse-actions">
-        <button class="btn secondary" ${canAdd ? '' : 'disabled'} onclick="LocalSeatEditor.addHuman()">+ Player</button>
-        <button class="btn secondary" ${canAdd ? '' : 'disabled'} onclick="LocalSeatEditor.addBot()">+ Bot</button>
-        <button class="btn green" onclick="LocalSeatEditor.restart()">Restart with these seats</button>
+        <button class="btn secondary" ${canAdd ? '' : 'disabled'} onclick="LocalSeatEditor.addHuman()">${Kit.Icon.html('plus', { size: 13, cls: 'kit-icon-inline' })}Player</button>
+        <button class="btn secondary" ${canAdd ? '' : 'disabled'} onclick="LocalSeatEditor.addBot()">${Kit.Icon.html('robot', { size: 13, cls: 'kit-icon-inline' })}Bot</button>
+        <button class="btn green" onclick="LocalSeatEditor.restart()">${Kit.Icon.html('play', { size: 13, cls: 'kit-icon-inline' })}Restart with these seats</button>
       </div>
-      <div class="lse-hint muted">${esc(meta?.name || 'Game')} needs ${min}–${max} players.</div>
+      <div class="lse-hint muted">${esc(meta?.name || 'Game')} needs ${min}–${max} players · Close (×) to play with the current seats.</div>
     `;
 
     // Wire delegated handlers (avoids inline onclicks for dynamic rows).

@@ -17,11 +17,15 @@ import { readFileSync, readdirSync, existsSync } from "node:fs";
 const read = (p: string) => readFileSync(p, "utf8");
 
 describe("UX redesign Phase 8 — bot regression guards", () => {
-  it("smoke-landing.mjs asserts bot reveal completes within 3s of tile click", () => {
+  it("smoke-landing.mjs asserts bot reveal completes within 3s of seat-editor restart", () => {
+    // Post-pass-and-play-default: clicking a tile now lands with all-human
+    // seats and the seat editor auto-open. The bot regression check waits
+    // for the user to addBot() + restart() (the smoke does this for us)
+    // then asserts the bot acts within 3s. Same coverage, new flow.
     const src = read("scripts/smoke-landing.mjs");
-    expect(src).toMatch(/Phase 8: bot actually acts after landing tile click/);
+    expect(src).toMatch(/Bot regression guard/);
     expect(src).toMatch(/botRevealCount\s*>=\s*2/);
-    expect(src).toMatch(/within 3s|sleep\(3000\)/);
+    expect(src).toMatch(/sleep\(3000\)/);
   });
 
   it("W6 part 2 protocol fix is still in place (set_ready actually parses)", () => {
