@@ -243,14 +243,18 @@ window.GameClients = window.GameClients || {};
         sections: [
           // Opponent strip — squeezes first when room is tight.
           { id: 'minis',    min: 56,  preferred: minisPreferred, max: 280, priority: 3 },
-          // Dice tray + combo display. Bumped after the user reported
-          // the throw button being clipped on mobile — center now
-          // PREFERS 260px and MIN is 180px, so the WebGL canvas + a
-          // 38px throw button + 56px sticky controls fit even at the
-          // squeeze floor.
-          { id: 'center',   min: 180, preferred: 260,            max: 360, priority: 6 },
-          // Focus scorecard — flexes to fill remaining space.
-          { id: 'main',     min: 200, preferred: 380,            max: 9999, priority: 7 },
+          // Dice tray + button. Tightened after the user reported
+          // the section being "huge with dead space" — the pre-throw
+          // state is just a button + small slot, so we keep the
+          // preferred conservative and let CSS overflow:hidden cap
+          // any post-throw bloat.
+          { id: 'center',   min: 140, preferred: 200,            max: 320, priority: 6 },
+          // Focus scorecard — flexes to fill remaining space. Caps
+          // are NOT forced as min-height on the container (would
+          // bloat empty rows); the flex:1 1 auto on .boards-container
+          // absorbs leftover viewport room so the scorecard naturally
+          // docks at the viewport bottom via justify-content:flex-end.
+          { id: 'main',     min: 200, preferred: 320,            max: 9999, priority: 7 },
           // Sticky controls (skip / pass / finish) — never below tap target.
           { id: 'controls', min: 48,  preferred: 56,             max: 72,  priority: 9 },
         ],
@@ -285,23 +289,70 @@ window.GameClients = window.GameClients || {};
     const focused = s.allPlayers.find(p => p.seat === focusSeat) || s.allPlayers[0];
     const others = s.allPlayers.filter(p => p.seat !== focused.seat);
 
-    // Bugfix (user: 'I don't see the button to skip if I don't wanna take any/
-    // the remaining dice'): shortened the button labels — 'Skip color / pass
-    // to others' wrapped + clipped on mobile. CSS-side, the .qwixx-controls
-    // bar is sticky at the bottom of #gameScreen on mobile (see main.css)
-    // so the skip button is always visible regardless of how tall the dice
-    // tray + scorecard + minis grew.
+    // Active-player button states after a throw (per user redesign):
+    //   marked NOTHING this turn  → red "Take Penalty" w/ warning icon
+    //   marked white only         → "Skip color" w/ skip-forward icon
+    //   marked color only         → "Skip white"  w/ skip-forward icon
+    //                               (whiteSum dice value in parens for clarity)
+    //   marked both               → "Finish" w/ check icon
+    //   no marks possible yet     → "Waiting for white-dice decisions…"
+    //                               (only relevant during WHITE_PHASE when
+    //                                other humans haven't decided yet)
+    //
+    // The penalty branch carries a red `.danger` class so the user can
+    // distinguish "this ends your turn with a penalty" from a benign
+    // skip. Other branches use the regular .pri (purple) treatment.
+    //
+    // Non-active players just see the white-dice skip (when pending) or
+    // a passive waiting line — same as before.
+    const whiteMarked = s.activeWhiteRow != null;         // active marked white this turn
+    const colorMarked = !!s.activeColorUsed;              // active marked color this turn
+    const sumDice = dice.w[0] + dice.w[1];
+    const icon = (name) => Kit.Icon.html(name, { size: 14, cls: 'kit-icon-inline' });
+    const btn = (label, action, klass = 'pri') =>
+      `<button class="qwixx-ctrl-btn ${klass}" onclick="window.GameClients['qwixx'].act('${action}')">${label}</button>`;
     let controlsHtml = '';
-    if(!diceRevealed){
+    if (!diceRevealed) {
       controlsHtml = `<span class="muted">Throw dice to reveal this turn.</span>`;
-    } else if(isWhite){
-      if (pendingWhite) controlsHtml = `<button class="qwixx-ctrl-btn pri" onclick="window.GameClients['qwixx'].act('skip')">${Kit.Icon.html('skip-forward',{size:14,cls:'kit-icon-inline'})}Skip white (${dice.w[0]+dice.w[1]})</button>`;
-      else if (isAct && !s.activeColorUsed) controlsHtml = `<button class="qwixx-ctrl-btn pri" onclick="window.GameClients['qwixx'].act('finishTurn')">${Kit.Icon.html('skip-forward',{size:14,cls:'kit-icon-inline'})}Pass color</button>`;
-      else controlsHtml = `<span class="muted">Waiting for white-dice decisions…</span>`;
-    } else if(isColor){
-      controlsHtml = isAct
-        ? `<button class="qwixx-ctrl-btn pri" onclick="window.GameClients['qwixx'].act('finishTurn')">${Kit.Icon.html(!s.activeMarkedThisTurn ? 'warning' : 'check',{size:14,cls:'kit-icon-inline'})}${!s.activeMarkedThisTurn ? 'Take Penalty' : 'Finish'}</button>`
-        : `<span class="muted">${esc(activeName)} may take one color mark…</span>`;
+    } else if (isAct) {
+      // Active player. Single state machine across WHITE_PHASE + COLOR_PHASE
+      // so the visible button reflects what the user has ACTUALLY done so
+      // far this turn, not which phase the engine happens to be in.
+      if (isWhite && pendingWhite && !whiteMarked) {
+        // White phase, our own white decision still pending. The active
+        // player may either mark a white cell (in which case the bottom
+        // bar will switch to "Skip color") or hit this button to skip
+        // white outright.
+        controlsHtml = btn(`${icon('skip-forward')}Skip white (${sumDice})`, 'skip');
+      } else if (isWhite && !pendingWhite && !whiteMarked && !colorMarked) {
+        // Active player decided (skipped) white but OTHER humans are
+        // still pending. Engine won't accept finishTurn yet — show a
+        // passive waiting line instead of a confusing premature Penalty.
+        controlsHtml = `<span class="muted">Waiting for white-dice decisions…</span>`;
+      } else if (!whiteMarked && !colorMarked) {
+        // Past white-phase decisions, no marks at all → penalty path.
+        // RED so the user can't miss it.
+        controlsHtml = btn(`${icon('warning')}Take Penalty`, 'finishTurn', 'danger');
+      } else if (whiteMarked && !colorMarked) {
+        // Marked white only — wants to pass on the color mark.
+        controlsHtml = btn(`${icon('skip-forward')}Skip color`, 'finishTurn');
+      } else if (!whiteMarked && colorMarked) {
+        // Marked color only — wants to pass on the white mark.
+        // (Rare but possible: active player can take color in COLOR_PHASE
+        // without having marked white; the engine still requires they
+        // confirm the white skip.)
+        controlsHtml = btn(`${icon('skip-forward')}Skip white (${sumDice})`, 'finishTurn');
+      } else {
+        // Marked both — clean finish.
+        controlsHtml = btn(`${icon('check')}Finish`, 'finishTurn');
+      }
+    } else if (isWhite && pendingWhite) {
+      // Non-active player still pending their white decision.
+      controlsHtml = btn(`${icon('skip-forward')}Skip white (${sumDice})`, 'skip');
+    } else if (isWhite) {
+      controlsHtml = `<span class="muted">Waiting for white-dice decisions…</span>`;
+    } else if (isColor) {
+      controlsHtml = `<span class="muted">${esc(activeName)} may take one color mark…</span>`;
     }
 
     // Opponent strip: append each mini DIRECTLY as a grid child (a DocumentFragment
