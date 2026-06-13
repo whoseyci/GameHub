@@ -147,15 +147,23 @@ export const Skyjo: GameModule = {
   // hint highlights (which cells are revealable, which piles are tap-targets)
   // and gives the BotDriver a "random legal move" fallback. Pure read.
   legalActions(state, seat) {
+    // BUG FIX (Skyjo unplayable in pass-and-play): this function used to read
+    // p.cards / me.cards everywhere, but the engine state stores the 4x3 grid
+    // as p.board (see create() above + every applyAction handler). That made
+    // legalActions return an empty array in every phase — masked online
+    // because the SERVER is authoritative and accepts actions anyway, but
+    // FATAL in local pass-and-play where 03-skyjo.js's canClick() relies on
+    // these hints to enable card-click handlers. Result: no card on any
+    // human's board was ever clickable. Switched all reads to p.board.
     const out: any[] = [];
     if (state.phase === "REVEAL") {
       // Each player flips 2 face-down cards to start; both seats may act in
       // parallel until they've each revealed 2. Returning hints only for
       // unrevealed cells lets the client paint them as drop targets.
       const p = state.players?.[seat]; if (!p) return out;
-      const revealed = (p.cards || []).filter((c: any) => c.revealed).length;
+      const revealed = (p.board || []).filter((c: any) => c.revealed).length;
       if (revealed >= 2) return out;
-      (p.cards || []).forEach((c: any, idx: number) => {
+      (p.board || []).forEach((c: any, idx: number) => {
         if (!c.revealed) out.push({ action: "reveal", index: idx });
       });
       return out;
@@ -171,12 +179,12 @@ export const Skyjo: GameModule = {
         }
       } else if (ta === "deck") {
         out.push({ action: "discard_drawn" });
-        (me.cards || []).forEach((_: any, idx: number) => out.push({ action: "swap", index: idx }));
+        (me.board || []).forEach((_: any, idx: number) => out.push({ action: "swap", index: idx }));
       } else if (ta === "discard") {
         // Took from discard — must swap onto a board cell.
-        (me.cards || []).forEach((_: any, idx: number) => out.push({ action: "swap", index: idx }));
+        (me.board || []).forEach((_: any, idx: number) => out.push({ action: "swap", index: idx }));
       } else if (ta === "must_reveal") {
-        (me.cards || []).forEach((c: any, idx: number) => {
+        (me.board || []).forEach((c: any, idx: number) => {
           if (!c.revealed && !c.cleared) out.push({ action: "reveal_after_discard", index: idx });
         });
       }

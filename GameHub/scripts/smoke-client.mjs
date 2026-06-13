@@ -190,8 +190,26 @@ async function smokeSkyjo(window, document) {
   assert(!document.querySelector('.qwixx-dice-zone'), 'Skyjo: Qwixx dice zone leaked into Skyjo');
   assert(!document.getElementById('f7Controls'), 'Skyjo: Flip7 controls leaked into Skyjo');
 
-  window.localAct(0, { action: 'reveal', index: 0 });
-  window.localAct(0, { action: 'reveal', index: 1 });
+  // REGRESSION GUARD (Skyjo unclickable bug): every card on a human seat's
+  // MAIN board in REVEAL must carry the .clickable class AND have a real
+  // onclick handler. Previously the smoke called window.localAct() directly,
+  // bypassing the rendered click path — which let the legalActions p.cards →
+  // p.board bug ship undetected. Now we assert via the actual DOM.
+  const clickableP0 = document.querySelectorAll('#main-board-0 .registry-anchor.clickable');
+  assert(clickableP0.length >= 1, `Skyjo: human seat 0 has no clickable cards in REVEAL phase (got ${clickableP0.length}) — legalActions or canClick is broken`);
+  for (const c of clickableP0) {
+    assert(typeof c.onclick === 'function', 'Skyjo: clickable card missing onclick handler');
+  }
+  // Drive the reveals through the actual click path so the FULL pipeline is
+  // exercised (canClick → cardClick → localAct → engine).
+  const p0Click = () => document.querySelectorAll('#main-board-0 .registry-anchor.clickable')[0]?.click();
+  p0Click(); await sleep(80);
+  p0Click(); await sleep(80);
+  // Seat 1 in pass-and-play: localDisplaySeat will switch focus once it's
+  // their turn. In REVEAL both seats act in parallel via localAct (the
+  // platform handles seat 1's reveal via the same path — no main-board-1
+  // DOM exists when display is seat 0). Drive seat 1's reveals directly
+  // for parity with the previous test.
   window.localAct(1, { action: 'reveal', index: 0 });
   window.localAct(1, { action: 'reveal', index: 1 });
   await sleep(1400);

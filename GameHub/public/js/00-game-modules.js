@@ -520,9 +520,9 @@
       if (state.phase === "REVEAL") {
         const p = state.players?.[seat];
         if (!p) return out;
-        const revealed = (p.cards || []).filter((c) => c.revealed).length;
+        const revealed = (p.board || []).filter((c) => c.revealed).length;
         if (revealed >= 2) return out;
-        (p.cards || []).forEach((c, idx) => {
+        (p.board || []).forEach((c, idx) => {
           if (!c.revealed) out.push({ action: "reveal", index: idx });
         });
         return out;
@@ -539,11 +539,11 @@
           }
         } else if (ta === "deck") {
           out.push({ action: "discard_drawn" });
-          (me.cards || []).forEach((_, idx) => out.push({ action: "swap", index: idx }));
+          (me.board || []).forEach((_, idx) => out.push({ action: "swap", index: idx }));
         } else if (ta === "discard") {
-          (me.cards || []).forEach((_, idx) => out.push({ action: "swap", index: idx }));
+          (me.board || []).forEach((_, idx) => out.push({ action: "swap", index: idx }));
         } else if (ta === "must_reveal") {
-          (me.cards || []).forEach((c, idx) => {
+          (me.board || []).forEach((c, idx) => {
             if (!c.revealed && !c.cleared) out.push({ action: "reveal_after_discard", index: idx });
           });
         }

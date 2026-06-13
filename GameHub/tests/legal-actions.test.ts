@@ -47,7 +47,14 @@ describe("legalActions (API-8 contract)", () => {
         const state = game.create(namesFor(game));
         const v = game.viewFor(state, 0);
         const current = v.state?.currentSeat ?? -1;
-        if (current < 0) return; // simultaneous-turn game; off-turn semantics differ
+        // Skip simultaneous-turn games (Qwixx white phase, Skyjo REVEAL,
+        // etc.) where multiple seats can legitimately have legal actions
+        // at once. Some games (Skyjo) report currentSeat = 0 even during
+        // REVEAL — the platform-canonical "parallel" signal is
+        // actingCount > 1, so we honour that too.
+        if (current < 0) return;
+        const acting = (v.state as any)?.actingCount ?? 1;
+        if (acting > 1) return;
         for (let s = 0; s < state.players.length; s++) {
           if (s === current) continue;
           const legal = game.legalActions!(state, s) || [];
