@@ -212,11 +212,16 @@ window.GameClients = window.GameClients || {};
   }
 
   function render(view,ctx={}){
-    // W3: declare layout intent ONCE per game-mount. The platform sets CSS
-    // custom properties on #gameScreen; main.css consumes them. Qwixx wants
-    // a roomy opponent strip (132px min col), capped at 24dvh; a centered
-    // main board capped at 1040px; and a dice/center zone capped at 28dvh
-    // so the dice never push the scorecard off-screen.
+    // W3 + mobile UX optimization: declarative layout intent.
+    //   • apply()  — coarse caps (max widths/heights) via CSS custom props.
+    //   • fit()    — viewport-aware pixel budget solver. Each section
+    //                declares min / preferred / max / priority; the platform
+    //                allocates pixels that exactly fit the viewport. Higher
+    //                priority = shrinks LAST when space is tight.
+    //                Qwixx priorities: controls (skip/finish button) must
+    //                ALWAYS be tappable → priority 9. Then the focused
+    //                scorecard (main) → 7. Dice tray (center) → 5. Mini
+    //                opponent strip → 3 (squeezes first).
     if (window.Kit?.Layout && !window._qwixxLayoutApplied) {
       Kit.Layout.apply({
         minis:  { maxHeight: '24dvh', minColWidth: 132, gap: '6px' },
@@ -225,6 +230,27 @@ window.GameClients = window.GameClients || {};
         status: { sticky: true },
       });
       window._qwixxLayoutApplied = true;
+    }
+    // Re-run the fit solver on every render so it adapts to seat-count
+    // changes (more opponents → minis section needs more room).
+    if (window.Kit?.Layout?.fit) {
+      const seatCount = view.qwixx?.allPlayers?.length || view.players?.length || 2;
+      const opponentCount = Math.max(0, seatCount - 1);
+      // Each opponent mini wants ~96px tall; cap at 240 to keep the
+      // scorecard breathing.
+      const minisPreferred = Math.min(240, 60 + opponentCount * 48);
+      Kit.Layout.fit({
+        sections: [
+          // Opponent strip — squeezes first when room is tight.
+          { id: 'minis',    min: 56,  preferred: minisPreferred, max: 280, priority: 3 },
+          // Dice tray + combo display.
+          { id: 'center',   min: 100, preferred: 200,            max: 320, priority: 5 },
+          // Focus scorecard — the main interactive surface.
+          { id: 'main',     min: 220, preferred: 420,            max: 9999, priority: 7 },
+          // Sticky controls (skip / pass / finish) — never below tap target.
+          { id: 'controls', min: 48,  preferred: 56,             max: 72,  priority: 9 },
+        ],
+      });
     }
     // Ensure the persisted dice tray exists BEFORE renderTable runs so the
     // [data-persist-slot] placeholder finds a node to mount. The legacy id

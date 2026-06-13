@@ -106,6 +106,26 @@
     if (piles) piles.style.display = 'flex';
     $('heldCardWrapper').style.display='';
     const f7=$('f7Controls');if(f7)f7.innerHTML='';const dw=$('f7DealerWrap');if(dw)dw.style.display='none';
+    // Mobile UX optimization (Kit.Layout.fit): declare section budgets.
+    // Skyjo priorities:
+    //   • main (focused 4x3 board) — the action — priority 9
+    //   • center (deck + discard piles) — needed every turn — priority 7
+    //   • minis (opponents) — context — priority 3 (squeezes first)
+    // Status bar is sticky-bottom and tiny, no budget needed.
+    if (window.Kit?.Layout?.fit) {
+      const seatCount = view.skyjo?.players?.length || 2;
+      const opponentCount = Math.max(0, seatCount - 1);
+      // 4x3 mini grid at ~22px/card + headers ≈ 96px tall. Bump for more
+      // opponents so the strip can wrap to 2 rows comfortably.
+      const minisPreferred = Math.min(220, 80 + Math.ceil(opponentCount / 4) * 100);
+      Kit.Layout.fit({
+        sections: [
+          { id: 'minis',  min: 56,  preferred: minisPreferred, max: 280, priority: 3 },
+          { id: 'center', min: 90,  preferred: 130,            max: 180, priority: 7 },
+          { id: 'main',   min: 200, preferred: 380,            max: 9999, priority: 9 },
+        ],
+      });
+    }
     const s=view.skyjo; // engine state (personalized)
     const viewer=s.viewerIndex;
     const isPlay=s.phase==='PLAY'||s.phase==='FINAL_TURNS';

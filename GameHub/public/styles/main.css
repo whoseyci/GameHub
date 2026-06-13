@@ -1032,3 +1032,69 @@ button.kc-mini:hover{transform:translateY(-2px);box-shadow:0 6px 14px rgba(0,0,0
     bottom:calc(6px + env(safe-area-inset-bottom,0px));
   }
 }
+
+/* ─── Kit.Layout.fit consumer rules ───────────────────────────────────
+ * The solver writes pixel budgets to:
+ *   --gs-fit-minis-h     opponent strip
+ *   --gs-fit-center-h    dice / piles / center zone
+ *   --gs-fit-main-h      focus board / scorecard
+ *   --gs-fit-controls-h  sticky action bar (skip/finish/pass)
+ *   --gs-fit-status-h    bottom status line
+ *
+ * When a game's render() calls Kit.Layout.fit(), these vars override
+ * the legacy dvh-based heights. When the game doesn't opt in (older
+ * code path) the vars are absent and the existing CSS keeps working.
+ * That makes the migration purely additive — each game can opt in
+ * independently. Pin minis + center to their solver budget; main flexes
+ * to fill the remainder (per the priority model, main has the highest
+ * priority short of controls and gets all the slack). */
+#gameScreen .mini-boards-container[style*="--gs-fit-minis-h"],
+#gameScreen[style*="--gs-fit-minis-h"] .mini-boards-container,
+#gameScreen[style*="--gs-fit-minis-h"] .qwixx-top-mini-strip {
+  /* The var is set on #gameScreen by the solver, not on the strip
+     itself. Both selectors are kept so a future strip class that's NOT
+     under #gameScreen still works. */
+  height: var(--gs-fit-minis-h);
+  max-height: var(--gs-fit-minis-h);
+}
+#gameScreen[style*="--gs-fit-center-h"] .qwixx-dice-zone {
+  max-height: var(--gs-fit-center-h);
+}
+/* The sticky controls already have an intrinsic height — but if the
+   solver allocates a different min-height we honour it (touch target). */
+#gameScreen[style*="--gs-fit-controls-h"] .qwixx-dice-zone .qwixx-controls {
+  min-height: var(--gs-fit-controls-h);
+}
+
+/* Skyjo / Flip 7 / any game using the shared #topArea (deck + discard +
+   held card piles): honour the fit budget when set. */
+#gameScreen[style*="--gs-fit-center-h"] #topArea {
+  max-height: var(--gs-fit-center-h);
+}
+/* Main board container (the focused player board). Soft cap that lets
+   the games keep their own min-height handling but never grow past
+   what the solver allocated. */
+#gameScreen[style*="--gs-fit-main-h"] #mainBoardsContainer,
+#gameScreen[style*="--gs-fit-main-h"] .boards-container {
+  max-height: var(--gs-fit-main-h);
+}
+
+/* Mobile UX optimization: the player's focus board sits FLUSH WITH THE
+   BOTTOM of the viewport (above the sticky status bar / Qwixx controls
+   bar). The boards-container is the flex column's grow-fill child; we
+   align its inner content to the END of the cross axis on phones so
+   the board nestles against the bottom edge instead of floating mid-
+   screen with unused space below. Desktop stays centred. */
+@media(max-width:760px) {
+  #gameScreen .boards-container {
+    /* The container is `display:flex; flex-wrap:wrap`. On phones we
+       collapse to a column so we can align END on the main axis. */
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-end;
+    /* Reduced bottom padding — the sticky controls bar (Qwixx) /
+       status bar handles its own clearance via env(safe-area-inset-
+       bottom). 96px was for desktop where the status bar floats. */
+    padding-bottom: calc(16px + env(safe-area-inset-bottom,0px));
+  }
+}
