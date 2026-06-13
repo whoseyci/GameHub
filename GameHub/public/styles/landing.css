@@ -472,3 +472,79 @@ body:not(.in-game) .landing-screen{ padding-top:var(--mode-header-h) !important;
   font-size:.78rem; line-height:1.35; color:var(--text-dim);
   margin-top:2px;
 }
+
+/* ─── UX redesign Phase 6: inline local seat editor ────────────────── */
+/* Lives above the boards on the game screen; only shown in local mode.
+   Replaces the killed #localPick screen. Slides down from the topbar. */
+.local-seat-editor{
+  background:rgba(15,23,42,.96);
+  border-bottom:1px solid var(--border);
+  padding:10px 12px 12px;
+  display:flex; flex-direction:column; gap:8px;
+  animation:lseSlide .18s cubic-bezier(.18,.9,.3,1.05) both;
+}
+.local-seat-editor.hidden{ display:none; }
+@keyframes lseSlide{
+  from{ transform:translateY(-6px); opacity:0; }
+  to  { transform:translateY(0);    opacity:1; }
+}
+.local-seat-editor .lse-head{
+  display:flex; align-items:center; justify-content:space-between; gap:8px;
+}
+.local-seat-editor .lse-title{
+  display:inline-flex; align-items:center; gap:6px;
+  font-weight:900; font-size:.95rem;
+}
+.local-seat-editor .lse-seats{
+  display:flex; flex-direction:column; gap:5px;
+}
+.local-seat-editor .seat-row{
+  display:flex; align-items:center; gap:8px;
+}
+.local-seat-editor .seat-name{
+  display:inline-flex; align-items:center; gap:5px;
+  font-weight:700; padding:7px 10px;
+  flex:1; min-width:0;
+  background:rgba(255,255,255,.05);
+  border:1px solid var(--border);
+  border-radius:8px;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.local-seat-editor .seat-name-input{
+  margin:0 !important;
+  padding:7px 10px;
+  flex:1; min-width:0;
+  font-size:.9rem;
+}
+.local-seat-editor .seat-diff{
+  display:inline-flex; gap:0;
+  flex:0 0 auto;
+}
+.local-seat-editor .seat-diff button{
+  appearance:none;
+  background:rgba(255,255,255,.05);
+  border:1px solid var(--border);
+  color:var(--text-dim);
+  padding:6px 10px;
+  font-size:.72rem; font-weight:800;
+  cursor:pointer;
+}
+.local-seat-editor .seat-diff button:first-child{ border-radius:8px 0 0 8px; }
+.local-seat-editor .seat-diff button:last-child{ border-radius:0 8px 8px 0; }
+.local-seat-editor .seat-diff button + button{ border-left:0; }
+.local-seat-editor .seat-diff button.on{
+  background:var(--accent); color:#fff; border-color:var(--accent);
+}
+.local-seat-editor .seat-remove{
+  width:28px; height:28px; flex:0 0 auto;
+}
+.local-seat-editor .lse-actions{
+  display:flex; gap:6px; flex-wrap:wrap;
+}
+.local-seat-editor .lse-actions .btn{
+  margin:0; padding:9px 14px; font-size:.85rem;
+}
+.local-seat-editor .lse-actions .btn:last-child{ margin-left:auto; }
+.local-seat-editor .lse-hint{
+  font-size:.72rem; text-align:right;
+}

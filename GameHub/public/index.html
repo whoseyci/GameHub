@@ -201,11 +201,18 @@
     <div class="game-topbar">
       <button class="icon-btn" onclick="leaveGameToRoom()" title="Back to room">←</button>
       <div id="gameRoomTag" class="room-tag hidden"></div>
+      <!-- Phase 6: seats button (only visible in local mode — script-toggled
+           by LocalSeatEditor in 00-core.js). Opens the inline drawer below. -->
+      <button id="seatsBtn" class="icon-btn hidden" onclick="LocalSeatEditor.toggle()" title="Seats" data-icon="users" data-icon-mode="replace" data-icon-size="20"></button>
       <div class="topbar-spacer"></div>
       <div id="spectateTag" class="spectate-tag hidden" data-icon="eye">Spectating</div>
       <button id="rulesBtn" class="icon-btn" onclick="openRules(curView&&curView.game)" title="Rules" data-icon="book" data-icon-mode="replace" data-icon-size="20"></button>
       <button id="soundBtn" class="icon-btn" onclick="toggleSound()" title="Sound" data-icon="sound-on" data-icon-mode="replace" data-icon-size="20"></button>
     </div>
+    <!-- Phase 6: inline seat editor for local mode. Hidden by default;
+         toggled by #seatsBtn. Lets the user change seats/bot difficulty
+         and restart the game without leaving the screen. -->
+    <div id="localSeatEditor" class="local-seat-editor hidden" aria-hidden="true"></div>
     <div id="miniBoardsContainer" class="mini-boards-container"></div>
     <div id="topArea" class="top-area">
       <div class="piles">
@@ -249,6 +256,10 @@
      00-landing.js (landing now subscribes via OnlineSession.onLobbyMessage
      instead of opening its own socket on boot). -->
 <script src="/js/00-online-session.js"></script>
+<!-- UX redesign Phase 6: inline seat editor for local games.
+     Reads/writes window.localSeats and delegates to startLocalGame()
+     on restart. -->
+<script src="/js/00-local-seat-editor.js"></script>
 <script src="/js/00-kit-turn.js"></script>
 <script src="/js/00-kit-passplay.js"></script>
 <script src="/js/00-kit-layout.js"></script>

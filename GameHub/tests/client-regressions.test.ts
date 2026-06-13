@@ -175,8 +175,13 @@ describe("client cross-game cleanup regressions", () => {
   });
 
   it("cancels lingering local sessions and Flip7 timelines on quit", () => {
+    // resetLocalSession exists, quitLocal calls it + resetGameUi + back-to-menu.
+    // (Phase 6 reformatted quitLocal across multiple lines; assert each part
+    // separately instead of pinning a one-liner.)
     expect(networkLocal).toContain('function resetLocalSession()');
-    expect(networkLocal).toContain('resetLocalSession();resetGameUi();showScreen(\'menuScreen\')');
+    expect(networkLocal).toMatch(/function\s+quitLocal[\s\S]{0,400}resetLocalSession\(\)/);
+    expect(networkLocal).toMatch(/function\s+quitLocal[\s\S]{0,400}resetGameUi\(\)/);
+    expect(networkLocal).toMatch(/function\s+quitLocal[\s\S]{0,400}showScreen\(['"]menuScreen['"]\)/);
     expect(flip7).toContain('let lastSeq=-1, lifecycleToken=0;');
     expect(flip7).toContain('invalidateToken()');
     expect(flip7).toContain('tokenAlive(token)');

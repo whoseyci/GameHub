@@ -165,6 +165,23 @@ async function run() {
   assert(window.document.body.classList.contains('in-game'), 'body.in-game not set after entering game screen');
   assert(modeHeader.classList.contains('hidden'), 'mode header still visible inside the game');
 
+  // ── Phase 6: seats button visible in local mode (drawer hidden by default) ──
+  const seatsBtn = window.document.getElementById('seatsBtn');
+  const seatEditor = window.document.getElementById('localSeatEditor');
+  assert(seatsBtn, '#seatsBtn missing');
+  assert(seatEditor, '#localSeatEditor missing');
+  assert(!seatsBtn.classList.contains('hidden'), 'seats button should be visible in local game');
+  assert(seatEditor.classList.contains('hidden'), 'seat editor drawer should start hidden');
+  // Toggle: opens, renders rows, closes.
+  window.LocalSeatEditor.toggle();
+  assert(!seatEditor.classList.contains('hidden'), 'seat editor did not open on toggle');
+  const seatRows = seatEditor.querySelectorAll('.seat-row');
+  assert(seatRows.length >= 2, `expected ≥2 seat rows in editor, got ${seatRows.length}`);
+  // At least one row should be a bot (instantBotPlay adds you + bots).
+  assert(seatEditor.querySelector('.seat-row.is-bot'), 'expected at least one bot seat row');
+  window.LocalSeatEditor.close();
+  assert(seatEditor.classList.contains('hidden'), 'seat editor did not close');
+
   if (errors.length) throw new Error(`Errors during landing smoke:\n${errors.join('\n')}`);
   console.log(`Landing smoke OK: ${tiles.length} tiles · instant-bot start works · identity panel rendered · mode header behaves`);
 }

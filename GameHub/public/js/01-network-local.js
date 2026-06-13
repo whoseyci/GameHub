@@ -9,6 +9,9 @@ function renderOnlineDevicePlayers(){syncOnlinePrimaryName();const box=$('online
 function addOnlineDevicePlayer(){syncOnlinePrimaryName();if(onlineDevicePlayers.length>=8)return;onlineDevicePlayers.push({name:'Player '+(onlineDevicePlayers.length+1)});renderOnlineDevicePlayers();}
 function connectRoom(code,{isPublic=false,isGroup=false,quickGame=null,maxPlayers=8,shard=null}={}){
   mode='online';net.room=code;net.isHost=false;net.spectating=false;
+  // Phase 6: mirror to window so LocalSeatEditor.refreshButton hides
+  // #seatsBtn when we leave local play for online.
+  window.mode = mode;
   _joinAttempt={code,isPublic,isGroup,quickGame,maxPlayers,shard};
   if(net.ws){try{net.ws.close();}catch(e){}}
   resetGameUi();
@@ -449,10 +452,20 @@ function showSummary(view){
 /* ====================== LOCAL PLAY (offline, single-device) ====================== */
 let localEngine=null,localGameId=null,localActor=0;
 let _localPick='skyjo';
-function resetLocalSession(){ localEngine=null; localGameId=null; localActor=0; }
+function resetLocalSession(){
+  localEngine=null; localGameId=null; localActor=0;
+  // Phase 6: keep window mirror in sync so LocalSeatEditor sees the
+  // reset (its refreshButton hides #seatsBtn when no engine is live).
+  window.localEngine = null; window.localGameId = null;
+}
 
 /* Local seats: array of {name, bot, difficulty}. Rendered as rows. */
 let localSeats=[{name:'Player 1',bot:false},{name:'Player 2',bot:false}];
+// Phase 6: also expose on window so 00-local-seat-editor.js can READ the
+// live seat array without going through the lexical-scope dance. (The
+// setter setLocalSeats() already mutates this in place, so window.localSeats
+// stays in sync — it's the same array reference.)
+window.localSeats = localSeats;
 // Exposed setter so the landing page's "instant play vs bot" can configure
 // the local game without poking script-scoped lets directly.
 window.setLocalSeats = function(arr){ if(Array.isArray(arr)) { localSeats.length=0; for(const s of arr) localSeats.push(s); renderLocalSeats(); refreshLocalTiles(); } };
@@ -491,6 +504,8 @@ function startLocalGame(){
   if(names.length<2)return toast('Need at least 2 players');
   if(!window.LocalEngines[_localPick])return toast('That game is online-only for now.');
   mode='local';localGameId=_localPick;localEngine=window.LocalEngines[_localPick](names);
+  // Phase 6: mirror to window for cross-module readers (00-local-seat-editor).
+  window.mode = mode; window.localEngine = localEngine; window.localGameId = localGameId;
   // bot seats the local device will drive
   window._currentBots=seats.map((s,i)=>s.bot?{seat:i,difficulty:s.difficulty||'medium'}:null).filter(Boolean);
   window._controlledSeats=seats.map((s,i)=>!s.bot?i:-1).filter(i=>i>=0);
@@ -525,4 +540,13 @@ function localAct(seat,msg){
   renderLocal();
 }
 function localNext(){ if(!localEngine) return; localEngine.next(); resetGameUi(); renderLocal(); }
-function quitLocal(){window._currentBots=[];resetLocalSession();resetGameUi();showScreen('menuScreen');}
+function quitLocal(){
+  window._currentBots=[];
+  resetLocalSession();
+  // Phase 6: clear the runtime mode so the seats button hides.
+  // (Mode stays 'local' as the user's preferred default — that's the
+  // Mode header toggle, not the runtime mode flag.)
+  if (typeof window !== 'undefined') window.localEngine = null;
+  resetGameUi();
+  showScreen('menuScreen');
+}
