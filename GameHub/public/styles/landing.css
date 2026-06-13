@@ -438,3 +438,37 @@ body:not(.in-game) .landing-screen{ padding-top:var(--mode-header-h) !important;
   .landing-tile{ padding:14px; }
   .landing-section-head h2{ font-size:1.05rem; }
 }
+
+/* ─── UX redesign Phase 5: quick-play locked banner ────────────────── */
+/* Replaces the host's tile picker when the room is a quick-play queue.
+   Identifies the queued game so the user knows what they signed up for
+   (no accidental game switching — strangers in the same queue expect
+   to play THAT game). */
+.quickplay-locked-banner{
+  display:flex; align-items:center; gap:14px;
+  padding:16px 18px;
+  border-radius:16px;
+  border:1px solid var(--border);
+  background:linear-gradient(180deg, rgba(139,92,246,.10), rgba(139,92,246,.02));
+  text-align:left;
+  margin:12px 0;
+}
+.qplb-emoji{
+  font-size:2.4rem; line-height:1;
+  flex:0 0 auto;
+}
+.qplb-body{ display:flex; flex-direction:column; gap:2px; min-width:0; }
+.qplb-eyebrow{
+  display:inline-flex; align-items:center; gap:5px;
+  font-size:.68rem; font-weight:800;
+  letter-spacing:.06em; text-transform:uppercase;
+  color:#c4b5fd;
+}
+.qplb-title{
+  font-size:1.15rem; font-weight:900; color:var(--text);
+  line-height:1.1;
+}
+.qplb-hint{
+  font-size:.78rem; line-height:1.35; color:var(--text-dim);
+  margin-top:2px;
+}

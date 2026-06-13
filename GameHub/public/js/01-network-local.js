@@ -197,8 +197,18 @@ function renderRoom(m){
     }
   } else if(groupBox){ groupBox.remove(); }
 
-  $('hostArea').classList.toggle('hidden',!m.isHost);
-  $('guestArea').classList.toggle('hidden',m.isHost);
+  // Phase 5: in a quick-play room, EVERYONE (host or guest) sees the
+  // queued-game banner — there's no "host picks a game" decision. In a
+  // group/custom room, only the host sees the picker; guests see the
+  // "Waiting for the host to choose…" message.
+  const showHostArea = m.quickGame || m.isHost;
+  const showGuestArea = !m.isHost && !m.quickGame;
+  $('hostArea').classList.toggle('hidden', !showHostArea);
+  $('guestArea').classList.toggle('hidden', !showGuestArea);
+  // Hide the "Choose a game" heading inside the locked quick-play view —
+  // the banner replaces it.
+  const hostHeading = $('hostHeading');
+  if (hostHeading) hostHeading.style.display = m.quickGame ? 'none' : '';
   // bot controls (host only)
   let botBox=$('botBox');
   if(m.isHost){
@@ -216,7 +226,36 @@ function renderRoom(m){
         ${nBots?`<button class="btn secondary" style="margin:0" onclick="removeBot()">− Remove Bot</button>`:''}
       </div>`;
   } else if(botBox){ botBox.remove(); }
-  if(m.isHost) renderTiles('hostTiles',gid=>hostLaunchGame(gid), m.members.length);
+  // UX redesign Phase 5: hard-lock the game inside quick-play rooms.
+  // When the room has a quickGame set, we don't render the tile picker at
+  // all — the queued game is the only valid launch, and the server
+  // auto-launches via canAllReadyStart() once humans are ready. We do
+  // surface a single banner so the user sees what they're queued for.
+  const tilesHost = $('hostTiles');
+  if (tilesHost) {
+    if (m.quickGame) {
+      // No picker — show a fixed banner identifying the queued game.
+      const gMeta = (catalogue||[]).find(x=>x.id===m.quickGame);
+      const gName = gMeta ? esc(gMeta.name) : esc(m.quickGame);
+      const gEmoji = gMeta ? esc(gMeta.emoji||'') : '';
+      tilesHost.innerHTML = `
+        <div class="quickplay-locked-banner" data-game="${esc(m.quickGame)}">
+          <div class="qplb-emoji">${gEmoji}</div>
+          <div class="qplb-body">
+            <div class="qplb-eyebrow">${Kit.Icon.html('rocket',{size:12,cls:'kit-icon-inline'})}Quick Play queue</div>
+            <div class="qplb-title">${gName}</div>
+            <div class="qplb-hint muted">Game starts automatically when everyone's ready.</div>
+          </div>
+        </div>`;
+    } else if (m.isHost) {
+      // Normal custom / group room: full tile picker as before.
+      renderTiles('hostTiles', gid => hostLaunchGame(gid), m.members.length);
+    } else {
+      // Guest in a custom room: clear (the "Waiting for host…" line in
+      // #guestArea covers the messaging).
+      tilesHost.innerHTML = '';
+    }
+  }
 }
 
 // W6 part 2: launch a game from the room lobby. If the game advertises

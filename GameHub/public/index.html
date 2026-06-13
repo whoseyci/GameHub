@@ -186,7 +186,10 @@
       <div id="roomVis" class="muted" style="margin-bottom:4px"></div>
       <div style="margin:10px 0"><span class="muted">In this room:</span><div id="roomMembers" style="margin-top:6px"></div></div>
       <div id="hostArea">
-        <h3 style="margin:14px 0 4px">Choose a game</h3>
+        <!-- Phase 5: heading is hidden when the room is a quick-play
+             queue (the banner inside #hostTiles fully replaces it). The
+             id="hostHeading" lets renderRoom() toggle it. -->
+        <h3 id="hostHeading" style="margin:14px 0 4px">Choose a game</h3>
         <div id="hostTiles" class="game-tiles"></div>
       </div>
       <div id="guestArea" class="muted hidden" style="margin-top:14px">Waiting for the host to choose a game…</div>
