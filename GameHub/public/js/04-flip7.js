@@ -181,23 +181,8 @@
   function draw(view,ctx=renderCtx||{}){
     renderCtx=ctx;
     removeQwixxUi();
-    // Mobile UX optimization (Kit.Layout.fit): Flip 7 priorities:
-    //   • main (focused card row + stay/hit controls) — priority 9
-    //   • center (dealer pile + discard) — priority 7
-    //   • minis (other players' card rows) — priority 3 (squeezes first)
-    if (window.Kit?.Layout?.fit) {
-      const seatCount = view.flip7?.players?.length || 2;
-      const opponentCount = Math.max(0, seatCount - 1);
-      // Each Flip 7 mini wants ~80px tall (head + card row + bar).
-      const minisPreferred = Math.min(220, 70 + opponentCount * 28);
-      Kit.Layout.fit({
-        sections: [
-          { id: 'minis',  min: 48,  preferred: minisPreferred, max: 280, priority: 3 },
-          { id: 'center', min: 80,  preferred: 120,            max: 170, priority: 7 },
-          { id: 'main',   min: 180, preferred: 320,            max: 9999, priority: 9 },
-        ],
-      });
-    }
+    // Layout: pure CSS Flexbox now (see #gameScreen.active rules in
+    // main.css). No per-render solver call needed.
     const s=view.flip7,viewer=s.viewerSeat;
     const pending=s.pendingAction&&s.pendingAction.from===viewer;
     const focus = ctx.focus ? ctx.focus({actingSeat:s.current,eventSeat:eventFocus,preferred:viewer}) : (viewer>=0 ? viewer : s.current);

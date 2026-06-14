@@ -814,10 +814,6 @@ const GameShell=(()=>{
     try { Kit?.Turn?.reset?.(current); } catch {}
     try { Kit?.PassPlay?.reset?.(current); } catch {}
     try { Kit?.Layout?.reset?.(); } catch {}
-    // Clear any --gs-fit-* custom props set by Kit.Layout.fit so the
-    // next game (or same game restarted with different seats) gets a
-    // fresh budget. Also drops the window resize listener via fitReset.
-    try { Kit?.Layout?.fitReset?.(); } catch {}
     // Drop any per-game persisted nodes (Qwixx's dice canvas etc) so a fresh
     // entry to the same game starts with a clean slate.
     try { clearPersisted(); } catch {}

@@ -420,7 +420,12 @@ html,body,#app{height:100%;max-height:100%;overflow:hidden}.screen{min-height:0}
 @media(max-height:720px){#gameScreen.active{padding:3px}.top-area{padding:3px}.qwixx-dice-zone{padding:.3rem}.qwixx-player-board.compact .qwixx-cell{min-height:10px}.qwixx-scorecard:not(.compact) .qwixx-cell{min-height:28px}.status-bar{display:none}.player-board{padding:6px}}
 
 /* ===== Qwixx Arena feel + miniature board system ===== */
-.qwixx-table{height:100%;width:min(1040px,100%);display:grid;grid-template-rows:minmax(0,1fr) auto;gap:8px;overflow:hidden;align-items:stretch}.qwixx-focus-card{min-height:0;display:flex;flex-direction:column;overflow:hidden}.qwixx-focus-card .qwixx-scorecard{flex:1 1 auto;min-height:0}.qwixx-reco{font-size:.78rem;font-weight:900;color:#c4b5fd;background:rgba(124,92,255,.1);border:1px solid rgba(124,92,255,.25);border-radius:10px;padding:5px 8px;margin:0 0 6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.qwixx-mini-strip{display:grid;grid-template-columns:repeat(auto-fit,minmax(132px,1fr));gap:6px;min-height:0}.qwixx-mini-wrap{border:0;background:transparent;color:inherit;padding:0;text-align:left;cursor:pointer;min-width:0}.qwixx-mini-wrap.active .qwixx-mini-board{border-color:#f59e0b;box-shadow:0 0 0 1px rgba(245,158,11,.35)}.qwixx-mini-board{background:linear-gradient(180deg,rgba(30,41,59,.95),rgba(15,23,42,.95));border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:5px;overflow:hidden}.qwixx-mini-head{display:flex;justify-content:space-between;gap:6px;align-items:center;font-size:.64rem;font-weight:900;color:var(--text);margin-bottom:3px;white-space:nowrap}.qwixx-mini-head b{overflow:hidden;text-overflow:ellipsis}.qwixx-mini-grid{display:flex;flex-direction:column;gap:2px}.qwixx-mini-row{display:grid;grid-template-columns:7px repeat(13,1fr);gap:2px;align-items:center}.qwixx-mini-row-key{width:6px;height:6px;border-radius:50%;display:block}.qwixx-mini-row-key.red{background:var(--qwixx-red)}.qwixx-mini-row-key.yellow{background:var(--qwixx-yellow)}.qwixx-mini-row-key.green{background:var(--qwixx-green)}.qwixx-mini-row-key.blue{background:var(--qwixx-blue)}.qwixx-mini-dot{height:6px;border-radius:999px;background:rgba(148,163,184,.25);box-shadow:inset 0 0 0 1px rgba(255,255,255,.04)}.qwixx-mini-dot.marked.red{background:var(--qwixx-red)}.qwixx-mini-dot.marked.yellow{background:var(--qwixx-yellow)}.qwixx-mini-dot.marked.green{background:var(--qwixx-green)}.qwixx-mini-dot.marked.blue{background:var(--qwixx-blue)}.qwixx-mini-dot.skipped{background:#1f2937}.qwixx-mini-dot.lock-on{background:#f59e0b}.qwixx-mini-dot.lock-off{background:rgba(245,158,11,.18)}.qwixx-mini-dot.spare{background:transparent}.qwixx-mini-pens{display:flex;gap:3px;justify-content:flex-end;margin-top:3px}.qwixx-mini-pen{font-size:.58rem;line-height:1;color:#334155;filter:grayscale(1)}.qwixx-mini-pen.on{color:#7f1d1d;filter:none}.qwixx-scorecard{background:#101827;border-color:rgba(255,255,255,.09)}.qwixx-cell.hintable{animation:none}.qwixx-cell.hintable .qwixx-num{color:#fff}.qwixx-hint{letter-spacing:.01em}.qwixx-hint.preview::after{content:'•';margin-left:2px}.qwixx-player-board.compact{display:none!important}
+/* Qwixx focus table sizes to its content (scorecard + bottom row).
+   Previously height:100% forced it to fill the boards-container,
+   making the scorecard "vertically centred" with empty space below.
+   Now: content-sized, docked at the bottom of the boards-container by
+   the parent flex (justify-content:flex-end). */
+.qwixx-table{height:auto;width:min(1040px,100%);display:grid;grid-template-rows:auto auto;gap:8px;overflow:hidden;align-items:start}.qwixx-focus-card{min-height:0;display:flex;flex-direction:column;overflow:hidden}.qwixx-focus-card .qwixx-scorecard{flex:1 1 auto;min-height:0}.qwixx-reco{font-size:.78rem;font-weight:900;color:#c4b5fd;background:rgba(124,92,255,.1);border:1px solid rgba(124,92,255,.25);border-radius:10px;padding:5px 8px;margin:0 0 6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.qwixx-mini-strip{display:grid;grid-template-columns:repeat(auto-fit,minmax(132px,1fr));gap:6px;min-height:0}.qwixx-mini-wrap{border:0;background:transparent;color:inherit;padding:0;text-align:left;cursor:pointer;min-width:0}.qwixx-mini-wrap.active .qwixx-mini-board{border-color:#f59e0b;box-shadow:0 0 0 1px rgba(245,158,11,.35)}.qwixx-mini-board{background:linear-gradient(180deg,rgba(30,41,59,.95),rgba(15,23,42,.95));border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:5px;overflow:hidden}.qwixx-mini-head{display:flex;justify-content:space-between;gap:6px;align-items:center;font-size:.64rem;font-weight:900;color:var(--text);margin-bottom:3px;white-space:nowrap}.qwixx-mini-head b{overflow:hidden;text-overflow:ellipsis}.qwixx-mini-grid{display:flex;flex-direction:column;gap:2px}.qwixx-mini-row{display:grid;grid-template-columns:7px repeat(13,1fr);gap:2px;align-items:center}.qwixx-mini-row-key{width:6px;height:6px;border-radius:50%;display:block}.qwixx-mini-row-key.red{background:var(--qwixx-red)}.qwixx-mini-row-key.yellow{background:var(--qwixx-yellow)}.qwixx-mini-row-key.green{background:var(--qwixx-green)}.qwixx-mini-row-key.blue{background:var(--qwixx-blue)}.qwixx-mini-dot{height:6px;border-radius:999px;background:rgba(148,163,184,.25);box-shadow:inset 0 0 0 1px rgba(255,255,255,.04)}.qwixx-mini-dot.marked.red{background:var(--qwixx-red)}.qwixx-mini-dot.marked.yellow{background:var(--qwixx-yellow)}.qwixx-mini-dot.marked.green{background:var(--qwixx-green)}.qwixx-mini-dot.marked.blue{background:var(--qwixx-blue)}.qwixx-mini-dot.skipped{background:#1f2937}.qwixx-mini-dot.lock-on{background:#f59e0b}.qwixx-mini-dot.lock-off{background:rgba(245,158,11,.18)}.qwixx-mini-dot.spare{background:transparent}.qwixx-mini-pens{display:flex;gap:3px;justify-content:flex-end;margin-top:3px}.qwixx-mini-pen{font-size:.58rem;line-height:1;color:#334155;filter:grayscale(1)}.qwixx-mini-pen.on{color:#7f1d1d;filter:none}.qwixx-scorecard{background:#101827;border-color:rgba(255,255,255,.09)}.qwixx-cell.hintable{animation:none}.qwixx-cell.hintable .qwixx-num{color:#fff}.qwixx-hint{letter-spacing:.01em}.qwixx-hint.preview::after{content:'•';margin-left:2px}.qwixx-player-board.compact{display:none!important}
 /* Bugfix (Qwixx mini "way too small"): bump dot height + row gap on
    tablet so opponent grids are actually readable. Previous values
    (4px dots, 1px gap, hidden head on phone) collapsed the mini to
@@ -1055,96 +1060,69 @@ button.kc-mini:hover{transform:translateY(-2px);box-shadow:0 6px 14px rgba(0,0,0
   }
 }
 
-/* ─── Kit.Layout.fit consumer rules ───────────────────────────────────
- * The solver writes pixel budgets to:
- *   --gs-fit-minis-h     opponent strip
- *   --gs-fit-center-h    dice / piles / center zone
- *   --gs-fit-main-h      focus board / scorecard
- *   --gs-fit-controls-h  sticky action bar (skip/finish/pass)
- *   --gs-fit-status-h    bottom status line
+/* ─── In-game layout (pure CSS Flexbox) ───────────────────────────────
+ * Replaces the prior Kit.Layout.fit JS solver, which was the wrong tool
+ * (it competed with Flexbox and produced unpredictable layouts).
  *
- * When a game's render() calls Kit.Layout.fit(), these vars override
- * the legacy dvh-based heights. When the game doesn't opt in (older
- * code path) the vars are absent and the existing CSS keeps working.
- * That makes the migration purely additive — each game can opt in
- * independently. Pin minis + center to their solver budget; main flexes
- * to fill the remainder (per the priority model, main has the highest
- * priority short of controls and gets all the slack). */
-#gameScreen .mini-boards-container[style*="--gs-fit-minis-h"],
-#gameScreen[style*="--gs-fit-minis-h"] .mini-boards-container,
-#gameScreen[style*="--gs-fit-minis-h"] .qwixx-top-mini-strip {
-  /* The var is set on #gameScreen by the solver, not on the strip
-     itself. Both selectors are kept so a future strip class that's NOT
-     under #gameScreen still works. */
-  height: var(--gs-fit-minis-h);
-  max-height: var(--gs-fit-minis-h);
-}
-#gameScreen[style*="--gs-fit-center-h"] .qwixx-dice-zone {
-  /* Cap height at the solver allocation — but DON'T force it. Forcing
-     made Qwixx "huge with dead space" (user feedback) because the
-     pre-throw state is just a small button + empty tray, and 260px
-     of forced height made the whole section bloat. Letting content
-     size + capping at max gives a snug fit. The bumped min/preferred
-     in 02-qwixx.js (Kit.Layout.fit) still ensures the post-throw
-     dice + button fit when there's real content. */
-  max-height: var(--gs-fit-center-h);
-  overflow: hidden;
-}
-/* The sticky controls already have an intrinsic height — but if the
-   solver allocates a different min-height we honour it (touch target). */
-#gameScreen[style*="--gs-fit-controls-h"] .qwixx-dice-zone .qwixx-controls {
-  min-height: var(--gs-fit-controls-h);
+ * #gameScreen.active is the flex column (already declared near line 395
+ * in the mobile-fit pass). The order of children inside is:
+ *
+ *    .game-topbar              ← flex:0 0 var(--topbar-h)
+ *    .mini-boards-container    ← flex:0 0 auto, capped at 30dvh
+ *    .top-area                 ← flex:0 0 auto (dice / piles / held card)
+ *    #mainBoardsContainer      ← flex:1 1 auto (absorbs leftover space)
+ *      └─ .player-board / .qwixx-table  ← margin:auto centres + docks
+ *    .status-bar               ← flex:0 0 auto (sticky at the bottom)
+ *
+ * The user's three rules:
+ *   • Mini boards visible, key facts readable → max-height:30dvh, content-sized
+ *   • Game area fully visible + tappable     → max-height:30dvh, content-sized
+ *   • Player board flush bottom + centred    → flex:1 + justify-content:flex-end
+ *                                              + margin:auto on the inner board
+ *
+ * No JS solver. No --gs-fit-* custom props. Browser does the layout.
+ */
+
+/* The boards-container is the flex GROWER — it absorbs whatever vertical
+   space the topbar / minis / top-area / status-bar didn't claim, then
+   docks its inner board at the bottom and centres it horizontally.
+   Desktop padding-bottom (96px) clears the floating .status-bar
+   (position:fixed near the viewport bottom); mobile padding is
+   tightened in the @media block below. */
+#mainBoardsContainer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;          /* horizontal centre */
+  justify-content: flex-end;    /* push to bottom of available space */
+  padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px));
+  padding-top: 6px;
 }
 
-/* Skyjo / Flip 7 / any game using the shared #topArea (deck + discard +
-   held card piles): cap height at the solver budget. Same reasoning as
-   .qwixx-dice-zone above — letting content size + capping is better
-   than forcing min-height (avoids the "huge with dead space" bloat
-   the user reported). */
-#gameScreen[style*="--gs-fit-center-h"] #topArea {
-  max-height: var(--gs-fit-center-h);
-  overflow: hidden;
-}
-/* Main board container (the focused player board). Soft cap that lets
-   the games keep their own min-height handling but never grow past
-   what the solver allocated. */
-#gameScreen[style*="--gs-fit-main-h"] #mainBoardsContainer,
-#gameScreen[style*="--gs-fit-main-h"] .boards-container {
-  /* Cap the boards area at the solver's allocation (so it never pushes
-     the status bar off-screen) but DON'T claim it as a min-height —
-     letting the board size to its content + dock at the bottom (via
-     justify-content:flex-end) gives a flush look without dead space.
-     The previous "min-height: var(--gs-fit-main-h)" claimed all 480px
-     for Qwixx; the scorecard's fixed cell heights (~180px total) left
-     280px of weird dead space below. User feedback: don't do that. */
-  max-height: var(--gs-fit-main-h);
-}
-
-/* Mobile UX optimization: the player's focus board sits FLUSH WITH THE
-   BOTTOM of the viewport AND is horizontally centred (user ask: "make
-   horizontal centering the default in the api"). The boards-container
-   is the flex column's grow-fill child; on phones we collapse it to a
-   column so we can align both axes independently — END on the main
-   (vertical → docks bottom), CENTER on the cross (horizontal →
-   single-board renders are centred). Desktop already centres via
-   justify-content:center on the row layout (line 165 in this file). */
-@media(max-width:760px) {
-  #gameScreen .boards-container {
-    flex-direction: column;
-    align-items: center;           /* horizontal centre on cross axis */
-    justify-content: flex-end;     /* dock at bottom of viewport */
-    padding-bottom: calc(16px + env(safe-area-inset-bottom,0px));
-    padding-top: 4px;
-  }
-}
-/* API-level default: every board the platform renders into
-   #mainBoardsContainer is horizontally centred. .player-board (Skyjo,
-   Flip 7) and .qwixx-table both inherit the auto-margins so they
-   centre regardless of viewport width. Per user ask, this is the
-   default — games that want a non-centred layout can override on
-   their own root class. */
+/* H-centre + size-clamp the focused board inside the boards container.
+   Works for Skyjo's .player-board, Flip 7's .f7-focus-board (also
+   carries .player-board), and the Qwixx .qwixx-table wrapper. */
 #mainBoardsContainer > .player-board,
 #mainBoardsContainer > .qwixx-table {
   margin-left: auto;
   margin-right: auto;
+  /* Don't grow taller than the boards-container itself — content
+     overflows internally via the game's own scroll/overflow rules. */
+  max-height: 100%;
+  /* Reasonable upper bound so the focus board doesn't stretch into
+     comically wide on a 4K desktop. */
+  max-width: min(1040px, 100%);
+}
+
+@media (max-width: 760px) {
+  /* Mobile: tighten the bottom padding so the board sits ~6px above
+     the safe-area edge / sticky status bar. */
+  #mainBoardsContainer {
+    padding-bottom: calc(6px + env(safe-area-inset-bottom, 0px));
+    padding-top: 4px;
+  }
+  /* Mini boards cap: 25dvh on phones so the focus board always wins
+     leftover vertical space. */
+  #gameScreen .mini-boards-container {
+    max-height: 25dvh;
+  }
 }
