@@ -1102,25 +1102,97 @@ button.kc-mini:hover{transform:translateY(-2px);box-shadow:0 6px 14px rgba(0,0,0
  * The desktop padding-bottom (96px) clears the floating .status-bar.
  * Mobile padding tightens to ~6px above the safe-area inset.
  */
+/* ─── The actual fix (v76) ───────────────────────────────────────────
+ * Diagnosed root cause: the legacy `.boards-container` rule sets
+ * `flex-wrap: wrap` and `align-content: flex-start`. In a column-direction
+ * flex container, that creates a separate "flex line" per child; with one
+ * child the line is sized to the child's intrinsic width (e.g. 372px for
+ * a Skyjo board) and aligned to the cross-start (left edge). `align-items`
+ * and `margin: auto` then have nothing left to center against — the line
+ * already shrink-wrapped the child.
+ *
+ * Cure: force `flex-wrap: nowrap` so there's a single line that spans
+ * the full container cross-axis. Now `align-items: center` actually
+ * centers the child in the available width. Auto-margins kept as
+ * belt-and-braces for robustness.
+ *
+ * Also: the html/body/#app/.screen chain (lines 408, 451) leaves
+ * #gameScreen.active sized to its children rather than the viewport on
+ * mobile, because `#app` is `display:flex; flex-direction:column` but
+ * its parent (body) is `display:block; height:auto`. So the column never
+ * stretches. We pin `#gameScreen.active` to `height:100dvh` here with
+ * `!important` to win over whichever cascade got there first. */
 #mainBoardsContainer {
   display: flex !important;
   flex-direction: column !important;
+  flex-wrap: nowrap !important;       /* the actual fix */
   align-items: center !important;
+  align-content: center !important;   /* belt-and-braces for the wrap edge case */
   justify-content: flex-end !important;
-  padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px));
-  padding-top: 6px;
+  /* Padding tightened: the floating .status-bar is short and overlapping
+     is OK — we want the board flush to the lower edge of the window. */
+  padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+  padding-top: 4px;
 }
 
 #mainBoardsContainer > .player-board,
-#mainBoardsContainer > .qwixx-table {
-  /* Auto-margins are !important to defeat the legacy
-     .boards-container { gap: ... } that flex would otherwise compete
-     with for horizontal positioning. */
+#mainBoardsContainer > .qwixx-table,
+#mainBoardsContainer > .qwixx-boards {
   margin-left: auto !important;
   margin-right: auto !important;
-  max-height: 100%;
-  max-width: min(1040px, 100%);
+  align-self: center !important;       /* explicit, defeats any inherited stretch */
+  /* Content-sized vertically: the board is whatever height its content
+     wants, not stretched to fill the container. Fixes Flip7 board
+     ballooning to 566px tall because of `max-height: 100%` + flex-grow.
+     We still cap at 100% so the board never exceeds the container. */
+  flex: 0 0 auto !important;
+  height: auto !important;
+  max-height: 100% !important;
+  max-width: min(1040px, 100%) !important;
 }
+
+/* Bottom-anchored play stack:
+ *   topbar (always at top)
+ *   ──── free space ────
+ *   mini-boards strip
+ *   game area (#topArea)
+ *   main boards container
+ *   status bar (floating, sticky)
+ *
+ * Putting `margin-top: auto` on the mini-boards container pushes ALL
+ * subsequent siblings to the bottom of the viewport in one stroke.
+ * Each is then content-sized (`flex: 0 0 auto`) so nothing stretches
+ * into the available space — the void collapses upward against the
+ * topbar instead. This gives a compact, thumb-reachable stack
+ * matching the user's spec: minis on top of game-area on top of
+ * main board, all hugging the lower edge of the window.
+ */
+#gameScreen.active > .mini-boards-container {
+  margin-top: auto !important;
+  flex: 0 0 auto !important;
+}
+#gameScreen.active > #topArea {
+  flex: 0 0 auto !important;
+}
+#gameScreen.active > #mainBoardsContainer {
+  flex: 0 0 auto !important;          /* content-sized, NOT a grower */
+}
+
+/* Make sure the game-screen actually fills the viewport so
+   justify-content:flex-end docks to the BOTTOM OF THE WINDOW,
+   not the bottom of a half-height container. */
+html, body, #app { height: 100dvh !important; min-height: 100dvh !important; max-height: 100dvh !important; overflow: hidden !important; }
+#gameScreen.active {
+  height: 100dvh !important;
+  min-height: 100dvh !important;
+  max-height: 100dvh !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+}
+/* Hub screens (not the game) still need to scroll naturally on small
+   devices — restore overflow for them. */
+.screen:not(#gameScreen) { overflow-y: auto; min-height: 100dvh; }
 
 @media (max-width: 760px) {
   #mainBoardsContainer {

@@ -26,11 +26,27 @@ import { readFileSync } from "node:fs";
 const css = readFileSync("public/styles/main.css", "utf8");
 
 describe("In-game layout (flexbox-only)", () => {
-  it("#mainBoardsContainer is a column-flex GROWER docking content to the bottom", () => {
+  it("#mainBoardsContainer is a column-flex container docking content to the bottom (with flex-wrap:nowrap)", () => {
     expect(css).toMatch(/#mainBoardsContainer\s*\{[\s\S]*?display:\s*flex/);
     expect(css).toMatch(/#mainBoardsContainer\s*\{[\s\S]*?flex-direction:\s*column/);
     expect(css).toMatch(/#mainBoardsContainer\s*\{[\s\S]*?justify-content:\s*flex-end/);
     expect(css).toMatch(/#mainBoardsContainer\s*\{[\s\S]*?align-items:\s*center/);
+    // v77 fix: flex-wrap MUST be nowrap. The legacy `.boards-container`
+    // rule sets flex-wrap:wrap which, in a column-direction container,
+    // shrink-wraps each child to its own flex line and makes
+    // `align-items: center` + `margin: auto` no-ops on the cross axis.
+    // Regression of this bug produced the left-aligned board screenshots
+    // the user complained about three rounds in a row.
+    expect(css).toMatch(/#mainBoardsContainer\s*\{[\s\S]*?flex-wrap:\s*nowrap/);
+  });
+
+  it("v78 bottom-stack: minis + game area + main boards hug the bottom, content-sized", () => {
+    // mini-boards gets margin-top:auto → pushes IT and everything after
+    // it (topArea, mainBoardsContainer) to the bottom of the viewport.
+    // Each is flex:0 0 auto so nothing stretches into the dead zone.
+    expect(css).toMatch(/#gameScreen\.active\s*>\s*\.mini-boards-container[\s\S]*?margin-top:\s*auto/);
+    expect(css).toMatch(/#gameScreen\.active\s*>\s*#topArea[\s\S]*?flex:\s*0\s+0\s+auto/);
+    expect(css).toMatch(/#gameScreen\.active\s*>\s*#mainBoardsContainer[\s\S]*?flex:\s*0\s+0\s+auto/);
   });
 
   it("Direct children of #mainBoardsContainer (.player-board, .qwixx-table) are auto-margined → horizontally centred", () => {
