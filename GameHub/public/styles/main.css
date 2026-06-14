@@ -1083,45 +1083,50 @@ button.kc-mini:hover{transform:translateY(-2px);box-shadow:0 6px 14px rgba(0,0,0
  * No JS solver. No --gs-fit-* custom props. Browser does the layout.
  */
 
-/* The boards-container is the flex GROWER — it absorbs whatever vertical
-   space the topbar / minis / top-area / status-bar didn't claim, then
-   docks its inner board at the bottom and centres it horizontally.
-   Desktop padding-bottom (96px) clears the floating .status-bar
-   (position:fixed near the viewport bottom); mobile padding is
-   tightened in the @media block below. */
+/* ─── Main board layout (the source of three rounds of bugs) ─────────
+ * Hardened with !important on the four critical properties so no
+ * future @media block can silently break centring or bottom-docking.
+ * Earlier rounds tried to set these without !important and got beaten
+ * by legacy .boards-container declarations elsewhere in the file
+ * (lines 178, 408, etc) when the cascade settled in certain orders.
+ *
+ * Three rules the user explicitly asked for, encoded directly here:
+ *   1. flex column + justify-content:flex-end → board docks at the
+ *      bottom edge of the viewport (above the floating status bar).
+ *   2. align-items:center + margin:auto on inner → board is
+ *      horizontally centred.
+ *   3. Above-board sections (topbar, minis, top-area) are flex:0 0
+ *      auto elsewhere → they sit ABOVE the player board, content-sized,
+ *      never below.
+ *
+ * The desktop padding-bottom (96px) clears the floating .status-bar.
+ * Mobile padding tightens to ~6px above the safe-area inset.
+ */
 #mainBoardsContainer {
-  display: flex;
-  flex-direction: column;
-  align-items: center;          /* horizontal centre */
-  justify-content: flex-end;    /* push to bottom of available space */
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: flex-end !important;
   padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px));
   padding-top: 6px;
 }
 
-/* H-centre + size-clamp the focused board inside the boards container.
-   Works for Skyjo's .player-board, Flip 7's .f7-focus-board (also
-   carries .player-board), and the Qwixx .qwixx-table wrapper. */
 #mainBoardsContainer > .player-board,
 #mainBoardsContainer > .qwixx-table {
-  margin-left: auto;
-  margin-right: auto;
-  /* Don't grow taller than the boards-container itself — content
-     overflows internally via the game's own scroll/overflow rules. */
+  /* Auto-margins are !important to defeat the legacy
+     .boards-container { gap: ... } that flex would otherwise compete
+     with for horizontal positioning. */
+  margin-left: auto !important;
+  margin-right: auto !important;
   max-height: 100%;
-  /* Reasonable upper bound so the focus board doesn't stretch into
-     comically wide on a 4K desktop. */
   max-width: min(1040px, 100%);
 }
 
 @media (max-width: 760px) {
-  /* Mobile: tighten the bottom padding so the board sits ~6px above
-     the safe-area edge / sticky status bar. */
   #mainBoardsContainer {
     padding-bottom: calc(6px + env(safe-area-inset-bottom, 0px));
     padding-top: 4px;
   }
-  /* Mini boards cap: 25dvh on phones so the focus board always wins
-     leftover vertical space. */
   #gameScreen .mini-boards-container {
     max-height: 25dvh;
   }

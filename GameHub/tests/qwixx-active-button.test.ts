@@ -64,6 +64,6 @@ describe("Horizontal centring is the platform default (user ask)", () => {
     // The platform-level rule sits at the bottom of main.css and
     // auto-margins .player-board / .qwixx-table inside the boards
     // container.
-    expect(css).toMatch(/#mainBoardsContainer\s*>\s*\.player-board[\s\S]{0,200}margin-left:\s*auto[\s\S]{0,200}margin-right:\s*auto/);
+    expect(css).toMatch(/#mainBoardsContainer\s*>\s*\.player-board[\s\S]{0,400}margin-left:\s*auto(?:\s*!important)?[\s\S]{0,200}margin-right:\s*auto/);
   });
 });
