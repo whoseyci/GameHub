@@ -286,7 +286,7 @@
   .f7-discard .cnt{position:absolute;bottom:-20px;left:50%;transform:translateX(-50%);font-size:.7rem;color:var(--text-dim);font-weight:800;white-space:nowrap}
   .f7-discard.land{animation:landBounce .4s var(--spring)}
   @media(max-width:600px){.overlay-box{padding:22px}.score-table th,.score-table td{padding:8px 6px;font-size:.95rem}}
-  @media(min-width:760px){:root{--slot-w:min(84px, calc(var(--card-h-cap) * 1.15));--bcard-w:min(74px, var(--card-h-cap))}.top-area{margin-top:18px}}
+  @media(min-width:760px){:root{--slot-w:min(var(--slot-max), calc(var(--card-h-cap) * 1.15));--bcard-w:min(var(--card-max), var(--card-h-cap))}.top-area{margin-top:18px}}
 
   /* 3D DICE & QWIXX SPECIFICS */
   .qwixx-dice-zone {
@@ -457,10 +457,23 @@ html,body,#app{height:100%;max-height:100%;overflow:hidden}.screen{min-height:0}
 @media(min-height:800px) and (min-width:760px){
   #gameScreen .qwixx-top-mini-strip{max-height:24dvh}
   .qwixx-top-mini-strip{grid-template-columns:repeat(auto-fit,minmax(170px,1fr))}
+  /* Top-area widgets (deck/discard piles + opponent mini-boards) are NOT
+     Kit.Fit-managed (only the focus board is), so when the focus board hits its
+     width-bound scale and leaves vertical void, grow these "other portions" to
+     use it — exactly the redistribute-the-space goal. Lift the slot cap + the
+     opponent-card cap. */
+  :root{--slot-max:104px}
+  #gameScreen .mini-boards-container{max-height:24dvh}
+  #gameScreen .mini-boards-container .kc-card,
+  #gameScreen .mini-boards-container .board-card{--bcard-w:min(clamp(40px,12vw,64px), 16dvh)}
 }
 @media(min-height:1000px) and (min-width:980px){
   #gameScreen .qwixx-top-mini-strip{max-height:26dvh}
   .qwixx-top-mini-strip{grid-template-columns:repeat(auto-fit,minmax(200px,1fr))}
+  :root{--slot-max:126px}
+  #gameScreen .mini-boards-container{max-height:28dvh}
+  #gameScreen .mini-boards-container .kc-card,
+  #gameScreen .mini-boards-container .board-card{--bcard-w:min(clamp(46px,13vw,78px), 19dvh)}
 }
 /* Landscape phones are very short (≤500px tall). The dedicated 2-col grid
    layout below is overridden by the hardened `display:flex !important` on
@@ -1537,3 +1550,9 @@ html, body, #app { height: 100dvh !important; min-height: 100dvh !important; max
 .kit-fit-wrap{display:flex;align-items:center;justify-content:center;margin:0 auto;
   max-width:100%;max-height:100%}
 .kit-fit-wrap > *{flex:0 0 auto}
+/* The focus board is Kit.Fit-scaled, so its OWN padding gets magnified too — a
+   roomy board would otherwise scale up its whitespace as much as its cards. Trim
+   the focus board's chrome so the playable pieces dominate the scaled footprint
+   (the cards then read large, which is the point). */
+#mainBoardsContainer .kit-fit-wrap > .player-board{padding:clamp(8px,1.4vw,12px)}
+#mainBoardsContainer .kit-fit-wrap > .player-board > .board-header{margin-bottom:6px}
