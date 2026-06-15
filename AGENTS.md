@@ -102,6 +102,16 @@ interface (`create / applyAction / viewFor / isOver` + optional
   and SUBTRACT the computed padding (clientHeight INCLUDES padding). Using the
   border box (getBoundingClientRect) or raw clientHeight ignores the reserved
   safe-zone and the board grows under the controls / clips at the top.
+- **The focus board re-renders on EVERY state change** (incl. an opponent's/bot's
+  move) because the whole table is rebuilt to update opponent boards + dice. So
+  the fit must NOT visibly change when your own board's data is unchanged:
+  `renderTable` applies `Kit.Fit` **synchronously** right after `setHTML` (never in
+  a later rAF — that painted the board full-size for one frame = the "twitch"),
+  the first apply for a freshly-mounted board is **instant** (no transition), and
+  Kit.Fit's content `MutationObserver` **ignores its own style/transform writes**
+  so it can't re-measure itself into a flicker loop. The smooth transition only
+  applies to genuine ResizeObserver-driven resizes. If you ever see a board
+  twitch on an opponent move again, check these three things first.
 - **Adaptive board sizing is automatic via `Kit.Fit`** (`public/js/00-kit-fit.js`).
   `GameShell.renderTable` auto-fits the focus board to fill its container — it
   **grows into void space and shrinks to avoid overflow**, content-aware, for

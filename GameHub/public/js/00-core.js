@@ -928,8 +928,14 @@ const GameShell=(()=>{
         const board=main.firstElementChild;
         if(board){
           const fitOpts = (typeof fit==='object') ? fit : {};
-          // requestAnimationFrame so the new content has laid out before measuring.
-          requestAnimationFrame(()=>{ try{ Kit.Fit.apply(main, board, fitOpts); }catch(e){ console.warn('Kit.Fit threw',e); } });
+          // Apply SYNCHRONOUSLY (before paint) so a freshly-rebuilt board is
+          // never shown at its full unscaled size for a frame — that one-frame
+          // flash is the "twitch" users saw whenever ANY player (incl. a bot)
+          // acted and the table re-rendered. The board's DOM is already laid out
+          // after setHTML, so we can measure now. Kit.Fit suppresses its own
+          // transition on this first apply so a same-size re-mount doesn't
+          // animate; a genuine resize still glides via the ResizeObserver path.
+          try{ Kit.Fit.apply(main, board, fitOpts); }catch(e){ console.warn('Kit.Fit threw',e); }
         }
       }
     }

@@ -122,4 +122,23 @@ describe("Kit.Fit — source contract + renderTable auto-wiring", () => {
     // and releases the previous fit before replacing the board (no leaks)
     expect(coreSrc).toMatch(/Kit\.Fit\.release/);
   });
+
+  it("applies the fit SYNCHRONOUSLY in renderTable (no rAF) so a rebuilt board never flashes full-size", () => {
+    // Regression: the focus board re-renders on EVERY state change (incl. an
+    // opponent/bot move). Applying the fit a frame later (rAF) painted the board
+    // at full unscaled size for one frame → the "twitch" users reported. The
+    // apply must be synchronous, right after setHTML(main,focus).
+    const m = coreSrc.match(/if\(main\)\{setHTML\(main,focus\)[\s\S]*?Kit\.Fit\.apply\(main,\s*board[\s\S]*?\}\s*\}/);
+    expect(m).not.toBeNull();
+    // there must be NO requestAnimationFrame wrapping that apply call
+    expect(m![0]).not.toMatch(/requestAnimationFrame/);
+  });
+
+  it("first fit is synchronous + the MutationObserver ignores its own style writes (no self-twitch)", () => {
+    // applyScale is called directly in apply() (not only scheduled via rAF), and
+    // the content MutationObserver skips mutations that are just our own style/
+    // transform bookkeeping so it never re-measures itself into a loop.
+    expect(fitSrc).toMatch(/applyScale\(st\);[\s\S]*?MutationObserver/);
+    expect(fitSrc).toMatch(/m\.attributeName === 'style'/);
+  });
 });

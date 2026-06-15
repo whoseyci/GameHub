@@ -257,21 +257,26 @@
     STATE.set(content, st);
     container.__kitFitState = st;
 
-    if (REDUCE) {
-      // Reduced motion: still fit (it's not an animation), just no transition.
-    }
+    // FIRST fit runs SYNCHRONOUSLY (not via rAF) so a freshly-mounted board is
+    // scaled before the browser paints — never shown full-size for a frame. This
+    // is what kills the per-render "twitch". didFirstFit stays false here so this
+    // first apply is instant (no transition); subsequent re-fits glide.
+    applyScale(st);
 
-    // Re-fit when the board's CONTENT changes (new round / more cards).
+    // Re-fit when the board's CONTENT changes (new round / more cards). We ignore
+    // mutations to the content's OWN style/transform attrs (those are ours) to
+    // avoid a self-triggered re-measure loop; only real content changes refit.
     if (typeof MutationObserver !== 'undefined') {
-      st.mo = new MutationObserver(() => { st.lastScale = null; scheduleFit(st); });
-      st.mo.observe(content, { childList: true, subtree: true, characterData: true });
+      st.mo = new MutationObserver((muts) => {
+        // Skip if every mutation is just our own style bookkeeping on `content`.
+        const meaningful = muts.some((m) => !(m.type === 'attributes' && m.target === content && (m.attributeName === 'style' || m.attributeName === 'data-kit-fit-scale')));
+        if (!meaningful) return;
+        st.lastScale = null; scheduleFit(st);
+      });
+      st.mo.observe(content, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['style'] });
     }
     const r = ro();
     if (r) r.observe(container);
-
-    // Initial fit (after layout settles).
-    scheduleFit(st);
-    setTimeout(() => { st.lastScale = null; scheduleFit(st); }, 60);
     return st;
   }
 
