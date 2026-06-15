@@ -240,22 +240,23 @@ async function smokeQwixx(window, document) {
   await sleep(80);
 
   assert(document.querySelector('.qwixx-dice-zone'), 'Qwixx: dice zone missing');
-  assert(document.getElementById('qwixxThrowBtn'), 'Qwixx: throw button missing');
   assert(!document.getElementById('f7Controls'), 'Qwixx: Flip7 controls leaked into Qwixx');
   assert(document.querySelector('#topArea .piles')?.style.display === 'none', 'Qwixx: shared piles should be hidden');
 
-  document.getElementById('qwixxThrowBtn').onclick();
-  await sleep(1200);
+  // Qwixx rolls through Kit.Roller (the 2D slot machine). The active player's
+  // roll is started by pulling the lever; programmatically we use the client's
+  // roll() hook (renderer-agnostic — same path the lever uses).
+  assert(document.querySelector('.qwixx-kit-dice .kit-slot'), 'Qwixx: slot machine did not render');
+  window.GameClients['qwixx'].roll();
+  // The slot machine stops its reels staggered (last ~2.5s) then settles.
+  await sleep(3400);
 
-  const throwBtn = document.getElementById('qwixxThrowBtn');
-  assert(throwBtn.classList.contains('hidden'), 'Qwixx: throw button should hide after roll');
-  assert(document.querySelector('#qwixxDiceKit .kit-die-static, #qwixxDiceKit .kit-die-phys'), 'Qwixx: dice did not render');
+  assert(document.querySelector('#qwixxDiceKit .kit-reel.locked, .qwixx-kit-dice .kit-reel.locked'), 'Qwixx: slot reels did not lock in');
 
-  // Shared 3D dice API exists and degrades gracefully: headless has no WebGL, so
-  // Dice3D.supported() is false and Qwixx fell back to the CSS dice above (which is
-  // why .kit-die-static rendered). Guards the API surface + the fallback path.
+  // Both rolling APIs exist and the slot machine needs no WebGL.
+  assert(window.eval('typeof Kit.Roller?.roll === "function"'), 'Roller: Kit.Roller.roll missing');
+  assert(window.eval('Kit.Roller.supported() === true'), 'Roller: supported() should be true (pure DOM/CSS)');
   assert(window.eval('typeof Kit.Dice3D?.roll === "function"'), 'Dice3D: Kit.Dice3D.roll missing');
-  assert(window.eval('Kit.Dice3D.supported() === false'), 'Dice3D: supported() should be false in headless (no WebGL)');
 
   // Pass-and-play rotation: the white phase is SIMULTANEOUS, so the display must
   // rotate to EACH seat that still has a pending white decision (driving via act(),
@@ -442,8 +443,8 @@ async function smokeBotFlows(window, document) {
   await sleep(1200);
   view = localView(window, 0);
   assert(view.qwixx.pendingWhiteDecisions.includes(1), 'Qwixx bot acted before the dice were revealed');
-  document.getElementById('qwixxThrowBtn').onclick();
-  await sleep(1600);
+  window.GameClients['qwixx'].roll();
+  await sleep(3400);
   view = localView(window, 0);
   assert(!view.qwixx.pendingWhiteDecisions.includes(1), 'Qwixx bot did not resolve its white-phase choice after the throw');
   window.quitLocal();
@@ -594,8 +595,8 @@ async function smokeBoardRotation(window, document) {
   ]);
   window.startLocalGame();
   await sleep(120);
-  window.eval('document.getElementById("qwixxThrowBtn").onclick()');
-  await sleep(1300);
+  window.eval("window.GameClients[\x27qwixx\x27].roll()");
+  await sleep(3400);
   let sawRotate = false;
   const obs = setInterval(() => {
     const b = document.getElementById('mainBoardsContainer');
@@ -617,8 +618,8 @@ async function smokeBoardRotation(window, document) {
   ]);
   window.startLocalGame();
   await sleep(120);
-  window.eval('document.getElementById("qwixxThrowBtn").onclick()');
-  await sleep(1300);
+  window.eval("window.GameClients[\x27qwixx\x27].roll()");
+  await sleep(3400);
   let sawRotate2 = false;
   const obs2 = setInterval(() => {
     const b = document.getElementById('mainBoardsContainer');

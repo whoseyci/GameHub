@@ -78,6 +78,21 @@ interface (`create / applyAction / viewFor / isOver` + optional
   `Kit.Layout.fit` solver was removed — don't reintroduce one). The
   `#gameScreen.active` flex column distributes height; `#mainBoardsContainer`
   is the single **grower that may also shrink** (`flex:1 1 auto; min-height:0`).
+- **Rolling (dice/symbols) goes through a swappable roller API.** Two renderers
+  share one contract — `roll(container, [{color,value}], opts) -> Promise`,
+  `showStatic`, `supported`:
+  - `Kit.Roller` — cartoony **2D slot machine** (`public/js/00-roller.js`): pull
+    the lever → reels spin/blur → lock in with a bouncy overshoot → settle. Pure
+    DOM/CSS (no WebGL). Customizable in 3 dimensions: reel **count**
+    (`reels.length`), reel **colour** (`reels[i].color`), reel **symbols**
+    (`reels[i].symbol`/`.icon`, or `opts.symbols` for the spinning strip). Use
+    `Kit.Roller.spin(container, {reels, lever, autoPull, onPull, onLock})` for
+    the generic API.
+  - `Kit.Dice3D` — WebGL physics dice (steered settle; see below).
+  A game picks a renderer via a single `const ROLLER = ...` (see Qwixx) — both are
+  drop-in, so swapping is one line. **Reveal-on-pull:** when a game gates other
+  players/bots on "dice revealed", flip that flag in the roller's `onPull`, not
+  before, so bots don't act before the human pulls the lever.
 - **Card sizing is height-aware.** Card widths are
   `min(widthClamp, --card-h-cap)` so they rescale on short viewports instead of
   being clipped. If you add a board with a different row count, tune

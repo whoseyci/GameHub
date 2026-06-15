@@ -3,6 +3,9 @@ window.GameClients = window.GameClients || {};
 
 /* -------------------- QWIXX client -------------------- */
 (function(){
+  // The current pending-throw trigger (set each render). Lets roll() start the
+  // active player's roll renderer-agnostically. null when no fresh throw is due.
+  let _activeThrow = null;
   window.GameRules['qwixx']={title:'🎲 Qwixx',quick:'Cross off numbers left-to-right for the highest score.',steps:['Each turn rolls two white dice and four colored dice.','In the <b>White Phase</b>, everyone may cross one number equal to white + white on any row.','In the <b>Color Phase</b>, only the active player may cross one number equal to one white die + the matching colored die.','Numbers must always be crossed from left to right; you can skip numbers but never go back.','The far-right number locks a row only after enough marks. Two locked rows or four penalties ends the game.','More marks in a row score quadratically; penalties subtract points.'],tip:'Skipping is allowed. Avoid penalties, but do not wait too long to score rows.'};
   const COLORS = ['red', 'yellow', 'green', 'blue'];
   const COLOR_KEY = { red: 'r', yellow: 'y', green: 'g', blue: 'b' };
@@ -124,8 +127,21 @@ window.GameClients = window.GameClients || {};
   // keep a WebGL canvas alive across state ticks (otherwise the canvas gets
   // torn out + replaced with a CSS-3D fallback on every Qwixx state update,
   // which is what caused the "2D dice flash after the 3D roll" bug).
+  // ── Roller selection ───────────────────────────────────────────────────
+  // Qwixx rolls its dice through a swappable rolling API. Kit.Roller is the
+  // cartoony 2D slot machine (the player pulls the lever); Kit.Dice3D is the
+  // WebGL physics dice. To switch renderers, change ROLLER to Kit.Dice3D — both
+  // expose the same roll(container,[{color,value}],opts) / showStatic / supported
+  // contract, so nothing else here changes.
+  const ROLLER = (typeof Kit !== 'undefined' && Kit.Roller) ? Kit.Roller : (Kit && Kit.Dice3D);
+  // The slot machine has its own lever, so it needs no separate "Throw dice"
+  // button; the WebGL dice need the external button. usesLever reflects that.
+  const usesLever = ROLLER === (Kit && Kit.Roller);
+
   function renderDice(){
-    return `<div class="qwixx-dice-rows"><button id="qwixxThrowBtn" class="qwixx-throw-btn">${Kit.Icon.html('dice',{size:16,cls:'kit-icon-inline'})}Throw dice</button><div data-persist-slot="qwixx:dice" class="qwixx-kit-dice"></div></div>`;
+    const throwBtn = usesLever ? '' :
+      `<button id="qwixxThrowBtn" class="qwixx-throw-btn">${Kit.Icon.html('dice',{size:16,cls:'kit-icon-inline'})}Throw dice</button>`;
+    return `<div class="qwixx-dice-rows">${throwBtn}<div data-persist-slot="qwixx:dice" class="qwixx-kit-dice"></div></div>`;
   }
 
   // API-11: server-emitted legality. Replaces the old canMarkIndex + actionable
@@ -401,43 +417,65 @@ window.GameClients = window.GameClients || {};
     // signature actually changes.
     const diceTray = ctx.persist?.('qwixx:dice') || $('qwixxDiceKit') || document.querySelector('[data-persist-id="qwixx:dice"]');
     const throwBtn = $('qwixxThrowBtn');
-    const dsize = innerWidth < 760 ? 30 : 42;
+    // Slot reels read better a bit chunkier than the WebGL dice; size per renderer.
+    const dsize = usesLever ? (innerWidth < 760 ? 44 : 58) : (innerWidth < 760 ? 30 : 42);
+    // Run the roll through the selected ROLLER. For the slot machine the ACTIVE
+    // player gets the lever to pull (lever:true); everyone else (opponents /
+    // late joiners) sees the reels auto-pull so they watch the same spin without
+    // a lever to click. The WebGL dice ignore lever/autoPull and just animate.
     const doThrow = () => {
       if(throwBtn) throwBtn.classList.add('hidden');
-      window._qwixxDiceSig = diceSig;
-      // Roll via the shared WebGL 3D dice API only. The canvas the roll creates
-      // stays alive inside the PERSISTED tray for the whole turn — no tear-down,
-      // no CSS-3D fallback flash on subsequent state updates.
-      Kit.Dice3D.roll(diceTray, diceList(dice), {size: dsize}).then(()=>{
+      const lever = usesLever && isAct;        // active player pulls; others auto
+      // IMPORTANT: the dice are only "revealed" (which lets bots act and shows
+      // the combos/hints) once the roll actually STARTS — i.e. when the lever is
+      // pulled. For the WebGL/auto path that's immediately; for the lever path
+      // it's deferred to onPull. Setting it earlier would let bots act before
+      // the human pulls the lever.
+      if(!lever) window._qwixxDiceSig = diceSig;
+      ROLLER.roll(diceTray, diceList(dice), {
+        size: dsize, lever, autoPull: usesLever && !isAct,
+        onPull: () => {
+          window._qwixxDiceSig = diceSig;
+          // Re-dispatch so bots/combos/hints wake the instant the reels start.
+          if(window._renderView && window._renderView.game === 'qwixx') dispatchView(window._renderView);
+        },
+      }).then(()=>{
         diceTray.dataset.shown = diceSig;
         if(window._renderView && window._renderView.game === 'qwixx') dispatchView(window._renderView);
       });
     };
+    // Expose the current throw trigger so automation/tests (and a future
+    // keyboard shortcut) can start the active player's roll without depending on
+    // a specific control's DOM — the lever, the WebGL throw button, etc. all
+    // funnel through here. Only meaningful while a fresh throw is pending.
+    _activeThrow = shouldRoll ? doThrow : null;
     if(shouldRoll){
-      // Brand-new throw needed (new round / next turn). Reset the persisted
-      // tray and show the "throw" button.
+      // Brand-new throw needed (new round / next turn). Reset the persisted tray.
       if(diceTray && diceTray.dataset.shown !== ''){
         diceTray.dataset.shown=''; diceTray.innerHTML='';
         diceTray.classList.remove('kit-dice3d');
       }
-      if(throwBtn){ throwBtn.classList.remove('hidden'); throwBtn.onclick=doThrow; }
+      if(usesLever){
+        // Slot machine: the lever IS the throw. Render the machine immediately
+        // so the active player can pull it; opponents auto-pull on render.
+        if(diceTray && diceTray.dataset.shown !== 'pending-'+diceSig){
+          diceTray.dataset.shown = 'pending-'+diceSig;
+          doThrow();
+        }
+      } else {
+        // WebGL dice: show the external "Throw dice" button.
+        if(throwBtn){ throwBtn.classList.remove('hidden'); throwBtn.onclick=doThrow; }
+      }
     } else {
       if(throwBtn) throwBtn.classList.add('hidden');
       // Already revealed AND tray already shows this throw → leave it alone
-      // (the live WebGL canvas keeps its settled pose). Only re-render if we
-      // genuinely DON'T have the right throw on screen — happens for opponents
-      // joining mid-roll, or when WebGL is unavailable.
-      if(!diceTray || diceTray.dataset.shown === diceSig) {
-        // nothing to do; persisted tray is already correct
-      } else if(Kit.Dice3D.supported && Kit.Dice3D.supported()){
-        // We support WebGL but don't have THIS roll's canvas — animate the
-        // arriving roll so opponents see the throw too.
-        Kit.Dice3D.roll(diceTray, diceList(dice), {size: dsize}).then(()=>{
-          diceTray.dataset.shown = diceSig;
-        });
+      // (the settled machine/canvas keeps its pose). Only re-render if we don't
+      // have the right throw on screen — opponents joining mid-roll, etc.
+      if(!diceTray || diceTray.dataset.shown === diceSig || diceTray.dataset.shown === 'pending-'+diceSig) {
+        // nothing to do; persisted tray is already correct / in-flight
       } else {
-        // True no-WebGL fallback: static faces, clearly marked as a fallback.
-        Kit.Dice3D.showStatic(diceTray, diceList(dice), {size: dsize});
+        // Don't re-animate a roll others already pulled — show the settled faces.
+        ROLLER.showStatic(diceTray, diceList(dice), {size: dsize});
         diceTray.dataset.shown = diceSig;
       }
     }
@@ -489,6 +527,16 @@ window.GameClients = window.GameClients || {};
   }
 
   function unmount(){removeQwixxUi();window._qwixxLastScores=null;window._qwixxDiceSig=null;window._qwixxLayoutApplied=false;}
-  window.GameClients['qwixx'] = { render, act, inspect, unmount };
+  // roll(): programmatically start the active player's roll — same effect as the
+  // player pulling the lever / clicking the throw button. If the slot machine is
+  // already on screen awaiting a pull, click its lever; otherwise fire the
+  // pending throw directly. Returns true if a roll was started.
+  function roll(){
+    const lever = document.querySelector('.qwixx-kit-dice .kit-slot-lever:not(.pulled)');
+    if(lever){ lever.click(); return true; }
+    if(_activeThrow){ const f=_activeThrow; _activeThrow=null; f(); return true; }
+    return false;
+  }
+  window.GameClients['qwixx'] = { render, act, inspect, unmount, roll };
 
 })();
