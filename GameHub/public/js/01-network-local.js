@@ -545,6 +545,23 @@ function renderLocal(){
   window._controlledSeats=SeatModel.localHumanSeats();
   dispatchView(v);
 }
+// Re-render the active local game when the window resizes so viewport-derived
+// sizing (e.g. the Qwixx slot machine's continuous reel size) tracks the screen
+// live, not just on the next action. Debounced; the dice tray is self-gated so a
+// mid-spin re-render never restarts the roll. Kit.Fit handles board scaling on
+// its own ResizeObserver, so this is only for top-area widgets.
+let _localResizeRaf = 0;
+if (typeof window !== 'undefined') {
+  window.addEventListener('resize', () => {
+    if (_localResizeRaf) return;
+    _localResizeRaf = requestAnimationFrame(() => {
+      _localResizeRaf = 0;
+      if (localEngine && localGameId && document.getElementById('gameScreen')?.classList.contains('active')) {
+        try { renderLocal(); } catch (e) { /* never break on resize */ }
+      }
+    });
+  }, { passive: true });
+}
 function localAct(seat,msg){
   if(!localEngine || !localGameId) return;
   localEngine.apply(seat,msg);

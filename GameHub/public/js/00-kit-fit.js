@@ -93,13 +93,22 @@
     if (!res) return;
     const { content, opts } = st;
     const s = res.s;
-    // Avoid sub-pixel churn: only update when the change is meaningful.
-    if (st.lastScale != null && Math.abs(st.lastScale - s) < 0.004) return;
+    // Hysteresis: ignore tiny scale deltas so the board doesn't micro-oscillate
+    // when the container jitters by a pixel or two (which otherwise reads as the
+    // board "breathing" between renders).
+    if (st.lastScale != null && Math.abs(st.lastScale - s) < 0.02) return;
     st.lastScale = s;
     const origin = opts.align === 'top' ? 'center top'
       : opts.align === 'bottom' ? 'center bottom'
       : 'center center';
     content.style.transformOrigin = origin;
+    // Smooth scale changes so a board that re-fits mid-game (e.g. the top area
+    // grew/shrank and handed the board more/less room) GLIDES to its new size
+    // instead of popping. The very first fit is instant (no intro animation).
+    if (!REDUCE && opts.smooth !== false) {
+      content.style.transition = st.didFirstFit ? 'transform .22s cubic-bezier(.22,.61,.36,1)' : 'none';
+    }
+    st.didFirstFit = true;
     // Pin the content to its measured NATURAL size so a responsive width:100% /
     // height:100% can't re-expand against the (scaled) wrapper — the transform
     // alone then does the scaling. This breaks the upscale feedback loop.
@@ -140,7 +149,7 @@
   function apply(container, content, options = {}) {
     if (!container || !content) return;
     const opts = Object.assign({
-      min: 0.55, max: 1.9, axis: 'both', align: 'center', padding: 8, grow: true,
+      min: 0.55, max: 1.9, axis: 'both', align: 'center', padding: 8, grow: true, smooth: true,
     }, options || {});
 
     // Reuse existing state if re-applied to the same content.

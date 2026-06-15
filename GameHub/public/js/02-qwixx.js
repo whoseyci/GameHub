@@ -135,36 +135,6 @@ window.GameClients = window.GameClients || {};
     });
     return out;
   }
-  function legalCombo(white, color){
-    if(!white || !color) return true;
-    if(white.color !== color.color) return true;
-    // If taking both on the same row, white must be resolved first and therefore
-    // must be left of the color mark.
-    return white.idx < color.idx;
-  }
-  function moveValue(player, marks){
-    if(!marks.length) return -15;
-    let value = 0;
-    for(const m of marks){
-      const row = player.rows[m.color];
-      const skip = m.idx - lastMark(row) - 1;
-      const lockBonus = m.idx === row.nums.length - 1 ? 18 : 0;
-      value += 10 + row.marks.length * 3 - skip * 1.35 + lockBonus;
-    }
-    return value;
-  }
-  function recommendedMove(state, player){
-    const whites = possibleWhiteMarks(state, player);
-    const colors = possibleColorMarks(state, player);
-    const combos = [[]];
-    whites.forEach(w => combos.push([w]));
-    colors.forEach(c => combos.push([c]));
-    whites.forEach(w => colors.forEach(c => { if(legalCombo(w,c)) combos.push([w,c]); }));
-    combos.sort((a,b) => moveValue(player,b) - moveValue(player,a));
-    const best = combos[0] || [];
-    if(!best.length) return 'No safe mark — active player would take a penalty.';
-    return 'Suggested: ' + best.map(m => `${m.kind === 'white' ? 'white' : m.color} ${m.sum} in ${m.color}`).join(' → ');
-  }
   function markHintsFor(state, player){
     const hints = new Map();
     if(state.diceHidden) return hints;
@@ -483,10 +453,8 @@ window.GameClients = window.GameClients || {};
       </div>` : ''}
       <div class="qwixx-controls">${controlsHtml}</div>
     </div>`;
-    const rec = focused.seat === s.activeSeat ? `<div class="qwixx-reco" style="display:flex;align-items:center;gap:6px">${Kit.Icon.html('lightbulb',{size:14})}${diceRevealed ? recommendedMove(s, focused) : 'Throw dice to reveal options.'}</div>` : '';
     const focus = `<div class="qwixx-table"><div class="qwixx-focus-card player-board${focused.active ? ' active' : ''}">
       <div class="board-header"><span style="display:inline-flex;align-items:center;gap:6px">${focused.active ? Kit.Icon.html('dice',{size:14}) : ''}${esc(focused.name)}${focused.seat === view.yourSeat ? ' (you)' : ''}</span><span class="score-badge">Active: ${esc(activeName)} · total ${esc(focused.score)}</span></div>
-      ${rec}
       ${renderScorecard(focused, displayState, view.yourSeat, false)}
     </div></div>`;
     const status = s.phase === 'GAME_OVER' ? 'Game Over'
@@ -505,13 +473,18 @@ window.GameClients = window.GameClients || {};
     const diceTray = ctx.persist?.('qwixx:dice') || $('qwixxDiceKit') || document.querySelector('[data-persist-id="qwixx:dice"]');
     const throwBtn = $('qwixxThrowBtn');
     // Slot reels read better a bit chunkier than the WebGL dice; size per renderer.
-    // Adaptive slot reel size: grow it when there's screen room (tall + wide),
-    // shrink on phones. (Drop-in WebGL dice keep their compact sizing.)
-    const big = innerHeight >= 1000 && innerWidth >= 980;
-    const tall = innerHeight >= 800 && innerWidth >= 760;
+    // CONTINUOUS adaptive sizing (no breakpoint "steps"): the slot machine grows
+    // and shrinks smoothly with the actual screen. The cabinet shows 5 reels +
+    // lever + chrome, so it needs ~7.5 reel-widths across and ~3.4 reel-heights
+    // of headroom in the top area (≈34% of the viewport height). We derive the
+    // reel size from BOTH budgets and take the smaller, then clamp to a sensible
+    // range. (Drop-in WebGL dice keep their own compact continuous sizing.)
+    const vw = innerWidth, vh = innerHeight;
+    const slotByW = (vw * 0.92) / 7.5;            // fit the cabinet within the width
+    const slotByH = (vh * 0.34) / 3.4;            // fit within the top area's share
     const dsize = usesLever
-      ? (innerWidth < 760 ? 44 : big ? 80 : tall ? 68 : 58)
-      : (innerWidth < 760 ? 30 : 42);
+      ? Math.round(Math.max(40, Math.min(92, Math.min(slotByW, slotByH))))
+      : Math.round(Math.max(28, Math.min(52, Math.min(vw * 0.06, vh * 0.07))));
     // Run the roll through the selected ROLLER. For the slot machine the ACTIVE
     // player gets the lever to pull (lever:true); everyone else (opponents /
     // late joiners) sees the reels auto-pull so they watch the same spin without

@@ -157,8 +157,11 @@ describe("Qwixx client regressions", () => {
     expect(qwixx).toContain("state.pendingWhiteDecisions.includes(player.seat)");
     expect(qwixx).toContain("player.seat === state.activeSeat");
     expect(qwixx).toContain("possibleColorMarks");
-    expect(qwixx).toContain("recommendedMove");
     expect(qwixx).toContain("renderMiniBoard");
+    // The on-board move SUGGESTION ("Suggested: …") was removed by request — the
+    // cell hints (markHintsFor) stay, but no recommended-move banner/helper.
+    expect(qwixx).not.toContain("recommendedMove");
+    expect(qwixx).not.toContain("qwixx-reco");
   });
 
   it("re-dispatches Qwixx after a throw so bot scheduling and status refresh resume", () => {
