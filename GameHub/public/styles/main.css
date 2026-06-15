@@ -1602,25 +1602,54 @@ html, body, #app { height: 100dvh !important; min-height: 100dvh !important; max
 .social-react-btn:hover{background:rgba(255,255,255,.14);transform:translateY(-2px)}
 .social-react-btn.pop{animation:socialPop .26s ease}
 @keyframes socialPop{0%{transform:scale(1)}40%{transform:scale(1.4)}100%{transform:scale(1)}}
-/* unread badge on the chat button */
-.social-unread{position:absolute;top:-3px;right:-3px;min-width:16px;height:16px;padding:0 3px;border-radius:999px;
-  background:#ef4444;color:#fff;font-size:.6rem;font-weight:900;display:flex;align-items:center;justify-content:center;
-  box-shadow:0 1px 3px rgba(0,0,0,.5)}
+/* unread badge on the chat button — pulses to draw the eye */
+.social-unread{position:absolute;top:-4px;right:-4px;min-width:17px;height:17px;padding:0 4px;border-radius:999px;
+  background:#ef4444;color:#fff;font-size:.62rem;font-weight:900;display:flex;align-items:center;justify-content:center;
+  box-shadow:0 1px 4px rgba(0,0,0,.5);animation:socialUnreadPulse 1.6s ease-in-out infinite}
+@keyframes socialUnreadPulse{0%,100%{transform:scale(1);box-shadow:0 0 0 0 rgba(239,68,68,.6)}50%{transform:scale(1.12);box-shadow:0 0 0 6px rgba(239,68,68,0)}}
 #chatBtn,#reactBtn{position:relative}
-/* floating reaction FX layer */
+/* brief "peek" of a new chat message when the panel is closed (slides in top-right) */
+.social-chat-peek{position:fixed;top:64px;right:12px;z-index:130;max-width:min(300px,calc(100vw - 24px));
+  background:var(--surface,#0f172a);border:1px solid rgba(124,92,255,.4);border-radius:12px;padding:8px 12px;
+  box-shadow:0 12px 32px rgba(0,0,0,.5);font-size:.84rem;color:var(--text,#e5e7eb);cursor:pointer;
+  animation:socialPeek 3.2s cubic-bezier(.2,.9,.3,1) forwards;display:flex;gap:7px;align-items:baseline}
+.social-chat-peek b{font-weight:900;white-space:nowrap}
+.social-chat-peek span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@keyframes socialPeek{0%{opacity:0;transform:translateX(20px)}8%{opacity:1;transform:none}88%{opacity:1;transform:none}100%{opacity:0;transform:translateX(20px)}}
+
+/* ── Animated CHARACTER emotes (Clash-Royale style) ──────────────────────── */
 .reaction-fx-layer{position:fixed;inset:0;pointer-events:none;z-index:55;overflow:hidden}
-.reaction-fx{position:absolute;bottom:12%;transform:translateX(-50%);filter:drop-shadow(0 3px 5px rgba(0,0,0,.4));
-  display:flex;flex-direction:column;align-items:center;animation:reactionFloat 2.2s cubic-bezier(.4,0,.2,1) forwards}
-.reaction-fx-who{font-size:.6rem;font-weight:900;color:#fff;background:rgba(0,0,0,.45);padding:1px 6px;border-radius:999px;margin-top:2px}
-@keyframes reactionFloat{
-  0%{opacity:0;transform:translateX(-50%) translateY(0) scale(.4) rotate(0)}
-  15%{opacity:1;transform:translateX(-50%) translateY(-10vh) scale(1.15) rotate(var(--spin,0))}
-  70%{opacity:1}
-  100%{opacity:0;transform:translateX(calc(-50% + var(--drift,0))) translateY(-62vh) scale(.9) rotate(var(--spin,0))}
+.emote-actor{position:absolute;bottom:-4vh;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;
+  filter:drop-shadow(0 6px 10px rgba(0,0,0,.45));animation:emoteEnter .5s cubic-bezier(.34,1.56,.5,1) forwards,
+  emoteExit .5s ease-in 1.9s forwards}
+/* the mascot rises up, does a squash-bounce, then ducks back down */
+@keyframes emoteEnter{0%{transform:translateX(-50%) translateY(0)}100%{transform:translateX(-50%) translateY(calc(-1 * var(--rise,10vh)))}}
+@keyframes emoteExit{0%{transform:translateX(-50%) translateY(calc(-1 * var(--rise,10vh)))}100%{transform:translateX(-50%) translateY(2vh);opacity:0}}
+.emote-mascot{display:block;transform-origin:50% 100%;animation:emoteBob 1.9s ease-in-out 0s 1}
+@keyframes emoteBob{
+  0%{transform:scale(.4) translateY(20px)}
+  18%{transform:scale(1.12,.9)}
+  30%{transform:scale(.94,1.08)}
+  42%{transform:scale(1.03,.98) rotate(-4deg)}
+  56%{transform:scale(1) rotate(4deg)}
+  70%{transform:scale(1) rotate(-2deg)}
+  84%{transform:scale(1) rotate(0)}
+  100%{transform:scale(1)}
 }
+.emote-mascot .emote-pupil{animation:emoteBlink 1.9s steps(1,end) infinite}
+@keyframes emoteBlink{0%,90%,100%{opacity:1}93%,97%{opacity:0}}
+/* speech bubble with the emoji, popping above the mascot */
+.emote-bubble{position:relative;background:#fff;border-radius:14px;padding:5px 10px;margin-bottom:4px;
+  box-shadow:0 3px 8px rgba(0,0,0,.35);transform-origin:50% 120%;animation:emoteBubblePop .5s cubic-bezier(.2,1.7,.4,1) .12s both}
+.emote-glyph{font-size:30px;line-height:1;display:block}
+.emote-bubble-tail{position:absolute;left:50%;bottom:-6px;width:0;height:0;transform:translateX(-50%);
+  border-left:7px solid transparent;border-right:7px solid transparent;border-top:8px solid #fff}
+@keyframes emoteBubblePop{0%{transform:scale(0);opacity:0}70%{transform:scale(1.18)}100%{transform:scale(1);opacity:1}}
+.emote-who{margin-top:3px;font-size:.6rem;font-weight:900;color:#fff;background:rgba(0,0,0,.5);padding:1px 7px;border-radius:999px;white-space:nowrap}
 @media (prefers-reduced-motion: reduce){
-  .reaction-fx{animation:reactionFadeReduced .9s ease forwards}
-  @keyframes reactionFadeReduced{0%{opacity:0;transform:translateX(-50%) translateY(-20vh)}30%{opacity:1}100%{opacity:0;transform:translateX(-50%) translateY(-30vh)}}
+  .emote-actor.reduced{bottom:14vh;animation:emoteReducedFade 1s ease forwards}
+  .emote-actor.reduced .emote-mascot,.emote-actor.reduced .emote-bubble{animation:none}
+  @keyframes emoteReducedFade{0%{opacity:0}20%{opacity:1}80%{opacity:1}100%{opacity:0}}
 }
 
 /* ── Group picker dropdown (header "Group" button) ───────────────────────────

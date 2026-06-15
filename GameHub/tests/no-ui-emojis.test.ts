@@ -68,6 +68,9 @@ function isAllowlisted(line: string, path: string): boolean {
   // purpose (it's a "send a reaction" affordance), as does its title text.
   if (path.endsWith('00-social.js')) return true;
   if (/id="reactBtn"/.test(line)) return true;
+  // Bot personality emotes (05-bots-init.js BOT_EMOTES) are reaction CONTENT,
+  // same exemption as the social module — they animate as character emotes.
+  if (path.endsWith('05-bots-init.js') && /BOT_EMOTES|pick\(/.test(line)) return true;
   return false;
 }
 

@@ -132,7 +132,31 @@ function scheduleBot(view, bot, seat) {
     if (!msg) return;
     if (mode === 'local') { localAct(seat, msg); }
     else { net.send({ type: 'action', botSeat: seat, ...msg }); }
+    // Personality: bots throw the occasional emote so solo/vs-bot play feels
+    // alive. Game-agnostic — a low base chance plus a bump on a "big" move
+    // (scoring/finishing actions). The mascot pops up just like a human emote.
+    try { maybeBotEmote(seat, msg, bot); } catch (e) { /* never break a bot turn */ }
   }, think + Math.random() * 250);
+}
+
+// Contextual bot emote: small chance per move, higher on notable actions.
+const BOT_EMOTES = { good: ['🎉', '🔥', '😎', '💪', '👏'], cheeky: ['😏', '😜', '🤙', '🫡'], oops: ['😅', '😬', '🙈'], think: ['🤔', '🧐'] };
+function pick(a) { return a[(Math.random() * a.length) | 0]; }
+function maybeBotEmote(seat, msg, bot) {
+  if (typeof window.Social === 'undefined' || !window.Social.emote) return;
+  const action = (msg && msg.action) || '';
+  // "Big" / expressive actions worth reacting to across our games.
+  const big = /^(stay|finishTurn|next_round|mark|claim|swap|take_discard)$/.test(action) || msg.use === 'color' || msg.kind === 'flip7';
+  const base = bot && bot.difficulty === 'easy' ? 0.16 : 0.11;   // easy bots are chattier
+  const chance = big ? base + 0.20 : base;
+  if (Math.random() > chance) return;
+  // Pick a mood: penalties/skips → oops; scoring → good; otherwise cheeky/think.
+  let pool = BOT_EMOTES.cheeky;
+  if (/^(skip)$/.test(action) || msg.penalty) pool = BOT_EMOTES.oops;
+  else if (big) pool = Math.random() < 0.75 ? BOT_EMOTES.good : BOT_EMOTES.cheeky;
+  else if (Math.random() < 0.3) pool = BOT_EMOTES.think;
+  const name = (typeof localSeats !== 'undefined' && localSeats[seat] && localSeats[seat].name) || 'Bot';
+  window.Social.emote(pick(pool), name, seat);
 }
 
 /* ====================== INIT ====================== */

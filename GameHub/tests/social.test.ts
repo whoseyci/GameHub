@@ -64,11 +64,21 @@ describe("Social — API + behaviour", () => {
     expect(win.document.querySelectorAll(".social-chat-msg").length).toBe(2);
   });
 
-  it("floats a reaction emoji into the FX layer", () => {
+  it("spawns an animated character emote (mascot + bubble) into the FX layer", () => {
     win.Social.handleNet({ type: "react", seat: 2, name: "Cara", emoji: "🎉", ts: 1 });
-    const fx = win.document.querySelectorAll("#reactionFxLayer .reaction-fx");
-    expect(fx.length).toBe(1);
-    expect(fx[0].textContent).toContain("🎉");
+    const actor = win.document.querySelector("#reactionFxLayer .emote-actor");
+    expect(actor).not.toBeNull();
+    expect(actor!.querySelector(".emote-mascot")).not.toBeNull();   // the character
+    expect(actor!.querySelector(".emote-bubble")).not.toBeNull();   // speech bubble
+    expect(actor!.querySelector(".emote-glyph")!.textContent).toContain("🎉");
+    expect(actor!.textContent).toContain("Cara");                   // who emoted
+  });
+
+  it("Social.emote() fires a LOCAL character emote without sending over the wire (for bots)", () => {
+    win.__sent = [];
+    win.Social.emote("🔥", "Botley", 1);
+    expect(win.document.querySelectorAll("#reactionFxLayer .emote-actor").length).toBeGreaterThan(0);
+    expect((win.__sent || []).filter((o: any) => o.type === "react").length).toBe(0);
   });
 
   it("sendReaction emits a react message and is cooldown-limited", () => {

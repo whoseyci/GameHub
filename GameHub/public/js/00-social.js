@@ -103,7 +103,7 @@
       return false;   // hello is also consumed elsewhere; don't swallow it
     }
     if (m.type === 'chat') { ensureUi(); addChat(m, false); return true; }
-    if (m.type === 'react') { floatReaction(m.emoji, m.name); return true; }
+    if (m.type === 'react') { floatReaction(m.emoji, m.name, m.seat); return true; }
     return false;
   }
 
@@ -120,7 +120,25 @@
     listEl.appendChild(row);
     while (listEl.children.length > MAX_RENDERED) listEl.removeChild(listEl.firstChild);
     listEl.scrollTop = listEl.scrollHeight;
-    if (!silent && !chatOpen) { unread++; updateBadge(); if (typeof SFX !== 'undefined' && SFX.tap) SFX.tap(); }
+    if (!silent && !chatOpen) {
+      unread++; updateBadge();
+      if (typeof SFX !== 'undefined' && SFX.tap) SFX.tap();
+      // Brief on-screen "peek" so players notice a message without opening chat.
+      showPeek(c);
+    }
+  }
+
+  // A small toast that previews a new chat message and opens chat when tapped.
+  function showPeek(c) {
+    if (document.getElementById('reactBtn') && document.getElementById('reactBtn').classList.contains('hidden')) return; // social off
+    const old = document.querySelector('.social-chat-peek');
+    if (old) old.remove();
+    const peek = document.createElement('div');
+    peek.className = 'social-chat-peek';
+    peek.innerHTML = `<b style="color:${seatColor(c.seat)}">${esc(c.name || 'Player')}</b><span>${esc(c.text)}</span>`;
+    peek.onclick = () => { peek.remove(); toggleChat(true); };
+    document.body.appendChild(peek);
+    setTimeout(() => peek.remove(), 3200);
   }
 
   function updateBadge() {
@@ -133,30 +151,65 @@
     } else if (dot) { dot.remove(); }
   }
 
-  // ── Floating reaction FX (reuses the game-feel particle vibe). ───────
-  function floatReaction(emoji, who) {
+  // ── Animated CHARACTER emote (Clash-Royale style) ───────────────────
+  // A little mascot slides up from the bottom, squash-bounces with a speech
+  // bubble holding the emoji, then ducks back down. Far more alive than a
+  // floating glyph. Pure inline SVG — themeable, no assets.
+  // A small palette so successive emotes / different players get varied mascots.
+  const MASCOT_COLORS = [
+    { body: '#7c5cff', belly: '#b9a8ff', dark: '#5b3fd6' },
+    { body: '#22c55e', belly: '#9ff0bf', dark: '#15803d' },
+    { body: '#f59e0b', belly: '#fcd884', dark: '#b45309' },
+    { body: '#ec4899', belly: '#f9b6d6', dark: '#be185d' },
+    { body: '#38bdf8', belly: '#bae6fd', dark: '#0369a1' },
+    { body: '#a855f7', belly: '#e2c7fd', dark: '#7e22ce' },
+  ];
+
+  function mascotSvg(c, seat) {
+    const pal = MASCOT_COLORS[(seat >= 0 ? seat : (Math.random() * MASCOT_COLORS.length) | 0) % MASCOT_COLORS.length];
+    return (
+      '<svg class="emote-mascot" viewBox="0 0 100 110" width="84" height="92" aria-hidden="true">' +
+      // shadow
+      '<ellipse class="emote-shadow" cx="50" cy="104" rx="26" ry="6" fill="rgba(0,0,0,.35)"/>' +
+      // ears
+      `<circle cx="28" cy="34" r="11" fill="${pal.body}"/><circle cx="72" cy="34" r="11" fill="${pal.body}"/>` +
+      `<circle cx="28" cy="34" r="5" fill="${pal.dark}"/><circle cx="72" cy="34" r="5" fill="${pal.dark}"/>` +
+      // body
+      `<ellipse cx="50" cy="62" rx="34" ry="36" fill="${pal.body}"/>` +
+      `<ellipse cx="50" cy="70" rx="22" ry="22" fill="${pal.belly}"/>` +
+      // eyes
+      '<circle cx="40" cy="54" r="6" fill="#fff"/><circle cx="60" cy="54" r="6" fill="#fff"/>' +
+      '<circle class="emote-pupil" cx="41" cy="55" r="3" fill="#1e293b"/>' +
+      '<circle class="emote-pupil" cx="61" cy="55" r="3" fill="#1e293b"/>' +
+      // cheeks + smile
+      `<circle cx="32" cy="64" r="4" fill="${pal.dark}" opacity=".35"/>` +
+      `<circle cx="68" cy="64" r="4" fill="${pal.dark}" opacity=".35"/>` +
+      `<path d="M42 66 Q50 73 58 66" stroke="${pal.dark}" stroke-width="2.6" fill="none" stroke-linecap="round"/>` +
+      '</svg>'
+    );
+  }
+
+  function floatReaction(emoji, who, seat) {
     if (!emoji) return;
     const layer = $('reactionFxLayer');
     if (!layer) return;
     const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
     const el = document.createElement('div');
-    el.className = 'reaction-fx';
-    el.textContent = emoji;
-    // Random horizontal launch point in the lower-middle of the screen.
-    const x = 20 + Math.random() * 60;     // vw %
+    el.className = 'emote-actor' + (reduce ? ' reduced' : '');
+    // Spread mascots across the lower band so multiple emotes don't stack.
+    const x = 12 + Math.random() * 66;     // vw %
     el.style.left = x + '%';
-    el.style.setProperty('--drift', (Math.random() * 80 - 40) + 'px');
-    el.style.setProperty('--spin', (Math.random() * 40 - 20) + 'deg');
-    el.style.fontSize = (28 + Math.random() * 18) + 'px';
-    if (who) {
-      const tag = document.createElement('span');
-      tag.className = 'reaction-fx-who';
-      tag.textContent = who;
-      el.appendChild(tag);
-    }
+    el.style.setProperty('--rise', (8 + Math.random() * 6) + 'vh');   // varied hop height
+    el.innerHTML =
+      '<div class="emote-bubble"><span class="emote-glyph">' + emoji + '</span>' +
+      '<i class="emote-bubble-tail"></i></div>' +
+      mascotSvg(emoji, seat == null ? -1 : seat) +
+      (who ? '<span class="emote-who">' + esc(who) + '</span>' : '');
     layer.appendChild(el);
-    if (reduce) { setTimeout(() => el.remove(), 900); return; }
-    setTimeout(() => el.remove(), 2200);
+
+    if (typeof SFX !== 'undefined' && SFX.tap) SFX.tap();
+    setTimeout(() => el.remove(), reduce ? 1100 : 2400);
   }
 
   // ── Toggles + visibility ────────────────────────────────────────────
@@ -188,5 +241,10 @@
     toggleChat(false); toggleReactions(false);
   }
 
-  window.Social = { handleNet, toggleChat, toggleReactions, sendReaction, setActive, reset, REACTIONS };
+  // Fire a local character emote without sending it over the wire — used by
+  // local bots (and any client-side "celebrate" moment). Online bots emote via
+  // the normal broadcast on the host.
+  function emote(emoji, who, seat) { floatReaction(emoji, who, seat == null ? -1 : seat); }
+
+  window.Social = { handleNet, toggleChat, toggleReactions, sendReaction, emote, setActive, reset, REACTIONS };
 })();
