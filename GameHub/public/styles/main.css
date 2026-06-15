@@ -62,9 +62,29 @@
   }
 
   :root {
-    /* shared card sizing (the "card kit" — every game uses these) */
-    --slot-w:clamp(58px,16vw,84px);--slot-h:calc(var(--slot-w)*1.42);
-    --bcard-w:clamp(52px,15vw,74px);--bcard-h:calc(var(--bcard-w)*1.42);
+    /* shared card sizing (the "card kit" — every game uses these)
+     *
+     * ─── Responsive rescale fix ────────────────────────────────────
+     * Card width is now bounded by BOTH viewport width AND viewport
+     * height. Before, these were width-only `clamp(min, Xvw, max)`, so
+     * on a short-but-wide viewport (laptop @720px, landscape phone)
+     * cards stayed full size while the available height collapsed —
+     * the board then overflowed #gameScreen's `overflow:hidden` and was
+     * clipped instead of scaling down.
+     *
+     * `min(widthClamp, heightTerm)` makes the card take the SMALLER of
+     * the two budgets. The Skyjo board is 3 card-rows tall (+ header,
+     * gaps, padding); the player's board gets roughly the lower ~half of
+     * the screen, so a per-row height budget of ~14dvh ÷ 1.42 aspect
+     * ≈ 9.8dvh of width keeps three rows visible. `--card-h-cap` is the
+     * height-derived width ceiling; lift it per-game via Kit.Layout if a
+     * game has fewer rows. The clamp() min floors keep cards tappable.
+     */
+    --card-h-cap: 10dvh;             /* height-derived width ceiling (3-row boards) */
+    --slot-w:min(clamp(58px,16vw,84px), calc(var(--card-h-cap) * 1.15));
+    --slot-h:calc(var(--slot-w)*1.42);
+    --bcard-w:min(clamp(52px,15vw,74px), var(--card-h-cap));
+    --bcard-h:calc(var(--bcard-w)*1.42);
     --topbar-h:52px;
   }
   *{box-sizing:border-box}
@@ -261,7 +281,7 @@
   .f7-discard .cnt{position:absolute;bottom:-20px;left:50%;transform:translateX(-50%);font-size:.7rem;color:var(--text-dim);font-weight:800;white-space:nowrap}
   .f7-discard.land{animation:landBounce .4s var(--spring)}
   @media(max-width:600px){.overlay-box{padding:22px}.score-table th,.score-table td{padding:8px 6px;font-size:.95rem}}
-  @media(min-width:760px){:root{--slot-w:84px;--bcard-w:74px}.top-area{margin-top:18px}}
+  @media(min-width:760px){:root{--slot-w:min(84px, calc(var(--card-h-cap) * 1.15));--bcard-w:min(74px, var(--card-h-cap))}.top-area{margin-top:18px}}
 
   /* 3D DICE & QWIXX SPECIFICS */
   .qwixx-dice-zone {
@@ -413,11 +433,26 @@ html,body,#app{height:100%;max-height:100%;overflow:hidden}.screen{min-height:0}
    game-screen flex column relies on them. */
 .mini-boards-container{flex:0 0 auto;overflow:hidden}.player-board{max-width:100%;overflow:hidden}.board-header{gap:8px}.score-badge{white-space:nowrap}
 .qwixx-boards{height:100%;max-height:100%;overflow:hidden;gap:8px}.qwixx-player-board{flex:0 0 auto}.qwixx-player-board.compact{padding:8px;border-radius:14px;opacity:.92}.qwixx-player-board.compact .board-header{font-size:.78rem;margin-bottom:4px}.qwixx-scorecard.compact{border-radius:12px}.qwixx-scorecard.compact .qwixx-score-row{grid-template-columns:28px minmax(0,1fr) 30px}.qwixx-scorecard.compact .qwixx-cell{min-height:22px;font-size:.52rem;padding:0}.qwixx-scorecard.compact .qwixx-row-hdr{font-size:.65rem}.qwixx-scorecard.compact .qwixx-row-score{font-size:.56rem}.qwixx-scorecard.compact + .qwixx-player-foot{display:none}.qwixx-row-score{flex-direction:column;line-height:1}.qwixx-row-score small{font-size:.55rem;color:var(--text-dim)}.qwixx-hint.preview{opacity:.55;filter:saturate(.7)}
-@media(max-width:760px){:root{--topbar-h:42px;--slot-w:clamp(42px,12vw,58px);--bcard-w:clamp(34px,10vw,52px)}.screen{padding:10px}.game-topbar{height:var(--topbar-h);padding:4px 6px}.icon-btn{width:34px;height:34px;font-size:.95rem}.room-tag,.spectate-tag{font-size:.72rem;padding:4px 7px}.top-area{padding:4px;gap:6px}.held-area{padding:6px 8px;gap:8px}.held-text{font-size:.7rem}.held-sub{font-size:.58rem}.pile-label{font-size:.62rem}.boards-container{gap:6px}.player-board{padding:8px;border-radius:14px}.board-header{font-size:.76rem;margin-bottom:5px}.score-badge{font-size:.65rem;padding:3px 6px}.status-bar{font-size:.76rem}.qwixx-dice-zone{gap:.35rem;padding:.45rem}.qwixx-turn-head{font-size:.76rem}.qwixx-dice-rows{gap:.35rem;margin:.15rem 0}.qwixx-dice-row{gap:.25rem}.qwixx-dice-label{display:none}.qwixx-die{width:30px;height:30px;border-radius:8px;font-size:.9rem}.qwixx-combos{display:none}.qwixx-controls{margin:2px 0}.qwixx-ctrl-btn{padding:7px 10px;font-size:.75rem}.qwixx-boards{gap:5px}.qwixx-player-board:not(.compact){padding:7px}.qwixx-scorecard:not(.compact) .qwixx-score-row{grid-template-columns:30px minmax(0,1fr) 34px}.qwixx-scorecard:not(.compact) .qwixx-cell{min-height:34px;font-size:.6rem}.qwixx-scorecard:not(.compact) .qwixx-row-hdr{font-size:.72rem}.qwixx-hint{font-size:.42rem;padding:1px 2px}.qwixx-player-foot{font-size:.62rem;margin-top:2px}.qwixx-player-board.compact .qwixx-score-row{grid-template-columns:22px minmax(0,1fr) 24px}.qwixx-player-board.compact .qwixx-cell{min-height:13px;font-size:0}.qwixx-player-board.compact .qwixx-num{font-size:.44rem}.qwixx-player-board.compact .board-header{font-size:.62rem}.qwixx-player-board.compact{padding:4px}.menu-card{max-height:96dvh;overflow:hidden;padding:16px}.btn{padding:12px;margin:8px 0;font-size:.95rem}.input{padding:10px;margin:6px 0 10px}.game-tiles{gap:8px}.game-tile{padding:10px 8px}.game-tile .emoji{font-size:1.5rem}.gdesc{display:none}}
+@media(max-width:760px){:root{--topbar-h:42px;--slot-w:min(clamp(42px,12vw,58px), calc(var(--card-h-cap) * 1.15));--bcard-w:min(clamp(34px,10vw,52px), var(--card-h-cap))}.screen{padding:10px}.game-topbar{height:var(--topbar-h);padding:4px 6px}.icon-btn{width:34px;height:34px;font-size:.95rem}.room-tag,.spectate-tag{font-size:.72rem;padding:4px 7px}.top-area{padding:4px;gap:6px}.held-area{padding:6px 8px;gap:8px}.held-text{font-size:.7rem}.held-sub{font-size:.58rem}.pile-label{font-size:.62rem}.boards-container{gap:6px}.player-board{padding:8px;border-radius:14px}.board-header{font-size:.76rem;margin-bottom:5px}.score-badge{font-size:.65rem;padding:3px 6px}.status-bar{font-size:.76rem}.qwixx-dice-zone{gap:.35rem;padding:.45rem}.qwixx-turn-head{font-size:.76rem}.qwixx-dice-rows{gap:.35rem;margin:.15rem 0}.qwixx-dice-row{gap:.25rem}.qwixx-dice-label{display:none}.qwixx-die{width:30px;height:30px;border-radius:8px;font-size:.9rem}.qwixx-combos{display:none}.qwixx-controls{margin:2px 0}.qwixx-ctrl-btn{padding:7px 10px;font-size:.75rem}.qwixx-boards{gap:5px}.qwixx-player-board:not(.compact){padding:7px}.qwixx-scorecard:not(.compact) .qwixx-score-row{grid-template-columns:30px minmax(0,1fr) 34px}.qwixx-scorecard:not(.compact) .qwixx-cell{min-height:34px;font-size:.6rem}.qwixx-scorecard:not(.compact) .qwixx-row-hdr{font-size:.72rem}.qwixx-hint{font-size:.42rem;padding:1px 2px}.qwixx-player-foot{font-size:.62rem;margin-top:2px}.qwixx-player-board.compact .qwixx-score-row{grid-template-columns:22px minmax(0,1fr) 24px}.qwixx-player-board.compact .qwixx-cell{min-height:13px;font-size:0}.qwixx-player-board.compact .qwixx-num{font-size:.44rem}.qwixx-player-board.compact .board-header{font-size:.62rem}.qwixx-player-board.compact{padding:4px}.menu-card{max-height:96dvh;overflow:hidden;padding:16px}.btn{padding:12px;margin:8px 0;font-size:.95rem}.input{padding:10px;margin:6px 0 10px}.game-tiles{gap:8px}.game-tile{padding:10px 8px}.game-tile .emoji{font-size:1.5rem}.gdesc{display:none}}
 /* Phase 7: removed the `.mini-boards-container{max-height:14vh}` override
    from this short-viewport rule for the same reason — it fought the
    28dvh→16dvh progression in the canonical block. */
-@media(max-height:720px){#gameScreen.active{padding:3px}.top-area{padding:3px}.qwixx-dice-zone{padding:.3rem}.qwixx-player-board.compact .qwixx-cell{min-height:10px}.qwixx-scorecard:not(.compact) .qwixx-cell{min-height:28px}.status-bar{display:none}.player-board{padding:6px}}
+@media(max-height:720px){:root{--card-h-cap:9dvh}#gameScreen.active{padding:3px}.top-area{padding:3px}.qwixx-dice-zone{padding:.3rem}.qwixx-player-board.compact .qwixx-cell{min-height:10px}.qwixx-scorecard:not(.compact) .qwixx-cell{min-height:28px}.status-bar{display:none}.player-board{padding:6px}}
+/* Responsive rescale: tighten the height-derived card ceiling as vertical
+   space shrinks, so Skyjo/Flip7 boards keep all rows visible instead of
+   overflowing #gameScreen's clip. Paired with the min() caps at :root. */
+@media(max-height:600px){:root{--card-h-cap:7.2dvh}}
+@media(max-height:500px){:root{--card-h-cap:6.5dvh}}
+/* Landscape phones are very short (≤500px tall). The dedicated 2-col grid
+   layout below is overridden by the hardened `display:flex !important` on
+   #gameScreen.active, so we stay a flex column here. To fit 3 card-rows +
+   header in the cramped height, cap cards hard AND stop the top-area (deck
+   piles) from hogging vertical space — it only needs room for one pile row. */
+@media(orientation:landscape) and (max-height:500px){
+  :root{--card-h-cap:11dvh}
+  #gameScreen.active > #topArea{max-height:30dvh}
+  .mini-boards-container{max-height:20dvh}
+}
 
 /* ===== Qwixx Arena feel + miniature board system ===== */
 /* Qwixx focus table sizes to its content (scorecard + bottom row).
@@ -456,6 +491,24 @@ html,body,#app{min-height:100%;height:auto;max-height:none;overflow-x:hidden;ove
 @media(max-width:430px){#gameScreen.active{padding:4px}.game-topbar{gap:4px}.topbar-spacer{min-width:0}.qwixx-top-mini-strip{grid-template-columns:repeat(auto-fit,minmax(0,1fr));max-height:24dvh;overflow:auto}.qwixx-top-mini-strip:has(.kc-mini:nth-child(3)){grid-template-columns:repeat(3,minmax(0,1fr))}.qwixx-top-mini-strip:has(.kc-mini:nth-child(5)){grid-template-columns:repeat(3,minmax(0,1fr))}.qwixx-top-mini-strip:has(.kc-mini:nth-child(7)){grid-template-columns:repeat(4,minmax(0,1fr))}.qwixx-dice-zone{max-height:18dvh}.qwixx-turn-head{font-size:.66rem}.qwixx-controls .muted{font-size:.62rem}.qwixx-focus-card{min-height:0}.qwixx-scorecard:not(.compact) .qwixx-score-row{grid-template-columns:25px minmax(0,1fr) 26px}.qwixx-scorecard:not(.compact) .qwixx-cell{min-height:25px;font-size:.52rem}.qwixx-hint{font-size:.36rem;max-width:100%;overflow:hidden}.qwixx-row-score{font-size:.5rem}.qwixx-reco{font-size:.56rem}.qwixx-mini-head{font-size:.55rem;display:flex}.qwixx-mini-dot{height:5px}.qwixx-mini-row{gap:2px}.qwixx-mini-pen{font-size:.5rem}.kit-die{font-size:calc(var(--die-size,30px)*.42)}}
 @media(max-height:640px){.game-topbar{height:34px;flex-basis:34px}.icon-btn{width:30px;height:30px}.top-area{max-height:32dvh}.qwixx-top-mini-strip{max-height:12dvh}.qwixx-dice-zone{max-height:16dvh;gap:.15rem}.qwixx-combos,.qwixx-turn-head span:last-child,.qwixx-reco{display:none}.qwixx-scorecard:not(.compact) .qwixx-cell{min-height:20px}.qwixx-hint{display:none}.qwixx-player-foot,.status-bar{display:none!important}.qwixx-kit-dice{min-height:32px}.qwixx-focus-card .board-header{display:none}}
 @media(orientation:landscape) and (max-height:500px){#gameScreen.active{display:grid;grid-template-columns:38% 62%;grid-template-rows:auto 1fr;padding:4px}.game-topbar{grid-column:1/3}.top-area{grid-column:1;grid-row:2;max-height:calc(100dvh - 42px);align-self:start}.boards-container{grid-column:2;grid-row:2;height:calc(100dvh - 42px)}.qwixx-top-mini-strip{grid-template-columns:1fr;max-height:42dvh}.qwixx-dice-zone{max-height:52dvh}.qwixx-scorecard:not(.compact) .qwixx-cell{min-height:20px}}
+/* ─── Landscape-phone layout (must beat the hardened display:flex below) ──
+ * The v76 hardening set `#gameScreen.active{display:flex !important}`,
+ * which silently disabled the dedicated 2-column landscape grid above.
+ * We KEEP the flex column here (it's robust and already proven for the
+ * other viewports) but tune it for the cramped height:
+ *   • cards capped hard by height so 3 rows fit in the lower band,
+ *   • minis + piles kept compact so they don't steal the board's height,
+ *   • the board container may scroll as a last resort (a single board on a
+ *     ~390px-tall phone in landscape is an extreme case) — content is never
+ *     clipped-and-lost, it stays reachable by scroll.
+ * Specificity note: these use `#gameScreen .mini-boards-container` /
+ * `#gameScreen.active > …` so they beat the id+class default budgets. */
+@media(orientation:landscape) and (max-height:500px){
+  :root{--card-h-cap:8dvh}
+  #gameScreen .mini-boards-container{max-height:22dvh !important}
+  #gameScreen.active > #topArea{max-height:26dvh !important}
+  #gameScreen.active > #mainBoardsContainer{overflow-y:auto !important}
+}
 
 /* UX redesign Phase 7: mini-board layout (cleaned up).
  * Removed 6+ overlapping rules that fought the W1 tier system:
@@ -828,6 +881,17 @@ html,body,#app{min-height:100%;height:auto;max-height:none;overflow-x:hidden;ove
    so every size is the SAME design at a different scale (no per-size radius/border). */
 .kc{--kc-w:clamp(40px,9vw,60px)}
 .kc.kc-md{--kc-w:clamp(40px,9vw,60px)}
+/* ─── Responsive rescale fix (cascade order) ──────────────────────────
+ * Skyjo's board cards are .kc cards inside .kc-zone-skyjo, which sets
+ * `--kc-w:var(--bcard-w)` (the height-aware width) at line ~210. But the
+ * generic `.kc{--kc-w:clamp(...)}` rule above is LATER in source with
+ * EQUAL specificity, so it silently won — Skyjo cards used the generic
+ * width-only clamp and ignored the height cap entirely (verified in
+ * Chromium: anchor --kc-w resolved to clamp(40px,9vw,60px), not
+ * --bcard-w). Re-assert the zone width with higher specificity so the
+ * board-grid columns (repeat(4,var(--bcard-w))) and the cards inside
+ * them stay in lockstep and both rescale by height. */
+.kc.kc-zone-skyjo{--kc-w:var(--bcard-w)}
 .kc.kc-sm{--kc-w:clamp(26px,5.6vw,38px)}
 .kc.kc-xs{--kc-w:clamp(18px,4vw,26px)}
 .kc.kc-mini{--kc-w:16px}
@@ -1153,29 +1217,41 @@ button.kc-mini:hover{transform:translateY(-2px);box-shadow:0 6px 14px rgba(0,0,0
 
 /* Bottom-anchored play stack:
  *   topbar (always at top)
- *   ──── free space ────
- *   mini-boards strip
- *   game area (#topArea)
- *   main boards container
+ *   mini-boards strip   ← content-sized, hugs the top
+ *   game area (#topArea)← content-sized
+ *   main boards         ← THE GROWER: absorbs leftover space AND may shrink
  *   status bar (floating, sticky)
  *
- * Putting `margin-top: auto` on the mini-boards container pushes ALL
- * subsequent siblings to the bottom of the viewport in one stroke.
- * Each is then content-sized (`flex: 0 0 auto`) so nothing stretches
- * into the available space — the void collapses upward against the
- * topbar instead. This gives a compact, thumb-reachable stack
- * matching the user's spec: minis on top of game-area on top of
- * main board, all hugging the lower edge of the window.
+ * ─── Fix (responsive rescale) ──────────────────────────────────────
+ * Previous version made EVERY child `flex: 0 0 auto` (content-sized,
+ * "NOT a grower") and used `margin-top:auto` on the minis to bottom-dock
+ * the stack. The bug: with no flex child allowed to grow OR shrink, the
+ * column's total height is fixed by content. When the viewport is
+ * shorter than that (laptops at 720px, landscape phones, etc.), nothing
+ * can give, so #gameScreen's `overflow:hidden` silently CLIPS the bottom
+ * of the player's board and the status bar — they never rescaled.
+ * `margin-top:auto` made it worse: under overflow it resolves to 0 and
+ * the content spills off the bottom edge.
+ *
+ * Cure: the main board is the single flex GROWER and is allowed to
+ * SHRINK (`flex:1 1 auto; min-height:0`). It absorbs spare space when
+ * the viewport is tall (board centres + bottom-docks via its own
+ * justify-content:flex-end), and it contracts when the viewport is
+ * short. Combined with the height-aware card-size caps (see --bcard-w /
+ * --slot-w `min()` height terms near :root), the cards themselves shrink
+ * to fit instead of being clipped. Minis + top-area stay content-sized
+ * and hug the top; the board fills the gap below them.
  */
 #gameScreen.active > .mini-boards-container {
-  margin-top: auto !important;
-  flex: 0 0 auto !important;
+  flex: 0 0 auto !important;          /* content-sized, hugs the top */
 }
 #gameScreen.active > #topArea {
   flex: 0 0 auto !important;
 }
 #gameScreen.active > #mainBoardsContainer {
-  flex: 0 0 auto !important;          /* content-sized, NOT a grower */
+  flex: 1 1 auto !important;          /* THE grower — absorbs space AND can shrink */
+  min-height: 0 !important;          /* lets it shrink below content size (no clip) */
+  overflow: hidden !important;       /* safety net if a single board is still too tall */
 }
 
 /* Make sure the game-screen actually fills the viewport so

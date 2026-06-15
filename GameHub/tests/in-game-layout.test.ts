@@ -40,13 +40,43 @@ describe("In-game layout (flexbox-only)", () => {
     expect(css).toMatch(/#mainBoardsContainer\s*\{[\s\S]*?flex-wrap:\s*nowrap/);
   });
 
-  it("v78 bottom-stack: minis + game area + main boards hug the bottom, content-sized", () => {
-    // mini-boards gets margin-top:auto → pushes IT and everything after
-    // it (topArea, mainBoardsContainer) to the bottom of the viewport.
-    // Each is flex:0 0 auto so nothing stretches into the dead zone.
-    expect(css).toMatch(/#gameScreen\.active\s*>\s*\.mini-boards-container[\s\S]*?margin-top:\s*auto/);
+  it("v79 responsive rescale: above-board sections are content-sized; the main board is the GROWER that can SHRINK", () => {
+    // ─── Regression guard for the 'doesn't rescale' bug ───────────────
+    // Root cause was that EVERY child of the #gameScreen flex column was
+    // `flex:0 0 auto` (incl. #mainBoardsContainer) + `margin-top:auto` on
+    // the minis. With nothing able to grow OR shrink, on short viewports
+    // the column exceeded 100dvh and #gameScreen's overflow:hidden CLIPPED
+    // the bottom of the player's board (verified in Chromium: a 1280x720
+    // laptop cut off the bottom card row + status bar). margin-top:auto
+    // also resolved to 0 under overflow and spilled content off-screen.
+    //
+    // Fix: minis + top-area stay content-sized (hug the top); the main
+    // board becomes the single flex grower AND is allowed to shrink
+    // (flex:1 1 auto + min-height:0), so it absorbs spare space on tall
+    // screens and contracts on short ones. Paired with height-aware card
+    // caps (--card-h-cap), cards rescale to fit instead of being clipped.
+    expect(css).toMatch(/#gameScreen\.active\s*>\s*\.mini-boards-container[\s\S]*?flex:\s*0\s+0\s+auto/);
     expect(css).toMatch(/#gameScreen\.active\s*>\s*#topArea[\s\S]*?flex:\s*0\s+0\s+auto/);
-    expect(css).toMatch(/#gameScreen\.active\s*>\s*#mainBoardsContainer[\s\S]*?flex:\s*0\s+0\s+auto/);
+    expect(css).toMatch(/#gameScreen\.active\s*>\s*#mainBoardsContainer[\s\S]*?flex:\s*1\s+1\s+auto/);
+    // The grower MUST be allowed to shrink below its content size, else it
+    // clips again instead of rescaling.
+    expect(css).toMatch(/#gameScreen\.active\s*>\s*#mainBoardsContainer[\s\S]*?min-height:\s*0/);
+    // The minis must NOT carry margin-top:auto anymore (that was the
+    // bottom-dock trick that pushed content off the top under overflow).
+    expect(css).not.toMatch(/#gameScreen\.active\s*>\s*\.mini-boards-container[\s\S]*?margin-top:\s*auto/);
+  });
+
+  it("v79 responsive rescale: card width is bounded by viewport HEIGHT, not width alone", () => {
+    // The core of the bug: --bcard-w / --slot-w used width-only
+    // clamp(min, Xvw, max), so on short-but-wide viewports cards stayed
+    // full size while height collapsed → overflow + clip. They must now
+    // take the SMALLER of the width budget and a height-derived ceiling.
+    expect(css).toMatch(/--card-h-cap\s*:/);
+    expect(css).toMatch(/--bcard-w\s*:\s*min\(/);
+    expect(css).toMatch(/--slot-w\s*:\s*min\(/);
+    // The height ceiling must reference a viewport-height unit so it
+    // actually responds to height (dvh/vh).
+    expect(css).toMatch(/--card-h-cap\s*:\s*[\d.]+\s*d?vh/);
   });
 
   it("Direct children of #mainBoardsContainer (.player-board, .qwixx-table) are auto-margined → horizontally centred", () => {
