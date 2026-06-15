@@ -82,18 +82,21 @@ interface (`create / applyAction / viewFor / isOver` + optional
   share one contract — `roll(container, [{color,value}], opts) -> Promise`,
   `showStatic`, `supported`:
   - `Kit.Roller` — cartoony **2D slot machine** (`public/js/00-roller.js`): pull
-    the lever → reels spin/blur → lock in with a bouncy overshoot → settle. Pure
-    DOM/CSS (no WebGL). Customizable in 3 dimensions: reel **count**
-    (`reels.length`), reel **colour** (`reels[i].color`), reel **symbols**
-    (`reels[i].symbol`/`.icon`, or `opts.symbols` for the spinning strip). Use
-    `Kit.Roller.spin(container, {reels, lever, autoPull, onPull, onLock})` for
-    the generic API.
+    the lever → reels spin with **per-reel RNG profiles** (each wheel gets its
+    own randomized duration + deceleration flavour: `snap` = sudden stop,
+    `glide` = slow roll-on, `normal`) → each reel **bounces individually** as it
+    locks → cabinet settle-bounce. JS rAF-driven (not CSS), so the motion varies
+    every spin. Pure DOM/CSS otherwise (no WebGL). Customizable in 3 dimensions:
+    reel **count** (`reels.length`), reel **colour** (`reels[i].color`), reel
+    **symbols** (`reels[i].symbol`/`.icon`, or `opts.symbols` for the strip). Use
+    `Kit.Roller.spin(container, {reels, lever, autoPull, onPull, onLock})`.
   - `Kit.Dice3D` — WebGL physics dice (steered settle; see below).
   A game picks a renderer via a single `const ROLLER = ...` (see Qwixx) — both are
   drop-in, so swapping is one line. **Per-game customization (define on the roll
-  opts):** `marquee` (themed crown text), `jackpot(reels)->bool` (when sparkles
-  fire — each game owns its win rule) + `jackpotColor`, plus the built-in
-  coin-drop on every pull.
+  opts):** `marquee` (themed crown text), `jackpot(reels)->bool` (when sparkles +
+  cabinet glow fire — each game owns its win rule, e.g. Qwixx = "roller can close
+  a row") + `jackpotColor`, and `needed(reel)->bool` (a per-reel playful flash
+  when a wheel lands on a value the player can use).
   **Reveal timing (hardened):** `onPull` fires at spin START, `onLock` fires only
   after the reels VISUALLY settle (spin END). When a game gates marking
   options/bots on "results are official", do it in **`onLock`** (and the `roll()`

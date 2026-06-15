@@ -140,14 +140,27 @@ describe("Kit.Roller — per-game FX (marquee / jackpot / coin-drop)", () => {
     expect(q(c, ".kit-marquee-text")[0].textContent).toBe("QWIXX");
   });
 
-  it("coin-drop FX plays on pull", async () => {
+  it("no coin-drop FX (coins were removed)", async () => {
     const c = win.document.createElement("div");
     win.Kit.Roller.spin(c, { reels: [{ color: "white", symbol: "1" }], autoPull: true, autoPullDelay: 0 });
-    await new Promise(r => setTimeout(r, 60));
-    expect(q(c, ".kit-fx-coin").length).toBeGreaterThan(0);
+    await new Promise(r => setTimeout(r, 80));
+    expect(q(c, ".kit-fx-coin").length).toBe(0);
   });
 
-  it("jackpot is a PER-GAME predicate: sparkles fire only when it returns true", async () => {
+  it("each reel gets its own lock bounce, and 'needed' reels flash", { timeout: 10000 }, async () => {
+    const c = win.document.createElement("div");
+    win.Kit.Roller.spin(c, {
+      reels: [{ color: "red", symbol: "6" }, { color: "blue", symbol: "2" }],
+      autoPull: true, autoPullDelay: 0,
+      needed: (reel: any) => reel.color === "blue",   // flag the blue reel
+    });
+    await new Promise(r => setTimeout(r, 3000));
+    expect(q(c, ".kit-reel.reel-land").length).toBe(2);                 // both bounce
+    expect(q(c, ".kit-reel.reel-need").length).toBe(1);                 // only blue flashes
+    expect(q(c, '.kit-reel[data-color="blue"].reel-need').length).toBe(1);
+  });
+
+  it("jackpot is a PER-GAME predicate: sparkles fire only when it returns true", { timeout: 10000 }, async () => {
     // true predicate → sparkles
     const win1 = win.document.createElement("div");
     let calledWith: any = null;
@@ -156,7 +169,7 @@ describe("Kit.Roller — per-game FX (marquee / jackpot / coin-drop)", () => {
       autoPull: true, autoPullDelay: 0,
       jackpot: (reels: any) => { calledWith = reels; return reels.every((r: any) => r.symbol === reels[0].symbol); },
     });
-    await new Promise(r => setTimeout(r, 1600));
+    await new Promise(r => setTimeout(r, 3000));
     expect(Array.isArray(calledWith)).toBe(true);          // predicate received the reels
     expect(q(win1, ".kit-fx-spark").length).toBeGreaterThan(0);
     expect(q(win1, ".kit-slot.jackpot").length).toBe(1);
@@ -168,11 +181,11 @@ describe("Kit.Roller — per-game FX (marquee / jackpot / coin-drop)", () => {
       autoPull: true, autoPullDelay: 0,
       jackpot: () => false,
     });
-    await new Promise(r => setTimeout(r, 1600));
+    await new Promise(r => setTimeout(r, 3000));
     expect(q(lose, ".kit-fx-spark").length).toBe(0);
   });
 
-  it("HARDENING: onLock fires at the visual END (after settle), onPull at the START", async () => {
+  it("HARDENING: onLock fires at the visual END (after settle), onPull at the START", { timeout: 10000 }, async () => {
     const c = win.document.createElement("div");
     const order: string[] = [];
     win.Kit.Roller.spin(c, {
@@ -182,10 +195,10 @@ describe("Kit.Roller — per-game FX (marquee / jackpot / coin-drop)", () => {
       onLock: () => order.push("lock"),
     });
     // immediately after pull, lock must NOT have happened yet
-    await new Promise(r => setTimeout(r, 60));
+    await new Promise(r => setTimeout(r, 80));
     expect(order).toEqual(["pull"]);
-    // after the reels settle, lock fires
-    await new Promise(r => setTimeout(r, 1600));
+    // after the reels settle (JS-driven spin can take ~2s), lock fires
+    await new Promise(r => setTimeout(r, 3000));
     expect(order).toEqual(["pull", "lock"]);
   });
 
@@ -213,7 +226,22 @@ describe("Kit.Roller — wired into Qwixx as the swappable renderer", () => {
     // options don't appear until the reels have settled.
     expect(src).toMatch(/onLock:\s*reveal/);
     expect(src).toMatch(/marquee:\s*['"]QWIXX['"]/);
-    expect(src).toMatch(/jackpot:\s*\(reels\)\s*=>/);
+    // Jackpot = the roller can CLOSE a row this roll; need-flash via qwixxReelNeeded.
+    expect(src).toMatch(/jackpot:\s*\(\)\s*=>\s*canCloseRowThisRoll/);
+    expect(src).toMatch(/needed:\s*\(reel\)\s*=>\s*qwixxReelNeeded/);
+  });
+
+  it("Qwixx jackpot rule: can the roller close a row with this roll?", () => {
+    // canCloseRowThisRoll: closing needs the lock cell (12 for red/yellow, 2 for
+    // green/blue) reachable, and the row at 5+ marks (or 4 + white lands the 5th
+    // while a colour lands the lock).
+    const src = readFileSync(join(process.cwd(), "public/js/02-qwixx.js"), "utf8");
+    expect(src).toMatch(/function\s+canCloseRowThisRoll/);
+    expect(src).toMatch(/function\s+qwixxReelNeeded/);
+    // case (a): 5+ marks and the lock is reachable
+    expect(src).toMatch(/row\.marks\.length\s*>=\s*5/);
+    // case (b): exactly 4 marks, white lands the 5th, colour lands the lock
+    expect(src).toMatch(/row\.marks\.length\s*===\s*4/);
   });
 
   it("pass-and-play: activeIsMine derives from controlledSeats + bot check (not focus)", () => {
@@ -225,21 +253,23 @@ describe("Kit.Roller — wired into Qwixx as the swappable renderer", () => {
     expect(src).toMatch(/controlled\.includes\(\s*s\.activeSeat\s*\)\s*&&\s*!activeIsBot/);
   });
 
-  it("Qwixx localFocusSeat keeps the device on the active roller, then passes to the next local human", () => {
-    // Pass-and-play focus policy: the roller holds the device for their whole
-    // turn; when they finish their white mark the device passes to the next
-    // local human who still owes a white decision; in colour phase it returns to
-    // the roller. Exercise the exported policy directly with engine-shaped state.
+  it("Qwixx localFocusSeat: roller marks EVERYTHING (white + colour) before the device passes", () => {
+    // The roller holds the device for their WHOLE turn — until they've taken (or
+    // skipped) their colour mark (activeColorUsed) — then it passes to the next
+    // local human who still owes a white decision. This fixes "marks first
+    // number → device swaps even though he could mark the second".
     const fn = win.GameClients["qwixx"].localFocusSeat;
     expect(typeof fn).toBe("function");
     const humans = [0, 1, 2];
-    // Roller (0) hasn't resolved white → focus stays on roller.
-    expect(fn({ activeSeat: 0, phase: "WHITE_PHASE", pendingWhiteDecisions: [0, 1, 2] }, humans)).toBe(0);
-    // Roller resolved white (not in pending) → next pending local human (1).
-    expect(fn({ activeSeat: 0, phase: "WHITE_PHASE", pendingWhiteDecisions: [1, 2] }, humans)).toBe(1);
+    // Roller (0) hasn't resolved white → focus on roller.
+    expect(fn({ activeSeat: 0, phase: "WHITE_PHASE", pendingWhiteDecisions: [0, 1, 2], activeColorUsed: false }, humans)).toBe(0);
+    // Roller took their WHITE mark but NOT their colour yet → STILL on roller
+    // (the old bug yanked the device away here).
+    expect(fn({ activeSeat: 0, phase: "WHITE_PHASE", pendingWhiteDecisions: [1, 2], activeColorUsed: false }, humans)).toBe(0);
+    // Roller has taken/declined their colour (activeColorUsed) → pass to the next
+    // pending local human (1).
+    expect(fn({ activeSeat: 0, phase: "WHITE_PHASE", pendingWhiteDecisions: [1, 2], activeColorUsed: true }, humans)).toBe(1);
     // …then 2.
-    expect(fn({ activeSeat: 0, phase: "WHITE_PHASE", pendingWhiteDecisions: [2] }, humans)).toBe(2);
-    // All white resolved, colour phase → back to the roller for their colour mark.
-    expect(fn({ activeSeat: 0, phase: "COLOR_PHASE", pendingWhiteDecisions: [] }, humans)).toBe(0);
+    expect(fn({ activeSeat: 0, phase: "WHITE_PHASE", pendingWhiteDecisions: [2], activeColorUsed: true }, humans)).toBe(2);
   });
 });

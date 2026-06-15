@@ -26,6 +26,84 @@ window.GameClients = window.GameClients || {};
     if(row.marks.includes(row.nums.length - 1)) m++; // lock symbol
     return SCORE_BY_MARKS[Math.min(m, SCORE_BY_MARKS.length - 1)];
   }
+
+  // Does a given REEL show a value the focused player can actually USE? Drives
+  // the playful per-reel flash. White reels are judged by the white SUM (both
+  // whites together); a colour reel by the active roller's white+colour combos.
+  function qwixxReelNeeded(reel, state, seat, dice){
+    if(!reel || !state || !dice) return false;
+    const player = (state.allPlayers && state.allPlayers[seat]) || null;
+    const rows = player ? player.rows : null;
+    if(!rows) return false;
+    const canMarkValueAnyRow = (val, restrictColor) => {
+      for(const color of COLORS){
+        if(restrictColor && color !== restrictColor) continue;
+        if(state.locked && state.locked.includes(color)) continue;
+        const row = rows[color];
+        if(!row) continue;
+        const idx = row.nums.indexOf(val);
+        if(idx >= 0 && canMarkIndex(state, color, row, idx)) return true;
+      }
+      return false;
+    };
+    if(reel.color === 'white'){
+      // White reels combine; flag them both when the white SUM is markable.
+      return canMarkValueAnyRow(dice.w[0] + dice.w[1]);
+    }
+    // Colour reel: only the active roller can use it, via white+colour combos,
+    // and only on its OWN row colour.
+    if(seat !== state.activeSeat) return false;
+    const die = dice[COLOR_KEY[reel.color]];
+    if(!die) return false;
+    return canMarkValueAnyRow(dice.w[0] + die, reel.color) || canMarkValueAnyRow(dice.w[1] + die, reel.color);
+  }
+
+  // ── Jackpot rule: can the ACTIVE roller CLOSE a row with this roll? ──────
+  // Closing a row = marking its right-most cell (the 12 for red/yellow, the 2
+  // for green/blue), which is only legal once the row already has 5 marks.
+  // Two ways this roll can enable a close:
+  //   (a) 5+ marks already → the lock cell's value is reachable by the white
+  //       combo (w0+w1) OR a colour combo (white die + matching colour die).
+  //   (b) exactly 4 marks  → the WHITE combo marks a not-yet-marked cell to the
+  //       LEFT of the lock (raising marks to 5), AND a COLOUR combo equals the
+  //       lock value — so both can be taken this turn (white first, then colour),
+  //       closing the row. e.g. white 5+6=11 marks the 11, then white6+colour6=12
+  //       closes red/yellow.
+  function canCloseRowThisRoll(state, seat, dice){
+    if(!state || !dice) return false;
+    const player = (state.allPlayers && state.allPlayers[seat]) || null;
+    const rows = player ? player.rows : (state.players && state.players[seat] && state.players[seat].rows);
+    if(!rows) return false;
+    const wSum = dice.w[0] + dice.w[1];
+    const colourSums = (color) => {
+      const die = dice[COLOR_KEY[color]];
+      if(!die) return [];
+      return [dice.w[0] + die, dice.w[1] + die];
+    };
+    for(const color of COLORS){
+      if(state.locked && state.locked.includes(color)) continue;
+      const row = rows[color];
+      if(!row) continue;
+      const lockIdx = row.nums.length - 1;
+      const lockVal = row.nums[lockIdx];
+      if(row.marks.includes(lockIdx)) continue;            // already closed
+      const lockReachable = (wSum === lockVal) || colourSums(color).includes(lockVal);
+      if(!lockReachable) continue;
+      // (a) already eligible to mark the lock cell (5+ marks, nothing past it)
+      if(row.marks.length >= 5 && lastMark(row) < lockIdx) return true;
+      // (b) exactly 4 marks: white combo can mark a 5th cell left of the lock,
+      //     leaving the colour combo to take the lock value.
+      if(row.marks.length === 4){
+        const lockByColour = colourSums(color).includes(lockVal);
+        if(!lockByColour) continue;                        // need colour for the lock
+        const whiteIdx = row.nums.indexOf(wSum);
+        // a legal 5th mark: a not-yet-marked cell, left of the lock, after the
+        // current last mark, reachable by the white sum.
+        if(whiteIdx > lastMark(row) && whiteIdx >= 0 && whiteIdx < lockIdx && !row.marks.includes(whiteIdx)) return true;
+      }
+    }
+    return false;
+  }
   function scoreRows(rows, penalties){
     let total = 0;
     COLORS.forEach(c => { const row = rows[c]; if(row) total += rowPoints(row); });
@@ -427,7 +505,13 @@ window.GameClients = window.GameClients || {};
     const diceTray = ctx.persist?.('qwixx:dice') || $('qwixxDiceKit') || document.querySelector('[data-persist-id="qwixx:dice"]');
     const throwBtn = $('qwixxThrowBtn');
     // Slot reels read better a bit chunkier than the WebGL dice; size per renderer.
-    const dsize = usesLever ? (innerWidth < 760 ? 44 : 58) : (innerWidth < 760 ? 30 : 42);
+    // Adaptive slot reel size: grow it when there's screen room (tall + wide),
+    // shrink on phones. (Drop-in WebGL dice keep their compact sizing.)
+    const big = innerHeight >= 1000 && innerWidth >= 980;
+    const tall = innerHeight >= 800 && innerWidth >= 760;
+    const dsize = usesLever
+      ? (innerWidth < 760 ? 44 : big ? 80 : tall ? 68 : 58)
+      : (innerWidth < 760 ? 30 : 42);
     // Run the roll through the selected ROLLER. For the slot machine the ACTIVE
     // player gets the lever to pull (lever:true); everyone else (opponents /
     // late joiners) sees the reels auto-pull so they watch the same spin without
@@ -453,13 +537,15 @@ window.GameClients = window.GameClients || {};
         size: dsize, lever, autoPull: usesLever && !activeIsMine,
         // Per-game themed crown.
         marquee: 'QWIXX',
-        // Per-game jackpot: all four COLOURED dice show the same number — a rare,
-        // delightful Qwixx roll. Sparkles tinted to that lucky colour.
-        jackpot: (reels) => {
-          const cols = reels.filter(r => r.color !== 'white').map(r => r.value);
-          return cols.length >= 2 && cols.every(v => v === cols[0]);
-        },
+        // Per-game jackpot: this roll lets the ACTIVE roller CLOSE a row (mark
+        // its 2/12 lock). A genuinely exciting Qwixx moment → sparkles.
+        jackpot: () => canCloseRowThisRoll(s, s.activeSeat, dice),
         jackpotColor: 'yellow',
+        // Per-reel "you needed this!" flash: a reel that landed on a value the
+        // FOCUSED local player can actually use right now (a legal mark for the
+        // white sum on any row, or — for the active roller in colour phase — a
+        // colour-die combo). Purely cosmetic delight.
+        needed: (reel) => qwixxReelNeeded(reel, s, focused.seat, dice),
         onLock: reveal,                 // reveal after the reels visually settle
       }).then(()=>{
         reveal();                       // belt-and-braces (also covers WebGL path)
@@ -561,28 +647,29 @@ window.GameClients = window.GameClients || {};
     return false;
   }
 
-  // localFocusSeat — pass-and-play focus policy (fixes "P1 board shows on P2's
-  // turn" + "boards swap too frequently"). Qwixx's white phase is SIMULTANEOUS,
-  // so the engine's currentSeat is -1 and the default focus (first pending-white
-  // seat) ping-ponged the device between players on every sub-decision.
+  // localFocusSeat — pass-and-play focus policy. The user's rule: the ACTIVE
+  // ROLLER marks EVERYTHING first (their white mark AND their colour mark, or
+  // skip/penalty to end), THEN the device passes to the next local seat.
   //
-  // Policy the user asked for: the ACTIVE ROLLER keeps the device for their whole
-  // turn (they roll, then mark/skip/penalty). Only once they're done do we pass
-  // the device to the next LOCAL human who still owes a white decision this turn.
-  // Online/bot seats resolve simultaneously without stealing the local focus.
+  // Key fact: the engine lets the active roller take their COLOUR mark during the
+  // white phase too (colorLegal doesn't require COLOR_PHASE). So the roller can
+  // do white → colour back-to-back. The old policy released the roller the
+  // instant their WHITE resolved — which yanked the device away before they could
+  // take their colour. Now we hold the roller until they've made their COLOUR
+  // decision (activeColorUsed) or ended the turn (which advances activeSeat).
   function localFocusSeat(state, humanSeats){
     if(!state) return (humanSeats && humanSeats[0]) || 0;
     const isHuman = (seat) => Array.isArray(humanSeats) && humanSeats.includes(seat);
     const pending = Array.isArray(state.pendingWhiteDecisions) ? state.pendingWhiteDecisions : [];
     const active = state.activeSeat;
-    // 1) Hold focus on the active roller while THEY still have something to do
-    //    this turn: their white decision is unresolved, OR they're past white
-    //    (colour phase) and haven't ended the turn. (When the roller fully
-    //    finishes, the engine advances activeSeat — so this naturally releases.)
-    const rollerNotDone = pending.includes(active) || state.phase === 'COLOR_PHASE';
-    if(isHuman(active) && rollerNotDone) return active;
-    // 2) Roller is done (or is a bot/remote): hand the device to the next LOCAL
-    //    human who still owes a white mark this turn, in seat order.
+    // 1) Hold the active roller for their WHOLE turn — until they've made BOTH
+    //    marks (white resolved AND colour taken) or skipped/finished. While the
+    //    roller hasn't taken their colour yet (!activeColorUsed) they may still
+    //    act, so keep the device on them. (Finishing/penalty advances activeSeat,
+    //    which releases this naturally.)
+    if(isHuman(active) && !state.activeColorUsed) return active;
+    // 2) Roller finished their marks (or is a bot/remote): hand the device to the
+    //    next LOCAL human who still owes a white mark this turn, in seat order.
     const nextLocalPending = (humanSeats || []).filter(s => pending.includes(s)).sort((a,b)=>a-b)[0];
     if(nextLocalPending != null) return nextLocalPending;
     // 3) Nothing pending locally → keep the device on the roller if it's ours,

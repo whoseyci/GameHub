@@ -81,9 +81,14 @@
      * game has fewer rows. The clamp() min floors keep cards tappable.
      */
     --card-h-cap: 10dvh;             /* height-derived width ceiling (3-row boards) */
-    --slot-w:min(clamp(58px,16vw,84px), calc(var(--card-h-cap) * 1.15));
+    /* --card-max is the WIDTH clamp ceiling. It grows on tall/large viewports
+       (adaptive screen-area attribution) so the board fills the void instead of
+       floating in empty space; capped again by --card-h-cap on short screens. */
+    --card-max: 74px;
+    --slot-max: 84px;
+    --slot-w:min(clamp(58px,16vw,var(--slot-max)), calc(var(--card-h-cap) * 1.15));
     --slot-h:calc(var(--slot-w)*1.42);
-    --bcard-w:min(clamp(52px,15vw,74px), var(--card-h-cap));
+    --bcard-w:min(clamp(52px,15vw,var(--card-max)), var(--card-h-cap));
     --bcard-h:calc(var(--bcard-w)*1.42);
     --topbar-h:52px;
   }
@@ -443,6 +448,26 @@ html,body,#app{height:100%;max-height:100%;overflow:hidden}.screen{min-height:0}
    overflowing #gameScreen's clip. Paired with the min() caps at :root. */
 @media(max-height:600px){:root{--card-h-cap:7.2dvh}}
 @media(max-height:500px){:root{--card-h-cap:6.5dvh}}
+/* ── Adaptive screen-area attribution ──────────────────────────────────
+   When there's vertical headroom, grow the cards (raise the width clamp +
+   height ceiling) and the opponent mini-strip so the board, slot and minis
+   fill the void instead of floating in empty space. Tiered by viewport height
+   AND width (don't blow cards up on a tall-but-narrow phone). */
+@media(min-height:800px) and (min-width:760px){
+  :root{--card-h-cap:13dvh; --card-max:92px; --slot-max:104px}
+  #gameScreen .qwixx-top-mini-strip{max-height:24dvh}
+  /* Qwixx scorecard (not a card-grid game) grows its cells + width to fill room */
+  .qwixx-scorecard:not(.compact){max-width:1040px}
+  .qwixx-scorecard:not(.compact) .qwixx-cell{min-height:60px}
+  .qwixx-top-mini-strip{grid-template-columns:repeat(auto-fit,minmax(170px,1fr))}
+}
+@media(min-height:1000px) and (min-width:980px){
+  :root{--card-h-cap:15dvh; --card-max:108px; --slot-max:124px}
+  #gameScreen .qwixx-top-mini-strip{max-height:26dvh}
+  .qwixx-scorecard:not(.compact){max-width:1120px}
+  .qwixx-scorecard:not(.compact) .qwixx-cell{min-height:72px}
+  .qwixx-top-mini-strip{grid-template-columns:repeat(auto-fit,minmax(200px,1fr))}
+}
 /* Landscape phones are very short (≤500px tall). The dedicated 2-col grid
    layout below is overridden by the hardened `display:flex !important` on
    #gameScreen.active, so we stay a flex column here. To fit 3 card-rows +
@@ -1405,19 +1430,26 @@ html, body, #app { height: 100dvh !important; min-height: 100dvh !important; max
   text-shadow:0 1px 0 rgba(255,255,255,.25)}
 .kit-reel .kit-icon{color:var(--reel-text,#111827)}
 
-/* Spinning: the strip streams upward fast (no transition); .blur softens it. */
-.kit-slot.spinning .kit-reel:not(.locked) .kit-reel-strip{animation:kitReelSpin .18s linear infinite}
-@keyframes kitReelSpin{from{transform:translateY(0)}to{transform:translateY(calc(-1*var(--reel-size)*3))}}
+/* Spin motion is JS-driven (per-reel RNG duration/easing in 00-roller.js); CSS
+   only softens the streaming faces with a motion blur. */
 .kit-reel.blur .kit-reel-cell{filter:blur(1.4px)}
-/* Landing: transition the strip to its final offset with a bouncy ease so it
-   overshoots and snaps back — the "lock in" feel. */
-.kit-reel.landing .kit-reel-strip{animation:none;transition:transform .5s cubic-bezier(.16,1.5,.3,1)}
 .kit-reel.locked{box-shadow:inset 0 0 0 2px var(--reel-edge,#cbd5e1), inset 0 8px 12px rgba(0,0,0,.4), 0 0 0 2px rgba(255,255,255,.06)}
 .kit-reel.locked .kit-reel-cell{border-bottom-color:transparent}
+/* Individual lock-in bounce — each reel gives its own little squash-and-pop the
+   instant it settles (JS toggles .reel-land). */
+.kit-reel.reel-land{animation:kitReelLand .42s cubic-bezier(.2,1.6,.35,1)}
+@keyframes kitReelLand{0%{transform:translateY(-7%) scale(1.04,.92)}45%{transform:translateY(2%) scale(.97,1.06)}100%{transform:translateY(0) scale(1)}}
+/* Playful "you needed this!" flash — JS adds .reel-need when the landed value is
+   one the player can use (per-game opts.needed). A gold pulse + ring. */
+.kit-reel.reel-need{animation:kitReelNeed 1.1s ease-out 1}
+.kit-reel.reel-need::before{content:'';position:absolute;inset:-3px;border-radius:inherit;z-index:3;pointer-events:none;
+  box-shadow:0 0 0 2px #fde68a, 0 0 14px 2px rgba(251,191,36,.8);animation:kitReelNeedRing 1.1s ease-out 1}
+@keyframes kitReelNeed{0%,100%{filter:brightness(1)}30%{filter:brightness(1.5) saturate(1.3)}60%{filter:brightness(1.2)}}
+@keyframes kitReelNeedRing{0%{opacity:0}20%{opacity:1}100%{opacity:0}}
 @media (prefers-reduced-motion: reduce){
   .kit-slot.await-pull,.kit-slot.settle{animation:none}
-  .kit-slot.spinning .kit-reel:not(.locked) .kit-reel-strip{animation:none}
-  .kit-reel.landing .kit-reel-strip{transition:none}
+  .kit-reel.reel-land,.kit-reel.reel-need{animation:none}
+  .kit-reel.reel-need::before{animation:none;opacity:.9}
 }
 
 /* ── Lever ── a chrome track with a mounting base; the red knob (on its arm)
@@ -1451,20 +1483,8 @@ html, body, #app { height: 100dvh !important; min-height: 100dvh !important; max
 .kit-slot-lever:active .kit-lever-knob{top:50%}
 @media (prefers-reduced-motion: reduce){.kit-slot.await-pull .kit-lever-knob{animation:none}}
 
-/* ── Kit.Roller FX layer: coin-drop on pull + jackpot sparkles on win ── */
+/* ── Kit.Roller FX layer: jackpot sparkles on win ── */
 .kit-slot-fx{position:absolute;inset:0;pointer-events:none;z-index:6;overflow:visible}
-/* coins plink down from the marquee into the housing on pull */
-.kit-fx-coin{position:absolute;top:calc(var(--reel-size,56px)*.2);left:calc(50% + var(--cx,0%));
-  width:calc(var(--reel-size,56px)*.3);height:calc(var(--reel-size,56px)*.3);border-radius:50%;
-  background:radial-gradient(circle at 35% 30%,#fff4c2,#fbbf24 55%,#b8860b);
-  box-shadow:0 1px 3px rgba(0,0,0,.5), inset 0 1px 2px rgba(255,255,255,.6);
-  animation:kitCoinDrop .72s cubic-bezier(.45,.05,.6,1) forwards}
-@keyframes kitCoinDrop{
-  0%{transform:translateY(0) scale(.6) rotate(0);opacity:0}
-  15%{opacity:1}
-  70%{transform:translateY(calc(var(--reel-size,56px)*1.1)) scale(1) rotate(220deg);opacity:1}
-  100%{transform:translateY(calc(var(--reel-size,56px)*1.4)) scale(.4) rotate(320deg);opacity:0}
-}
 /* jackpot sparkles burst from centre on a winning lock */
 .kit-fx-spark{position:absolute;top:50%;left:50%;width:calc(var(--reel-size,56px)*.16);height:calc(var(--reel-size,56px)*.16);
   border-radius:50%;background:#fde68a;box-shadow:0 0 calc(var(--reel-size,56px)*.18) #fbbf24;
@@ -1479,6 +1499,6 @@ html, body, #app { height: 100dvh !important; min-height: 100dvh !important; max
 @keyframes kitJackpotGlow{from{box-shadow:0 18px 38px rgba(0,0,0,.5),inset 0 2px 0 rgba(255,255,255,.14),inset 0 -8px 18px rgba(0,0,0,.5),0 0 0 1px rgba(255,255,255,.05)}
   to{box-shadow:0 18px 44px rgba(251,191,36,.4),inset 0 2px 0 rgba(255,255,255,.3),inset 0 -8px 18px rgba(0,0,0,.4),0 0 0 2px rgba(251,191,36,.6),0 0 40px rgba(251,191,36,.5)}}
 @media (prefers-reduced-motion: reduce){
-  .kit-fx-coin,.kit-fx-spark{display:none}
+  .kit-fx-spark{display:none}
   .kit-slot.jackpot{animation:none}
 }

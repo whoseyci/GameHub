@@ -99,11 +99,14 @@
     const strip = document.createElement('div');
     strip.className = 'kit-reel-strip';
 
-    // The spinning strip: a run of random faces, then the FINAL face last so the
-    // strip ends on the predetermined result when it stops.
+    // The spinning strip: a long run of random faces ending on the FINAL face
+    // (the predetermined result), so the strip's LAST cell is the result. The
+    // animator (in spin()) translates the strip upward by N full strip-heights
+    // for the "streaming" effect, then settles on this last cell. Cell 0 (shown
+    // at rest) is a random face so the result isn't visible before the pull.
     const faces = spec.symbols || opts.symbols || DEFAULT_SYMBOLS;
     const landed = spec.icon ? { icon: spec.icon } : (spec.symbol != null ? spec.symbol : spec.value);
-    const runLen = REDUCE ? 1 : (10 + idx * 3);           // staggered length → staggered stop
+    const runLen = REDUCE ? 0 : 16;                        // streaming faces before the result
     const cells = [];
     for (let i = 0; i < runLen; i++) {
       cells.push(faces[Math.floor(Math.random() * faces.length)]);
@@ -117,6 +120,7 @@
     reel.appendChild(window_);
     reel._strip = strip;
     reel._cellCount = cells.length;
+    reel._faces = faces;
     return reel;
   }
 
@@ -200,19 +204,6 @@
     container.appendChild(machine);
 
     // ── FX helpers (per-game customizable) ────────────────────────────────
-    // Coin-drop: a couple of coins plink into the slot when the lever is pulled.
-    function dropCoins() {
-      if (REDUCE) return;
-      const n = 3;
-      for (let i = 0; i < n; i++) {
-        const coin = document.createElement('span');
-        coin.className = 'kit-fx-coin';
-        coin.style.setProperty('--cx', (Math.random() * 40 - 20) + '%');
-        coin.style.animationDelay = (i * 90) + 'ms';
-        fx.appendChild(coin);
-        setTimeout(() => coin.remove(), 900 + i * 90);
-      }
-    }
     // Jackpot sparkles: fired on a winning lock. WHETHER a roll is a "jackpot"
     // is DEFINED PER GAME via opts.jackpot(reels) -> boolean. (Omit it and no
     // sparkles ever fire.) opts.jackpotColor themes the sparkles.
@@ -244,68 +235,120 @@
       catch (e) { /* a bad predicate must never break the roll */ }
     }
 
+    // Mark reels the player NEEDS (per-game predicate) so they can flash on land.
+    // opts.needed(reel, index) -> bool. Used purely for the playful win-flash.
+    const isNeeded = (i) => {
+      try { return typeof opts.needed === 'function' && !!opts.needed(reels[i], i); }
+      catch { return false; }
+    };
+
+    // Per-reel RNG spin profile — gives each wheel its own personality so no two
+    // spins feel identical: a randomized duration, one of a few deceleration
+    // "flavours" (snap = sudden stop, glide = slow roll-onto-target, normal),
+    // and a randomized streaming speed (via extra travel distance). This is the
+    // "sometimes faster, sometimes slower, sometimes a sudden stop, sometimes a
+    // slow roll-on" the design called for.
+    const FLAVOURS = ['snap', 'glide', 'normal', 'normal'];   // weight 'normal'
+    function spinProfile(i) {
+      const flavour = FLAVOURS[(Math.random() * FLAVOURS.length) | 0];
+      const baseDur = 1100 + Math.random() * 700;             // 1.1–1.8s of spin
+      const stagger = i * (220 + Math.random() * 160);        // staggered stops
+      return { flavour, dur: baseDur + stagger };
+    }
+    // Easing per flavour (t in 0..1 -> eased 0..1, ending at 1 = on target).
+    function easeFor(flavour) {
+      if (flavour === 'snap') {
+        // mostly linear, then a hard late stop (sudden)
+        return (t) => (t < 0.86 ? t * 0.92 : 0.79 + (t - 0.86) / 0.14 * 0.21);
+      }
+      if (flavour === 'glide') {
+        // long slow roll onto the target (strong ease-out)
+        return (t) => 1 - Math.pow(1 - t, 3.4);
+      }
+      // normal — classic ease-out
+      return (t) => 1 - Math.pow(1 - t, 2.2);
+    }
+
     return new Promise(resolve => {
       let started = false;
+
+      function finishReel(el, i, done) {
+        el.classList.remove('blur');
+        el.classList.add('locked');
+        // individual lock bounce (each reel snaps with its own little jolt)
+        el.classList.remove('reel-land'); void el.offsetWidth; el.classList.add('reel-land');
+        // playful flash if this reel landed on a value the player needs
+        if (isNeeded(i)) { el.classList.add('reel-need'); }
+        if (typeof SFX !== 'undefined' && SFX.flip) SFX.flip();
+        if (typeof opts.onClack === 'function') opts.onClack();
+        done();
+      }
 
       function lockAll() {
         if (started) return; started = true;
         if (lever) lever.classList.add('pulled');
         machine.classList.add('spinning');
-        dropCoins();                                      // coin-drop on pull
         if (typeof opts.onPull === 'function') opts.onPull();
         if (typeof SFX !== 'undefined' && SFX.draw) SFX.draw();
 
         if (REDUCE) {
-          // Reduced motion: skip the animation, show the landed faces at once.
-          reelEls.forEach(el => { el.classList.add('locked'); el._strip.style.transform = `translateY(calc(-1 * var(--reel-size) * ${el._cellCount - 1}))`; });
+          reelEls.forEach((el, i) => { el.classList.add('locked'); el._strip.style.transform = `translateY(calc(-1 * var(--reel-size) * ${el._cellCount - 1}))`; if (isNeeded(i)) el.classList.add('reel-need'); });
           machine.classList.remove('spinning');
           machine.classList.add('locked-in');
           maybeJackpot();
-          // onLock fires at the VISUAL end — here, immediately (no animation).
           if (typeof opts.onLock === 'function') opts.onLock();
           setTimeout(resolve, 60);
           return;
         }
 
-        const stopBase = 700, stopStep = 360;            // first reel stops at 700ms, each +360ms
+        const sizePx = size;
         let stopped = 0;
+        const onAllStopped = () => {
+          machine.classList.remove('spinning');
+          machine.classList.add('settle', 'locked-in');
+          if (typeof SFX !== 'undefined' && SFX.reveal) SFX.reveal();
+          maybeJackpot();
+          // HARDENING: onLock (the game's "results are official" hook) fires ONLY
+          // here, after every reel has VISUALLY settled — never on pull.
+          if (typeof opts.onLock === 'function') opts.onLock();
+          setTimeout(() => { machine.classList.remove('settle'); resolve(); }, 420);
+        };
+
         reelEls.forEach((el, i) => {
           el.classList.add('blur');
-          const finalShift = el._cellCount - 1;          // land on the last cell (the result)
-          const stopAt = stopBase + i * stopStep;
-          // Animate the strip to its final position; CSS transition gives the
-          // bouncy overshoot-and-settle (see .kit-reel-strip.landing).
-          setTimeout(() => {
-            el.classList.remove('blur');
-            el.classList.add('landing');
-            el._strip.style.transform = `translateY(calc(-1 * var(--reel-size) * ${finalShift}))`;
-            el.classList.add('locked');
-            if (typeof SFX !== 'undefined' && SFX.flip) SFX.flip();
-            if (typeof opts.onClack === 'function') opts.onClack();
-            stopped++;
-            if (stopped === reelEls.length) {
-              // Whole machine settle-bounce + payline flash.
-              machine.classList.remove('spinning');
-              machine.classList.add('settle', 'locked-in');
-              if (typeof SFX !== 'undefined' && SFX.reveal) SFX.reveal();
-              maybeJackpot();
-              // HARDENING: onLock (the game's "results are now official" hook)
-              // fires ONLY here, after the reels have VISUALLY settled — never on
-              // pull. This is what lets Qwixx defer revealing marking options
-              // until the animation has truly ended.
-              if (typeof opts.onLock === 'function') opts.onLock();
-              setTimeout(() => { machine.classList.remove('settle'); resolve(); }, 420);
+          // Travel from cell 0 (shown at rest) UP to the last cell (the result):
+          // translateY goes 0 → -targetPx. The strip is a fixed run of faces, so
+          // the streaming speed/feel is shaped entirely by the per-reel duration
+          // + easing flavour (snap / glide / normal) — that's the RNG variety.
+          const targetPx = (el._cellCount - 1) * sizePx;
+          const prof = spinProfile(i);
+          const ease = easeFor(prof.flavour);
+          // Use our OWN clock (performance.now) rather than the rAF-passed
+          // timestamp: some environments (and the jsdom test polyfill) pass
+          // Date.now() to rAF callbacks, which wouldn't share an origin with a
+          // performance.now() t0 and would make t jump straight to >=1.
+          const clock = () => (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+          const t0 = clock();
+          function frame() {
+            const t = (clock() - t0) / prof.dur;
+            if (t >= 1) {
+              el._strip.style.transform = `translateY(${-targetPx}px)`;
+              finishReel(el, i, () => { stopped++; if (stopped === reelEls.length) onAllStopped(); });
+              return;
             }
-          }, stopAt);
+            const pos = -targetPx * ease(t);                 // negative = upward
+            el._strip.style.transform = `translateY(${pos}px)`;
+            if (t > 0.82) el.classList.remove('blur');       // crisp final number
+            requestAnimationFrame(frame);
+          }
+          requestAnimationFrame(frame);
         });
       }
 
       if (wantLever) {
         lever.addEventListener('click', lockAll, { once: true });
-        // Nudge so the player notices the lever.
         machine.classList.add('await-pull');
       } else {
-        // Auto-pull after a short beat (opponents / replay).
         setTimeout(lockAll, opts.autoPullDelay != null ? opts.autoPullDelay : 250);
       }
     });

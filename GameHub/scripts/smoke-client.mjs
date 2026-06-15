@@ -258,21 +258,30 @@ async function smokeQwixx(window, document) {
   assert(window.eval('Kit.Roller.supported() === true'), 'Roller: supported() should be true (pure DOM/CSS)');
   assert(window.eval('typeof Kit.Dice3D?.roll === "function"'), 'Dice3D: Kit.Dice3D.roll missing');
 
-  // Pass-and-play rotation: the white phase is SIMULTANEOUS, so the display must
-  // rotate to EACH seat that still has a pending white decision (driving via act(),
-  // which targets the focused/displayed seat — the realistic on-screen-button path).
-  // If focus stuck on seat 0, seat 1 could never make its choice (the real bug).
-  assert(window._renderView.yourSeat === 0, 'Qwixx: white phase should start focused on the first pending seat (0)');
+  // Pass-and-play turn order (current policy): the ACTIVE ROLLER keeps the device
+  // for their WHOLE turn — they make their white mark AND their colour mark (or
+  // skip/penalty to end) before the device passes to the next local seat. Only
+  // once the roller is done (activeColorUsed) does focus rotate to the next seat
+  // that still owes a white decision. (The old policy yanked the device away the
+  // moment the roller resolved white — before they could take their colour.)
+  assert(window._renderView.yourSeat === 0, 'Qwixx: turn should start focused on the active roller (0)');
   const before = localView(window, 0).qwixx.pendingWhiteDecisions.length;
-  window.GameClients['qwixx'].act('skip');   // focused seat (0) makes its white choice
+  window.GameClients['qwixx'].act('skip');   // roller (0) skips their white mark
   await sleep(150);
   const after = localView(window, 0).qwixx.pendingWhiteDecisions.length;
   assert(after < before, 'Qwixx: skip action did not advance white-phase decisions');
-  assert(window._renderView.yourSeat === 1, 'Qwixx: focus did not rotate to the next pending seat (1) — pass-and-play stuck on seat 0');
-  window.GameClients['qwixx'].act('skip');   // seat 1 makes its white choice
+  // Roller resolved white but hasn't taken their colour → device STAYS on them.
+  assert(window._renderView.yourSeat === 0, 'Qwixx: device should stay on the roller until they finish their colour mark');
+  window.GameClients['qwixx'].act('finishTurn');   // roller declines their colour → turn-end
   await sleep(200);
-  assert(localView(window, -1).qwixx.phase !== 'WHITE_PHASE' || localView(window, -1).qwixx.pendingWhiteDecisions.length === 0,
-    'Qwixx: white phase did not resolve after both seats decided');
+  // Now the device passes to the next local human who still owes a white mark (1).
+  assert(window._renderView.yourSeat === 1, 'Qwixx: focus did not pass to the next pending seat (1) after the roller finished');
+  window.GameClients['qwixx'].act('skip');   // seat 1 makes its white choice → turn ends
+  await sleep(200);
+  // Both seats decided + the roller had finished → the turn advanced to the next
+  // player (activeSeat is now 1), proving the full turn resolved cleanly.
+  assert(localView(window, -1).qwixx.activeSeat === 1,
+    'Qwixx: turn did not advance to the next player after both seats decided');
 
   window.quitLocal();
   await sleep(50);
@@ -603,7 +612,11 @@ async function smokeBoardRotation(window, document) {
     if (b && b.classList.contains('board-rotate-in')) sawRotate = true;
   }, 15);
   const before = window._renderView.yourSeat;
-  window.GameClients['qwixx'].act('skip');   // seat 0 decides → focus rotates to seat 1
+  // The roller must finish their WHOLE turn before the device passes: skip the
+  // white mark, then finishTurn (decline colour). Focus then rotates to seat 1.
+  window.GameClients['qwixx'].act('skip');        // roller skips white
+  await sleep(150);
+  window.GameClients['qwixx'].act('finishTurn');  // roller declines colour → pass
   await sleep(600);
   clearInterval(obs);
   assert(window._renderView.yourSeat !== before, 'BoardRotation: focus should have changed seats');
