@@ -906,8 +906,10 @@ const GameShell=(()=>{
 
   // Declarative table renderer. Games provide fragments; the shell owns where
   // they go and guarantees prior game fragments are removed.
-  function renderTable({game='',opponents='',center='',focus='',status='',topMode='custom',opponentClass=''}={}){
+  function renderTable({game='',opponents='',center='',focus='',status='',topMode='custom',opponentClass='',fit=true}={}){
     const mini=$('miniBoardsContainer'),top=$('topArea'),main=$('mainBoardsContainer'),sb=$('statusBar');
+    // Release any previous Kit.Fit on the old focus board before we replace it.
+    if(typeof Kit!=='undefined'&&Kit.Fit&&main){main.querySelectorAll('[data-kit-fit-scale]').forEach(n=>Kit.Fit.release(n));}
     if(mini){mini.innerHTML='';mini.className='mini-boards-container '+opponentClass;const node=el(opponents);if(node)mini.appendChild(node);mountPersistedSlots(mini);}
     if(top){
       top.querySelectorAll('.game-shell-center,.qwixx-dice-zone,.qwixx-top-mini-strip').forEach(n=>n.remove());
@@ -916,7 +918,21 @@ const GameShell=(()=>{
       else if(topMode==='hidden'){top.style.display='none';}
       else {top.style.display='flex';if(piles)piles.style.display='none';if(held)held.style.display='none';const c=document.createElement('div');c.className='game-shell-center '+game;const node=el(center);if(node)c.appendChild(node);top.appendChild(c);mountPersistedSlots(c);}
     }
-    if(main){setHTML(main,focus);mountPersistedSlots(main);}
+    if(main){setHTML(main,focus);mountPersistedSlots(main);
+      // ── Smart adaptive sizing for EVERY game ──────────────────────────
+      // Auto-fit the focus board to fill #mainBoardsContainer: it grows into
+      // void space and shrinks to avoid overflow, regardless of the game's
+      // internal layout. Games can opt out with renderTable({fit:false}) or
+      // tune via fit:{min,max,...}. The first element child is the board root.
+      if(fit && typeof Kit!=='undefined' && Kit.Fit){
+        const board=main.firstElementChild;
+        if(board){
+          const fitOpts = (typeof fit==='object') ? fit : {};
+          // requestAnimationFrame so the new content has laid out before measuring.
+          requestAnimationFrame(()=>{ try{ Kit.Fit.apply(main, board, fitOpts); }catch(e){ console.warn('Kit.Fit threw',e); } });
+        }
+      }
+    }
     if(sb&&status!=null)sb.innerHTML=status||'';
     if(typeof Kit!=='undefined'&&Kit.CardManager){requestAnimationFrame(()=>{Kit.CardManager.sync();Kit.assertCardInvariants&&Kit.assertCardInvariants('renderTable');});setTimeout(()=>Kit.CardManager.sync(),80);setTimeout(()=>Kit.CardManager.sync(),550);}
   }

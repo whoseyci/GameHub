@@ -449,23 +449,17 @@ html,body,#app{height:100%;max-height:100%;overflow:hidden}.screen{min-height:0}
 @media(max-height:600px){:root{--card-h-cap:7.2dvh}}
 @media(max-height:500px){:root{--card-h-cap:6.5dvh}}
 /* ── Adaptive screen-area attribution ──────────────────────────────────
-   When there's vertical headroom, grow the cards (raise the width clamp +
-   height ceiling) and the opponent mini-strip so the board, slot and minis
-   fill the void instead of floating in empty space. Tiered by viewport height
-   AND width (don't blow cards up on a tall-but-narrow phone). */
+   The FOCUS board now auto-scales to fill #mainBoardsContainer via Kit.Fit
+   (00-kit-fit.js) — content-aware, every game, no per-game guessing. So we no
+   longer grow card-size vars here (that would double-scale). We DO still give
+   the OPPONENT mini-strip (which Kit.Fit doesn't manage) more room + bigger
+   tiles when there's vertical headroom. */
 @media(min-height:800px) and (min-width:760px){
-  :root{--card-h-cap:13dvh; --card-max:92px; --slot-max:104px}
   #gameScreen .qwixx-top-mini-strip{max-height:24dvh}
-  /* Qwixx scorecard (not a card-grid game) grows its cells + width to fill room */
-  .qwixx-scorecard:not(.compact){max-width:1040px}
-  .qwixx-scorecard:not(.compact) .qwixx-cell{min-height:60px}
   .qwixx-top-mini-strip{grid-template-columns:repeat(auto-fit,minmax(170px,1fr))}
 }
 @media(min-height:1000px) and (min-width:980px){
-  :root{--card-h-cap:15dvh; --card-max:108px; --slot-max:124px}
   #gameScreen .qwixx-top-mini-strip{max-height:26dvh}
-  .qwixx-scorecard:not(.compact){max-width:1120px}
-  .qwixx-scorecard:not(.compact) .qwixx-cell{min-height:72px}
   .qwixx-top-mini-strip{grid-template-columns:repeat(auto-fit,minmax(200px,1fr))}
 }
 /* Landscape phones are very short (≤500px tall). The dedicated 2-col grid
@@ -1485,20 +1479,61 @@ html, body, #app { height: 100dvh !important; min-height: 100dvh !important; max
 
 /* ── Kit.Roller FX layer: jackpot sparkles on win ── */
 .kit-slot-fx{position:absolute;inset:0;pointer-events:none;z-index:6;overflow:visible}
-/* jackpot sparkles burst from centre on a winning lock */
-.kit-fx-spark{position:absolute;top:50%;left:50%;width:calc(var(--reel-size,56px)*.16);height:calc(var(--reel-size,56px)*.16);
-  border-radius:50%;background:#fde68a;box-shadow:0 0 calc(var(--reel-size,56px)*.18) #fbbf24;
-  animation:kitSpark 1s ease-out forwards}
+/* ── JACKPOT — a big, game-deciding celebration ──────────────────────── */
+/* sparkles burst from centre */
+.kit-fx-spark{position:absolute;top:50%;left:50%;width:calc(var(--reel-size,56px)*.18);height:calc(var(--reel-size,56px)*.18);
+  border-radius:50%;background:#fde68a;box-shadow:0 0 calc(var(--reel-size,56px)*.22) #fbbf24, 0 0 calc(var(--reel-size,56px)*.4) rgba(251,191,36,.6);
+  animation:kitSpark 1.1s cubic-bezier(.16,.9,.3,1) forwards;z-index:8}
 @keyframes kitSpark{
   0%{transform:translate(-50%,-50%) scale(.2);opacity:0}
-  20%{opacity:1;transform:translate(calc(-50% + var(--dx)*.4),calc(-50% + var(--dy)*.4)) scale(1.1)}
-  100%{transform:translate(calc(-50% + var(--dx)),calc(-50% + var(--dy))) scale(.2);opacity:0}
+  18%{opacity:1;transform:translate(calc(-50% + var(--dx)*.35),calc(-50% + var(--dy)*.35)) scale(1.3)}
+  100%{transform:translate(calc(-50% + var(--dx)),calc(-50% + var(--dy))) scale(.1);opacity:0}
 }
-/* whole-cabinet jackpot glow */
-.kit-slot.jackpot{animation:kitJackpotGlow .6s ease-in-out 2 alternate}
+/* radial flash behind the reels */
+.kit-fx-flash{position:absolute;inset:-30%;border-radius:50%;z-index:5;
+  background:radial-gradient(circle,rgba(255,255,255,.9),rgba(251,191,36,.5) 35%,rgba(251,191,36,0) 70%);
+  animation:kitFlash .65s ease-out forwards}
+@keyframes kitFlash{0%{opacity:0;transform:scale(.3)}25%{opacity:1}100%{opacity:0;transform:scale(1.4)}}
+/* confetti rain */
+.kit-fx-confetti{position:absolute;top:-12%;z-index:7;border-radius:2px;
+  box-shadow:0 1px 2px rgba(0,0,0,.3);
+  animation:kitConfetti 1.2s ease-in forwards}
+@keyframes kitConfetti{
+  0%{transform:translateY(0) translateX(0) rotate(0);opacity:0}
+  12%{opacity:1}
+  100%{transform:translateY(220%) translateX(var(--drift,0)) rotate(var(--rot,360deg));opacity:0}
+}
+/* big "JACKPOT!" banner */
+.kit-fx-banner{position:absolute;top:42%;left:50%;transform:translate(-50%,-50%);z-index:9;white-space:nowrap;
+  font-weight:1000;letter-spacing:.05em;font-size:calc(var(--reel-size,56px)*.62);
+  color:#fff;text-shadow:0 0 calc(var(--reel-size,56px)*.3) #fbbf24, 0 3px 4px rgba(0,0,0,.6), 0 0 2px #b45309;
+  background:linear-gradient(180deg,#fff7e0,#fbbf24 55%,#f59e0b);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;
+  filter:drop-shadow(0 0 calc(var(--reel-size,56px)*.2) rgba(251,191,36,.9));
+  animation:kitBanner 1.7s cubic-bezier(.2,1.6,.35,1) forwards}
+@keyframes kitBanner{
+  0%{transform:translate(-50%,-50%) scale(.2) rotate(-8deg);opacity:0}
+  18%{transform:translate(-50%,-50%) scale(1.25) rotate(3deg);opacity:1}
+  32%{transform:translate(-50%,-50%) scale(1) rotate(-1deg)}
+  78%{transform:translate(-50%,-50%) scale(1) rotate(0);opacity:1}
+  100%{transform:translate(-50%,-120%) scale(.85) rotate(0);opacity:0}
+}
+/* whole-cabinet jackpot glow + shake */
+.kit-slot.jackpot{animation:kitJackpotGlow .42s ease-in-out 3 alternate, kitJackpotShake .5s ease-in-out 1}
 @keyframes kitJackpotGlow{from{box-shadow:0 18px 38px rgba(0,0,0,.5),inset 0 2px 0 rgba(255,255,255,.14),inset 0 -8px 18px rgba(0,0,0,.5),0 0 0 1px rgba(255,255,255,.05)}
-  to{box-shadow:0 18px 44px rgba(251,191,36,.4),inset 0 2px 0 rgba(255,255,255,.3),inset 0 -8px 18px rgba(0,0,0,.4),0 0 0 2px rgba(251,191,36,.6),0 0 40px rgba(251,191,36,.5)}}
+  to{box-shadow:0 18px 50px rgba(251,191,36,.6),inset 0 2px 0 rgba(255,255,255,.5),inset 0 -8px 18px rgba(0,0,0,.35),0 0 0 3px rgba(251,191,36,.8),0 0 60px rgba(251,191,36,.7)}}
+@keyframes kitJackpotShake{0%,100%{transform:translateX(0) rotate(0)}20%{transform:translateX(-5px) rotate(-1deg)}40%{transform:translateX(5px) rotate(1deg)}60%{transform:translateX(-3px) rotate(-.6deg)}80%{transform:translateX(3px) rotate(.6deg)}}
+/* during jackpot the marquee bulbs blaze */
+.kit-slot.jackpot .kit-marquee-bulbs i{animation:kitBulb .18s steps(1,end) infinite!important;opacity:1}
 @media (prefers-reduced-motion: reduce){
-  .kit-fx-spark{display:none}
+  .kit-fx-spark,.kit-fx-flash,.kit-fx-confetti{display:none}
   .kit-slot.jackpot{animation:none}
+  .kit-fx-banner{animation:none;opacity:1}
 }
+
+/* ── Kit.Fit — sizing wrapper for content-aware auto-scaling (00-kit-fit.js) ──
+   The wrapper reserves the SCALED footprint (Kit.Fit sets its width/height) so
+   the flex parent still centres + distributes space correctly while the content
+   inside is transform:scaled. */
+.kit-fit-wrap{display:flex;align-items:center;justify-content:center;margin:0 auto;
+  max-width:100%;max-height:100%}
+.kit-fit-wrap > *{flex:0 0 auto}

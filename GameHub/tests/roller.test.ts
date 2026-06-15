@@ -160,8 +160,19 @@ describe("Kit.Roller — per-game FX (marquee / jackpot / coin-drop)", () => {
     expect(q(c, '.kit-reel[data-color="blue"].reel-need').length).toBe(1);
   });
 
-  it("jackpot is a PER-GAME predicate: sparkles fire only when it returns true", { timeout: 10000 }, async () => {
-    // true predicate → sparkles
+  it("jackpot is a PER-GAME predicate: celebration fires only when it returns true", { timeout: 10000 }, async () => {
+    // FX are transient (sparks/confetti self-remove ~1.2s after the lock, which
+    // itself lands somewhere in ~1.4–2.2s), so POLL for them rather than sampling
+    // at one fixed time.
+    const sawFx = async (host: any) => {
+      for (let i = 0; i < 60; i++) {                       // up to ~6s
+        if (q(host, ".kit-fx-spark").length > 0 || q(host, ".kit-fx-banner").length > 0 || q(host, ".kit-slot.jackpot").length > 0) return true;
+        await new Promise(r => setTimeout(r, 100));
+      }
+      return false;
+    };
+
+    // true predicate → celebration
     const win1 = win.document.createElement("div");
     let calledWith: any = null;
     win.Kit.Roller.spin(win1, {
@@ -169,20 +180,21 @@ describe("Kit.Roller — per-game FX (marquee / jackpot / coin-drop)", () => {
       autoPull: true, autoPullDelay: 0,
       jackpot: (reels: any) => { calledWith = reels; return reels.every((r: any) => r.symbol === reels[0].symbol); },
     });
-    await new Promise(r => setTimeout(r, 3000));
+    expect(await sawFx(win1)).toBe(true);
     expect(Array.isArray(calledWith)).toBe(true);          // predicate received the reels
-    expect(q(win1, ".kit-fx-spark").length).toBeGreaterThan(0);
-    expect(q(win1, ".kit-slot.jackpot").length).toBe(1);
 
-    // false predicate → no sparkles
+    // false predicate → no celebration (let it fully settle + a beat, then check)
     const lose = win.document.createElement("div");
+    let loseCalled = false;
     win.Kit.Roller.spin(lose, {
       reels: [{ color: "red", symbol: "1" }, { color: "blue", symbol: "6" }],
       autoPull: true, autoPullDelay: 0,
-      jackpot: () => false,
+      jackpot: () => { loseCalled = true; return false; },
     });
-    await new Promise(r => setTimeout(r, 3000));
+    await new Promise(r => setTimeout(r, 3500));            // past the lock
+    expect(loseCalled).toBe(true);                          // predicate ran
     expect(q(lose, ".kit-fx-spark").length).toBe(0);
+    expect(q(lose, ".kit-fx-banner").length).toBe(0);
   });
 
   it("HARDENING: onLock fires at the visual END (after settle), onPull at the START", { timeout: 10000 }, async () => {

@@ -662,12 +662,15 @@ window.GameClients = window.GameClients || {};
     const isHuman = (seat) => Array.isArray(humanSeats) && humanSeats.includes(seat);
     const pending = Array.isArray(state.pendingWhiteDecisions) ? state.pendingWhiteDecisions : [];
     const active = state.activeSeat;
-    // 1) Hold the active roller for their WHOLE turn — until they've made BOTH
-    //    marks (white resolved AND colour taken) or skipped/finished. While the
-    //    roller hasn't taken their colour yet (!activeColorUsed) they may still
-    //    act, so keep the device on them. (Finishing/penalty advances activeSeat,
-    //    which releases this naturally.)
-    if(isHuman(active) && !state.activeColorUsed) return active;
+    // 1) Hold the active roller for their WHOLE turn. The roller has TWO marks to
+    //    make this turn — the white sum and a colour combo — in EITHER order. We
+    //    only release once BOTH are resolved (white no longer pending AND colour
+    //    used), or they end the turn (finish/penalty, which advances activeSeat).
+    //    Marking just ONE die (white OR colour first) must NOT swap the board —
+    //    the roller may still take the other or skip it.
+    const rollerWhiteDone = !pending.includes(active);     // marked OR skipped white
+    const rollerColourDone = !!state.activeColorUsed;      // marked OR skipped colour
+    if(isHuman(active) && !(rollerWhiteDone && rollerColourDone)) return active;
     // 2) Roller finished their marks (or is a bot/remote): hand the device to the
     //    next LOCAL human who still owes a white mark this turn, in seat order.
     const nextLocalPending = (humanSeats || []).filter(s => pending.includes(s)).sort((a,b)=>a-b)[0];

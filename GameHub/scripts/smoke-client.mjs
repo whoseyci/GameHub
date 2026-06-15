@@ -249,7 +249,7 @@ async function smokeQwixx(window, document) {
   assert(document.querySelector('.qwixx-kit-dice .kit-slot'), 'Qwixx: slot machine did not render');
   window.GameClients['qwixx'].roll();
   // The slot machine stops its reels staggered (last ~2.5s) then settles.
-  await sleep(3400);
+  await sleep(4500);
 
   assert(document.querySelector('#qwixxDiceKit .kit-reel.locked, .qwixx-kit-dice .kit-reel.locked'), 'Qwixx: slot reels did not lock in');
 
@@ -453,7 +453,7 @@ async function smokeBotFlows(window, document) {
   view = localView(window, 0);
   assert(view.qwixx.pendingWhiteDecisions.includes(1), 'Qwixx bot acted before the dice were revealed');
   window.GameClients['qwixx'].roll();
-  await sleep(3400);
+  await sleep(4500);
   view = localView(window, 0);
   assert(!view.qwixx.pendingWhiteDecisions.includes(1), 'Qwixx bot did not resolve its white-phase choice after the throw');
   window.quitLocal();
@@ -605,7 +605,7 @@ async function smokeBoardRotation(window, document) {
   window.startLocalGame();
   await sleep(120);
   window.eval("window.GameClients[\x27qwixx\x27].roll()");
-  await sleep(3400);
+  await sleep(4500);
   let sawRotate = false;
   const obs = setInterval(() => {
     const b = document.getElementById('mainBoardsContainer');
@@ -632,7 +632,7 @@ async function smokeBoardRotation(window, document) {
   window.startLocalGame();
   await sleep(120);
   window.eval("window.GameClients[\x27qwixx\x27].roll()");
-  await sleep(3400);
+  await sleep(4500);
   let sawRotate2 = false;
   const obs2 = setInterval(() => {
     const b = document.getElementById('mainBoardsContainer');

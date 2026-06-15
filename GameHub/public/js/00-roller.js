@@ -208,27 +208,78 @@
     // is DEFINED PER GAME via opts.jackpot(reels) -> boolean. (Omit it and no
     // sparkles ever fire.) opts.jackpotColor themes the sparkles.
     function jackpotSparkles() {
-      if (REDUCE) return;
+      if (REDUCE) {
+        // Reduced motion: a single static banner, no particle storm.
+        const banner = document.createElement('div');
+        banner.className = 'kit-fx-banner';
+        banner.textContent = opts.jackpotText || 'JACKPOT!';
+        fx.appendChild(banner);
+        setTimeout(() => banner.remove(), 1600);
+        if (typeof SFX !== 'undefined' && SFX.win) SFX.win();
+        return;
+      }
+      // ── Big game-deciding celebration ──────────────────────────────────
       machine.classList.add('jackpot');
-      const color = opts.jackpotColor || null;
-      const N = 18;
+      const tintPal = opts.jackpotColor ? PALETTE[norm(opts.jackpotColor)] : null;
+      // A palette of bright confetti colours (uses the tint if given, plus golds).
+      const confettiCols = [
+        tintPal ? tintPal.face : '#fde68a', '#fbbf24', '#fde68a', '#f59e0b',
+        '#fb7185', '#60a5fa', '#34d399', '#c084fc', '#ffffff',
+      ];
+
+      // 1) Full-cabinet flash + radial burst behind the reels.
+      const flash = document.createElement('div');
+      flash.className = 'kit-fx-flash';
+      fx.appendChild(flash);
+      setTimeout(() => flash.remove(), 700);
+
+      // 2) Sparkle ring (gold) shooting out from centre.
+      const N = 26;
       for (let i = 0; i < N; i++) {
         const s = document.createElement('span');
         s.className = 'kit-fx-spark';
-        const ang = (i / N) * Math.PI * 2 + Math.random() * 0.4;
-        const dist = 60 + Math.random() * 70;
+        const ang = (i / N) * Math.PI * 2 + Math.random() * 0.5;
+        const dist = 80 + Math.random() * 120;
         s.style.setProperty('--dx', Math.cos(ang) * dist + 'px');
         s.style.setProperty('--dy', Math.sin(ang) * dist + 'px');
-        s.style.animationDelay = (Math.random() * 120) + 'ms';
-        if (color) {
-          const pal = PALETTE[norm(color)];
-          if (pal) s.style.background = pal.face;
-        }
+        s.style.animationDelay = (Math.random() * 150) + 'ms';
+        if (tintPal) s.style.background = tintPal.face;
         fx.appendChild(s);
-        setTimeout(() => s.remove(), 1100);
+        setTimeout(() => s.remove(), 1200);
       }
-      if (typeof SFX !== 'undefined' && SFX.win) SFX.win();
-      setTimeout(() => machine.classList.remove('jackpot'), 1200);
+
+      // 3) Confetti rain — colourful pieces tumbling down over the cabinet.
+      const C = 46;
+      for (let i = 0; i < C; i++) {
+        const c = document.createElement('span');
+        c.className = 'kit-fx-confetti';
+        c.style.left = (Math.random() * 120 - 10) + '%';
+        c.style.background = confettiCols[(Math.random() * confettiCols.length) | 0];
+        c.style.setProperty('--rot', (Math.random() * 720 - 360) + 'deg');
+        c.style.setProperty('--drift', (Math.random() * 60 - 30) + 'px');
+        c.style.width = (5 + Math.random() * 6) + 'px';
+        c.style.height = (8 + Math.random() * 8) + 'px';
+        c.style.animationDelay = (Math.random() * 350) + 'ms';
+        c.style.animationDuration = (900 + Math.random() * 700) + 'ms';
+        if (Math.random() < 0.4) c.style.borderRadius = '50%';   // mix circles + ribbons
+        fx.appendChild(c);
+        setTimeout(() => c.remove(), 1800);
+      }
+
+      // 4) A big "JACKPOT!" banner that pops, holds, and fades.
+      const banner = document.createElement('div');
+      banner.className = 'kit-fx-banner';
+      banner.textContent = opts.jackpotText || 'JACKPOT!';
+      fx.appendChild(banner);
+      setTimeout(() => banner.remove(), 1700);
+
+      // Sound: a richer fanfare than the single win chime if available.
+      if (typeof SFX !== 'undefined') {
+        if (SFX.win) SFX.win();
+        if (SFX.triplet) setTimeout(() => SFX.triplet(), 160);
+        if (SFX.good) setTimeout(() => SFX.good(), 340);
+      }
+      setTimeout(() => machine.classList.remove('jackpot'), 1500);
     }
     function maybeJackpot() {
       try { if (typeof opts.jackpot === 'function' && opts.jackpot(reels)) jackpotSparkles(); }

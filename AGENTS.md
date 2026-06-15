@@ -78,6 +78,17 @@ interface (`create / applyAction / viewFor / isOver` + optional
   `Kit.Layout.fit` solver was removed — don't reintroduce one). The
   `#gameScreen.active` flex column distributes height; `#mainBoardsContainer`
   is the single **grower that may also shrink** (`flex:1 1 auto; min-height:0`).
+- **Adaptive board sizing is automatic via `Kit.Fit`** (`public/js/00-kit-fit.js`).
+  `GameShell.renderTable` auto-fits the focus board to fill its container — it
+  **grows into void space and shrinks to avoid overflow**, content-aware, for
+  EVERY game, regardless of internal layout (grid/flex/SVG/canvas). It measures
+  the board's natural (intrinsic, `max-content`) size and applies a clamped
+  `transform: scale()` = `min(widthFit, heightFit)`, re-fitting on container
+  resize (ResizeObserver) + content change (MutationObserver). Opt out with
+  `renderTable({fit:false})` or tune with `fit:{min,max,axis,align,padding,grow}`.
+  Don't hand-roll per-game size breakpoints for the focus board — let Kit.Fit do
+  it. (Opponent strips / top-area widgets aren't fit-managed; size those with CSS
+  or a `--reel-size`-style knob.)
 - **Rolling (dice/symbols) goes through a swappable roller API.** Two renderers
   share one contract — `roll(container, [{color,value}], opts) -> Promise`,
   `showStatic`, `supported`:
