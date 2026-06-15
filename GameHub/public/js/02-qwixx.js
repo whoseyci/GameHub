@@ -254,24 +254,33 @@ window.GameClients = window.GameClients || {};
     const focused = s.allPlayers.find(p => p.seat === focusSeat) || s.allPlayers[0];
     const others = s.allPlayers.filter(p => p.seat !== focused.seat);
 
-    // Active-player button states after a throw (per user redesign):
-    //   marked NOTHING this turn  → red "Take Penalty" w/ warning icon
-    //   marked white only         → "Skip color" w/ skip-forward icon
-    //   marked color only         → "Skip white"  w/ skip-forward icon
-    //                               (whiteSum dice value in parens for clarity)
-    //   marked both               → "Finish" w/ check icon
-    //   no marks possible yet     → "Waiting for white-dice decisions…"
-    //                               (only relevant during WHITE_PHASE when
-    //                                other humans haven't decided yet)
+    // ── Active-player turn-end button: the user's 2-stage / 3-outcome spec ──
+    // Qwixx gives the active player (the dice roller) up to TWO marks per turn:
+    // one from the white dice (white sum) and one from a colour die. The single
+    // turn-end button reflects how many of those the roller has taken so far:
     //
-    // The penalty branch carries a red `.danger` class so the user can
-    // distinguish "this ends your turn with a penalty" from a benign
-    // skip. Other branches use the regular .pri (purple) treatment.
+    //   STAGE 1 — no die taken yet            → RED penalty button.
+    //             Ending the turn now marks nothing, which is a penalty, so the
+    //             button is red + warning-iconed. (Action is `skip` while still
+    //             in the white phase — the engine treats skip-with-nothing as
+    //             the penalty path — and `finishTurn` once white is resolved.)
     //
-    // Non-active players just see the white-dice skip (when pending) or
-    // a passive waiting line — same as before.
-    const whiteMarked = s.activeWhiteRow != null;         // active marked white this turn
-    const colorMarked = !!s.activeColorUsed;              // active marked color this turn
+    //   STAGE 2 — exactly one die taken       → neutral "Skip" button for the
+    //             die NOT yet taken:
+    //               • took white only → "Skip colour"
+    //               • took colour only→ "Skip white (sum)"
+    //             Ending now is legal and scores the one mark — no penalty —
+    //             so it's the normal (.pri) treatment, not red.
+    //
+    //   BOTH taken                            → "Finish" → passes the turn to
+    //             the next player (or, in pass-and-play, the platform rotates
+    //             focus to the next seat owned by this device automatically).
+    //
+    // Non-active players only ever see the white-dice skip (when their white
+    // decision is pending) or a passive waiting line.
+    const whiteMarked = s.activeWhiteRow != null;         // roller took the white sum this turn
+    const colorMarked = !!s.activeColorUsed;              // roller took a colour die this turn
+    const anyMarked = whiteMarked || colorMarked;         // at least one die taken
     const sumDice = dice.w[0] + dice.w[1];
     const icon = (name) => Kit.Icon.html(name, { size: 14, cls: 'kit-icon-inline' });
     const btn = (label, action, klass = 'pri') =>
@@ -280,36 +289,34 @@ window.GameClients = window.GameClients || {};
     if (!diceRevealed) {
       controlsHtml = `<span class="muted">Throw dice to reveal this turn.</span>`;
     } else if (isAct) {
-      // Active player. Single state machine across WHITE_PHASE + COLOR_PHASE
-      // so the visible button reflects what the user has ACTUALLY done so
-      // far this turn, not which phase the engine happens to be in.
-      if (isWhite && pendingWhite && !whiteMarked) {
-        // White phase, our own white decision still pending. The active
-        // player may either mark a white cell (in which case the bottom
-        // bar will switch to "Skip color") or hit this button to skip
-        // white outright.
+      // Single state machine across WHITE_PHASE + COLOR_PHASE so the button
+      // reflects what the roller has ACTUALLY done, not which engine phase
+      // we happen to be in.
+      if (!anyMarked) {
+        // STAGE 1: nothing taken yet → RED penalty button. `finishTurn` now
+        // auto-resolves the roller's own pending white decision (see engine),
+        // so taking the penalty is a single click whether we're in the white
+        // or colour phase. If the roller already skipped white but OTHER humans
+        // are still deciding, the engine can't end yet — show a passive line.
+        if (isWhite && !pendingWhite) {
+          controlsHtml = `<span class="muted">Waiting for white-dice decisions…</span>`;
+        } else {
+          controlsHtml = btn(`${icon('warning')}Take penalty`, 'finishTurn', 'danger');
+        }
+      } else if (isWhite && pendingWhite) {
+        // STAGE 2 but our white decision is still formally pending (we took a
+        // colour mark first). Offer the white skip — resolves white, keeps the
+        // colour mark, no penalty.
         controlsHtml = btn(`${icon('skip-forward')}Skip white (${sumDice})`, 'skip');
-      } else if (isWhite && !pendingWhite && !whiteMarked && !colorMarked) {
-        // Active player decided (skipped) white but OTHER humans are
-        // still pending. Engine won't accept finishTurn yet — show a
-        // passive waiting line instead of a confusing premature Penalty.
-        controlsHtml = `<span class="muted">Waiting for white-dice decisions…</span>`;
-      } else if (!whiteMarked && !colorMarked) {
-        // Past white-phase decisions, no marks at all → penalty path.
-        // RED so the user can't miss it.
-        controlsHtml = btn(`${icon('warning')}Take Penalty`, 'finishTurn', 'danger');
       } else if (whiteMarked && !colorMarked) {
-        // Marked white only — wants to pass on the color mark.
-        controlsHtml = btn(`${icon('skip-forward')}Skip color`, 'finishTurn');
+        // STAGE 2: took white only → skip the colour die.
+        controlsHtml = btn(`${icon('skip-forward')}Skip colour`, 'finishTurn');
       } else if (!whiteMarked && colorMarked) {
-        // Marked color only — wants to pass on the white mark.
-        // (Rare but possible: active player can take color in COLOR_PHASE
-        // without having marked white; the engine still requires they
-        // confirm the white skip.)
+        // STAGE 2: took colour only → skip the white die.
         controlsHtml = btn(`${icon('skip-forward')}Skip white (${sumDice})`, 'finishTurn');
       } else {
-        // Marked both — clean finish.
-        controlsHtml = btn(`${icon('check')}Finish`, 'finishTurn');
+        // BOTH taken → finish and pass the turn on.
+        controlsHtml = btn(`${icon('check')}Finish turn`, 'finishTurn');
       }
     } else if (isWhite && pendingWhite) {
       // Non-active player still pending their white decision.
@@ -317,7 +324,7 @@ window.GameClients = window.GameClients || {};
     } else if (isWhite) {
       controlsHtml = `<span class="muted">Waiting for white-dice decisions…</span>`;
     } else if (isColor) {
-      controlsHtml = `<span class="muted">${esc(activeName)} may take one color mark…</span>`;
+      controlsHtml = `<span class="muted">${esc(activeName)} may take one colour mark…</span>`;
     }
 
     // Opponent strip: append each mini DIRECTLY as a grid child (a DocumentFragment

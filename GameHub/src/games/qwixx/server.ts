@@ -254,10 +254,17 @@ export const Qwixx: GameModule = {
     if (msg.action === "finishTurn") {
       if (seat !== s.activeSeat) return;
       if (s.phase === "WHITE_PHASE") {
-        // Local/pass-and-play convenience: after the active player has resolved
-        // their white choice, they may skip the color option before passive
-        // players get focus. Online players can still resolve white concurrently.
-        if (s.pendingWhiteDecisions.includes(seat)) return;
+        // The active player chose to end their turn from the white phase. If
+        // their OWN white decision is still pending (they're taking the penalty
+        // or skipping straight to passing without a white mark), auto-resolve it
+        // — finishing implies skipping the white die. This makes "Take penalty"
+        // a single click for the roller instead of skip-then-finish. Other
+        // (passive) seats can still resolve their white marks concurrently; the
+        // turn only ends once every pending white decision is in.
+        if (s.pendingWhiteDecisions.includes(seat)) {
+          s.pendingWhiteDecisions = s.pendingWhiteDecisions.filter((x) => x !== seat);
+          if (s.pendingWhiteDecisions.length === 0) applyPendingLocks(s);
+        }
         s.activeColorUsed = true;
         if (s.pendingWhiteDecisions.length === 0) maybeEndOrNextTurn(s);
         return;

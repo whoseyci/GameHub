@@ -1344,7 +1344,10 @@
       if (msg.action === "finishTurn") {
         if (seat !== s.activeSeat) return;
         if (s.phase === "WHITE_PHASE") {
-          if (s.pendingWhiteDecisions.includes(seat)) return;
+          if (s.pendingWhiteDecisions.includes(seat)) {
+            s.pendingWhiteDecisions = s.pendingWhiteDecisions.filter((x) => x !== seat);
+            if (s.pendingWhiteDecisions.length === 0) applyPendingLocks(s);
+          }
           s.activeColorUsed = true;
           if (s.pendingWhiteDecisions.length === 0) maybeEndOrNextTurn(s);
           return;

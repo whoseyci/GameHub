@@ -219,6 +219,23 @@ describe("Qwixx rule regressions", () => {
     expect(state.players[0].penalties).toBe(1);
   });
 
+  it("active player can take the penalty in ONE finishTurn even while their own white is pending", () => {
+    // The UI 'Take penalty' button (stage 1) uses finishTurn. The engine must
+    // auto-resolve the roller's own pending white decision so the penalty is a
+    // single click, not skip-then-finish. With 2 players where the passive seat
+    // also still owes a white decision, the turn shouldn't end until that's in.
+    const state: any = Qwixx.create(["A", "B"]);
+    const active = state.activeSeat;
+    expect(state.pendingWhiteDecisions).toContain(active);
+    Qwixx.applyAction(state, active, { action: "finishTurn" }); // one click: penalty path
+    // active's own white decision was auto-resolved by finishTurn
+    expect(state.pendingWhiteDecisions).not.toContain(active);
+    // passive resolves white → turn ends, active eats exactly one penalty
+    Qwixx.applyAction(state, 1 - active, { action: "skip" });
+    expect(state.players[active].penalties).toBe(1);
+    expect(state.activeSeat).toBe(1 - active); // turn passed to the next player
+  });
+
   it("active player gets a penalty even when they SKIP COLOR during the white phase (no mark all turn)", () => {
     // Regression: the active player skipped white, then used the white-phase
     // "skip color / pass to others" finishTurn, then the passive player resolved
