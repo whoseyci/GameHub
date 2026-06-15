@@ -78,6 +78,19 @@ interface (`create / applyAction / viewFor / isOver` + optional
   `Kit.Layout.fit` solver was removed — don't reintroduce one). The
   `#gameScreen.active` flex column distributes height; `#mainBoardsContainer`
   is the single **grower that may also shrink** (`flex:1 1 auto; min-height:0`).
+- **Social layer (`public/js/00-social.js`, `window.Social`)** — online-only room
+  **chat** + animated **reaction emojis**. Rides the existing WebSocket: the
+  server (`src/server.ts`) parses `chat`/`react` (see `parseClientMessage` in
+  `src/protocol.ts`), attributes the author from the connection's controlled
+  pids, and `broadcast()`s; a small in-memory `chatLog` ring buffer (≤80) is sent
+  to (re)joiners in `hello`. Client: `Social.handleNet(m)` is called first in
+  `handleNet` (01-network-local.js) and returns `true` if it consumed the message;
+  `Social.setActive(online)` shows/hides the topbar `#chatBtn`/`#reactBtn`
+  (disabled in pass-and-play — one device). Reactions float via the
+  `#reactionFxLayer` CSS. This is cheap on the free tier (messages over an open
+  socket aren't per-request; CPU is trivial) — see `docs/FEATURE_FEASIBILITY.md`.
+  Note: reaction emojis are intentionally exempt from the no-UI-emoji guard
+  (`tests/no-ui-emojis.test.ts`) because they ARE the feature's payload.
 - **Adaptive board sizing is automatic via `Kit.Fit`** (`public/js/00-kit-fit.js`).
   `GameShell.renderTable` auto-fits the focus board to fill its container — it
   **grows into void space and shrinks to avoid overflow**, content-aware, for

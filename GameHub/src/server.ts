@@ -90,6 +90,10 @@ export class Room extends Server<Env> {
   // In-memory rate-limit buckets, keyed by connection id. Not persisted: after
   // hibernation the socket is idle, and a fresh bucket on wake is safe (full).
   private rateBuckets = new Map<string, Bucket>();
+  // Recent room chat (in-memory ring buffer; NOT persisted — chat is ephemeral
+  // and we keep the DO storage for game state. Late joiners get the tail in the
+  // `hello` so they have context). Bounded so memory stays tiny.
+  private chatLog: Array<{ type: string; seat: number; name: string; text: string; ts: number }> = [];
 
   // current game (null => in room lobby)
   gameId: string | null = null;
@@ -162,6 +166,10 @@ export class Room extends Server<Env> {
     await this.persistReplay();
   }
 
+  private pushChat(entry: { type: string; seat: number; name: string; text: string; ts: number }) {
+    this.chatLog.push(entry);
+    if (this.chatLog.length > 80) this.chatLog.splice(0, this.chatLog.length - 80);
+  }
   private memberIdx(pid: string) { return this.members.findIndex((m) => m.id === pid); }
   private pendingIdx(pid: string) { return this.pending.findIndex((p) => p.id === pid); }
   private livePids(excludeConnId?: string) {
@@ -511,7 +519,8 @@ export class Room extends Server<Env> {
       return;
     }
     this.armAlarm();
-    conn.send(JSON.stringify({ type: "hello" }));
+    // Include the recent chat tail so a (re)joining client has context.
+    conn.send(JSON.stringify({ type: "hello", chat: this.chatLog.slice(-40) }));
   }
 
   async onMessage(conn: Connection<ConnState>, raw: string) {
@@ -574,6 +583,32 @@ export class Room extends Server<Env> {
     if (!pid || !pids.length) return;
     const isHost = pids.includes(this.hostId || "");
     const seat = this.memberIdx(pid);
+
+    /* ---- room chat ---- */
+    if (msg.type === "chat") {
+      // Resolve the author: a pass-and-play client may name which controlled
+      // seat is speaking; otherwise use this connection's primary pid. Only a
+      // pid this connection actually controls may author a message.
+      const authorPid = (msg.pid && pids.includes(msg.pid)) ? msg.pid : pid;
+      const aSeat = this.memberIdx(authorPid);
+      const name = aSeat >= 0 ? this.members[aSeat].name : "Player";
+      const entry = { type: "chat", seat: aSeat, name, text: msg.text, ts: Date.now() };
+      this.pushChat(entry);
+      this.touch();
+      this.broadcast(JSON.stringify(entry));
+      return;
+    }
+
+    /* ---- animated reaction emoji ---- */
+    if (msg.type === "react") {
+      const authorPid = (msg.pid && pids.includes(msg.pid)) ? msg.pid : pid;
+      const aSeat = this.memberIdx(authorPid);
+      const name = aSeat >= 0 ? this.members[aSeat].name : "Player";
+      // Reactions are ephemeral (no history) — just fan out for the client FX.
+      this.touch();
+      this.broadcast(JSON.stringify({ type: "react", seat: aSeat, name, emoji: msg.emoji, ts: Date.now() }));
+      return;
+    }
 
     /* ---- host: add / remove a bot (only between games) ---- */
     if (msg.type === "add_bot" && isHost && !this.gameId) {

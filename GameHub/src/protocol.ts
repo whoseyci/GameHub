@@ -146,6 +146,25 @@ export function parseClientMessage(raw: string): any | null {
       if (variant) out.variant = variant;
       return out;
     }
+    case "chat": {
+      // Free-form room chat. Bounded + trimmed; empty messages dropped.
+      const text = typeof msg.text === "string" ? msg.text.replace(/\s+/g, " ").trim().slice(0, 240) : "";
+      if (!text) return null;
+      const out: any = { type: "chat", text };
+      const pid = cleanId(msg.pid);
+      if (pid) out.pid = pid;          // optional: which controlled seat is "speaking"
+      return out;
+    }
+    case "react": {
+      // Animated reaction emoji. We allow a short, bounded string (an emoji can
+      // be several code units / a ZWJ sequence) and let the client map/animate it.
+      const emoji = typeof msg.emoji === "string" ? msg.emoji.slice(0, 16) : "";
+      if (!emoji.trim()) return null;
+      const out: any = { type: "react", emoji };
+      const pid = cleanId(msg.pid);
+      if (pid) out.pid = pid;
+      return out;
+    }
     case "action": {
       if (typeof msg.action !== "string" || msg.action.length > 40) return null;
       // Generic, bounded payload first — a new game can add fields without touching

@@ -66,6 +66,8 @@ function copyInviteLink(){
 }
 
 function handleNet(m){
+  // Social layer (chat / reactions). It also peeks at `hello` for chat history.
+  if(window.Social){ const consumed=Social.handleNet(m); if(consumed) return; }
   if(m.type==='hello')return;
   if(m.type==='error'){toast(m.message);return;}
   // Structured action rejection (Proposal 10): surface why a move was ignored.
@@ -112,6 +114,8 @@ function handleNet(m){
     $('gameRoomTag').textContent=net.room||'';$('gameRoomTag').classList.toggle('hidden',!net.room);
     $('spectateTag').classList.toggle('hidden',!net.spectating);
     if(!$('gameScreen').classList.contains('active'))showScreen('gameScreen');
+    // Online play → chat + reactions available (pass-and-play is one device).
+    if(window.Social) Social.setActive(true);
     dispatchView(m.view);
     return;
   }
@@ -305,6 +309,7 @@ function leaveOnline(){
   if(net.ws){try{net.ws.close();}catch(e){}net.ws=null;}
   net.room=null;net.isHost=false;net.spectating=false;
   window._currentBots=[];
+  if(window.Social) Social.reset();
   resetGameUi();
   showScreen('menuScreen');
 }
@@ -509,6 +514,7 @@ function startLocalGame(){
   if(names.length<2)return toast('Need at least 2 players');
   if(!window.LocalEngines[_localPick])return toast('That game is online-only for now.');
   mode='local';localGameId=_localPick;localEngine=window.LocalEngines[_localPick](names);
+  if(window.Social) Social.setActive(false);   // pass-and-play is one device
   // Phase 6: mirror to window for cross-module readers (00-local-seat-editor).
   window.mode = mode; window.localEngine = localEngine; window.localGameId = localGameId;
   // bot seats the local device will drive

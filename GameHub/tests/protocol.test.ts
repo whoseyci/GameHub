@@ -64,4 +64,29 @@ describe("protocol guards", () => {
     }));
     expect(msg).toEqual({ type: "action", action: "mark", ok: 999_999, idx: 3, neg: -7 });
   });
+
+  it("parses chat: trims/collapses whitespace, bounds length, drops empties", () => {
+    expect(parseClientMessage(JSON.stringify({ type: "chat", text: "  hi   there  " })))
+      .toEqual({ type: "chat", text: "hi there" });
+    // empty / whitespace-only → null
+    expect(parseClientMessage(JSON.stringify({ type: "chat", text: "   " }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ type: "chat" }))).toBeNull();
+    // length bound (240) applied AFTER collapse
+    const long = parseClientMessage(JSON.stringify({ type: "chat", text: "a".repeat(500) }));
+    expect(long.text.length).toBe(240);
+    // optional speaking pid is sanitized + passed through
+    expect(parseClientMessage(JSON.stringify({ type: "chat", text: "yo", pid: "p_abc123" })))
+      .toEqual({ type: "chat", text: "yo", pid: "p_abc123" });
+    expect(parseClientMessage(JSON.stringify({ type: "chat", text: "yo", pid: "../bad" })))
+      .toEqual({ type: "chat", text: "yo" });   // bad pid dropped, message still valid
+  });
+
+  it("parses react: bounded emoji string, drops empties", () => {
+    expect(parseClientMessage(JSON.stringify({ type: "react", emoji: "🎉" })))
+      .toEqual({ type: "react", emoji: "🎉" });
+    expect(parseClientMessage(JSON.stringify({ type: "react", emoji: "  " }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ type: "react" }))).toBeNull();
+    const clipped = parseClientMessage(JSON.stringify({ type: "react", emoji: "x".repeat(64) }));
+    expect(clipped.emoji.length).toBe(16);
+  });
 });

@@ -62,6 +62,12 @@ function isAllowlisted(line: string, path: string): boolean {
   if (/content\s*:\s*['"]\u2726['"]/.test(line)) return true;
   // _template stub
   if (path.includes('_template')) return true;
+  // Social reactions: 00-social.js's whole purpose is animated reaction EMOJIS —
+  // they are the feature's content/payload, not UI icons standing in for an icon.
+  // The reaction-picker BUTTON in index.html likewise shows an emoji face on
+  // purpose (it's a "send a reaction" affordance), as does its title text.
+  if (path.endsWith('00-social.js')) return true;
+  if (/id="reactBtn"/.test(line)) return true;
   return false;
 }
 
