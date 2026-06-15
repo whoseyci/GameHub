@@ -65,12 +65,16 @@ describe("Qwixx active-player turn-end button state machine", () => {
     expect(css).toMatch(/\.qwixx-ctrl-btn\.danger\s*\{[\s\S]*?qwixx-red/);
   });
 
-  it("the Qwixx controls are a fixed/floating bar so they are never clipped by #topArea", () => {
-    // Regression guard for the 'skip button invisible on desktop' bug: the
-    // controls live inside #topArea (max-height:38dvh; overflow:hidden), so
-    // they must float (position:fixed) to escape that clip.
+  it("the Qwixx controls sit in-flow UNDER the dice and are not clipped by #topArea", () => {
+    // Regression guard for the 'skip button invisible on desktop' bug + the
+    // follow-up 'put it right under the dice' request. The controls are the
+    // last child of .qwixx-dice-zone (in flow, beneath the dice), and the dice
+    // zone + #topArea must NOT clip them (they formerly had overflow:hidden
+    // which cut the button off).
     const css = readFileSync("public/styles/main.css", "utf8");
-    expect(css).toMatch(/\.qwixx-dice-zone\s+\.qwixx-controls\s*\{[\s\S]*?position:\s*fixed/);
+    expect(css).toMatch(/\.qwixx-dice-zone\s+\.qwixx-controls\s*\{[\s\S]*?position:\s*static/);
+    expect(css).toMatch(/\.qwixx-dice-zone\s*\{\s*overflow:\s*visible/);
+    expect(css).toMatch(/#gameScreen\.active\s*>\s*#topArea\s*\{\s*overflow:\s*visible/);
   });
 });
 

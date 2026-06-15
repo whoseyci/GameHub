@@ -662,7 +662,9 @@ html,body,#app{min-height:100%;height:auto;max-height:none;overflow-x:hidden;ove
 .kit-die.white .front,.kit-die.white .face{background:linear-gradient(145deg,#fff,#e3e7f0)}
 /* The dice canvas itself: give it a soft base + bring it forward so it never
    looks isolated against the dark surface. */
-.qwixx-kit-dice{background:radial-gradient(ellipse at 50% 60%, rgba(255,255,255,.04), rgba(255,255,255,0) 70%);border-radius:14px;padding:6px 4px 0;transition:opacity .25s}
+/* Dice viewport: no backdrop — the dice sit directly on the dice-zone, no
+   boxed "window" (user request: remove the dice viewport background). */
+.qwixx-kit-dice{background:none;border-radius:0;padding:6px 4px 0;transition:opacity .25s}
 .qwixx-dice-zone.awaiting-throw .qwixx-kit-dice:empty{min-height:60px}
 .qwixx-dice-zone.awaiting-throw .qwixx-kit-dice:empty::before{
   content:''; display:block; width:46px; height:46px; margin:0 auto;
@@ -1083,7 +1085,7 @@ button.kc-mini:hover{transform:translateY(-2px);box-shadow:0 6px 14px rgba(0,0,0
    flight, squeezing the throw button + sticky controls off-screen on
    mobile. Use a smaller floor when the tray is in its 'awaiting-throw'
    state (no canvas mounted yet) and a tighter cap during the roll. */
-.qwixx-kit-dice.kit-dice3d{display:block;min-height:clamp(120px,20vh,180px);width:min(100%,520px);border:0;background:none;overflow:visible}
+.qwixx-kit-dice.kit-dice3d{display:block;min-height:clamp(96px,15vh,150px);width:min(100%,520px);border:0;background:none;overflow:visible}
 .kit-dice3d canvas{width:100%;height:100%;display:block;background:transparent}
 @media(max-width:760px){.qwixx-kit-dice.kit-dice3d{min-height:clamp(96px,14vh,140px)}}
 /* Before the WebGL canvas mounts (awaiting-throw state), the tray is an
@@ -1101,54 +1103,36 @@ button.kc-mini:hover{transform:translateY(-2px);box-shadow:0 6px 14px rgba(0,0,0
    Cure: float the controls as a FIXED bottom bar at ALL sizes (like Flip7's
    .kc-controls). It sits just above the floating .status-bar, centered, and is
    never clipped by #topArea. */
+/* The turn-end control sits IN-FLOW directly UNDER the dice viewport (user
+   request). It is the last child of .qwixx-dice-zone (after the dice tray +
+   combos), so normal flow already places it beneath the dice. We just give it
+   breathing room and make sure it's never clipped:
+     • the dice zone & #topArea allow it to show (overflow handled below),
+     • a small top margin separates it from the dice,
+     • generous tap target.
+   No position:fixed — it's anchored to the dice, not floating at screen bottom. */
 .qwixx-dice-zone .qwixx-controls {
-  position: fixed;
-  left: 50%;
-  transform: translateX(-50%);
-  bottom: calc(64px + env(safe-area-inset-bottom, 0px));
-  z-index: 115;          /* above .status-bar (100), below overlays (200) */
-  margin: 0;
-  padding: 8px 12px;
-  border-radius: 16px;
-  background: rgba(15, 23, 42, .82);
-  backdrop-filter: blur(8px);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, .45);
-  border: 1px solid var(--border);
-}
-/* When the dice zone has no controls to show (waiting / passive line), the
-   inline muted text should stay in flow, not float. */
-.qwixx-dice-zone .qwixx-controls:has(.muted) {
   position: static;
-  transform: none;
-  background: none;
-  box-shadow: none;
-  border: 0;
-  backdrop-filter: none;
-  padding: 0;
+  margin: 4px 0 0;
+  z-index: 2;
 }
+.qwixx-dice-zone .qwixx-controls .qwixx-ctrl-btn {
+  min-height: 40px;
+  padding: 10px 22px;
+}
+/* The dice viewport must not clip the control that sits under it. */
+.qwixx-dice-zone { overflow: visible; }
+/* #topArea is content-sized and must reveal the dice-zone's control instead of
+   clipping it (it formerly had overflow:hidden which cut the button off). The
+   main board below is the flex grower (min-height:0) so giving the top area its
+   natural height is safe. */
+#gameScreen.active > #topArea { overflow: visible; }
 
-/* Bugfix (user: 'don't see the button to skip on mobile'): on phones the
-   floating bar sits a bit lower (status bar is shorter / hidden) and the
-   buttons get larger tap targets. */
 @media(max-width:760px) {
-  .qwixx-dice-zone .qwixx-controls {
-    bottom:calc(56px + env(safe-area-inset-bottom,0px));
-    z-index:115;
-    background:rgba(15,23,42,.9);
-    backdrop-filter:blur(6px);
-  }
   .qwixx-dice-zone .qwixx-controls .qwixx-ctrl-btn {
-    padding:10px 16px;
+    padding:9px 16px;
     font-size:.88rem;
     min-height:38px;
-    /* Make the button comfortable to tap on phones (Apple HIG: 44px target). */
-  }
-}
-/* On very short viewports the status bar is hidden — sit the controls
-   right at the bottom edge. */
-@media(max-width:760px) and (max-height:640px) {
-  .qwixx-dice-zone .qwixx-controls {
-    bottom:calc(6px + env(safe-area-inset-bottom,0px));
   }
 }
 

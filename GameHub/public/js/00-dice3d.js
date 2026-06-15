@@ -40,6 +40,36 @@
   function qm(q){let[x,y,z,w]=q,xx=x*x,yy=y*y,zz=z*z;return[1-2*(yy+zz),2*(x*y+z*w),2*(x*z-y*w),0,2*(x*y-z*w),1-2*(xx+zz),2*(y*z+x*w),0,2*(x*z+y*w),2*(y*z-x*w),1-2*(xx+yy),0,0,0,0,1];}
   function qrot(q,v){let[qx,qy,qz,qw]=q,[vx,vy,vz]=v;let tx=2*(qy*vz-qz*vy),ty=2*(qz*vx-qx*vz),tz=2*(qx*vy-qy*vx);return[vx+qw*tx+(qy*tz-qz*ty),vy+qw*ty+(qz*tx-qx*tz),vz+qw*tz+(qx*ty-qy*tx)];}
   const qinv=q=>[-q[0],-q[1],-q[2],q[3]];
+  // Spherical-linear interpolation between two unit quaternions (shortest arc).
+  // Used to STEER a settling die smoothly toward its predetermined face-up
+  // orientation, so it organically comes to rest on the right value instead of
+  // landing random and then visibly snapping/flipping after the fact.
+  function qslerp(a,b,t){
+    let d=a[0]*b[0]+a[1]*b[1]+a[2]*b[2]+a[3]*b[3];
+    if(d<0){b=[-b[0],-b[1],-b[2],-b[3]];d=-d;}        // take the shorter path
+    if(d>0.9995){                                       // nearly identical → lerp
+      return qnorm([a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t,a[2]+(b[2]-a[2])*t,a[3]+(b[3]-a[3])*t]);
+    }
+    const th=Math.acos(d),s=Math.sin(th),w1=Math.sin((1-t)*th)/s,w2=Math.sin(t*th)/s;
+    return [a[0]*w1+b[0]*w2,a[1]*w1+b[1]*w2,a[2]*w1+b[2]*w2,a[3]*w1+b[3]*w2];
+  }
+  // The orientation that puts die `d`'s predetermined result face pointing UP
+  // (+Z, toward the camera-down view), preserving the die's current yaw about Z
+  // so the correction is the MINIMAL tilt — it reads as a natural final wobble,
+  // not a spin-to-align. Computed fresh each frame from the live quaternion.
+  function resultUpQuat(d){
+    const v=Math.max(1,Math.min(6,d.result|0));
+    const faceN=faceInfo[v].n;
+    // Base: rotate the result face normal to +Z.
+    const base=qfromTo(faceN,[0,0,1]);
+    // Preserve current yaw: find how the die is currently rotated about Z and
+    // fold that into the target so we don't also un-spin the visible top face.
+    // Cheap approximation: keep the die's current Z-rotation by composing the
+    // base with the yaw extracted from the current quaternion.
+    const fwd=qrot(d.q,[1,0,0]);
+    const yaw=Math.atan2(fwd[1],fwd[0]);
+    return qnorm(qmul(qaxis([0,0,1],yaw),base));
+  }
 
   const faceInfo={1:{n:[0,-1,0],u:[1,0,0],v:[0,0,1]},6:{n:[0,1,0],u:[-1,0,0],v:[0,0,1]},3:{n:[1,0,0],u:[0,1,0],v:[0,0,1]},4:{n:[-1,0,0],u:[0,-1,0],v:[0,0,1]},5:{n:[0,0,1],u:[1,0,0],v:[0,1,0]},2:{n:[0,0,-1],u:[1,0,0],v:[0,-1,0]}};
   const pipPos={1:[[0,0]],2:[[-.18,-.18],[.18,.18]],3:[[-.2,-.2],[0,0],[.2,.2]],4:[[-.2,-.2],[.2,-.2],[-.2,.2],[.2,.2]],5:[[-.22,-.22],[.22,-.22],[0,0],[-.22,.22],[.22,.22]],6:[[-.24,-.22],[.24,-.22],[-.24,0],[.24,0],[-.24,.22],[.24,.22]]};
@@ -224,8 +254,28 @@
       if(cZ)d.z+=corrZ/cZ;if(cX)d.x+=corrX/cX;if(cY)d.y+=corrY/cY;
       d.vx*=F;d.vy*=F;d.vz*=F;d.wx*=F*.992;d.wy*=F*.992;d.wz*=F*.992;
       let speed=Math.hypot(d.vx,d.vy,d.vz)+(Math.abs(d.wx)+Math.abs(d.wy)+Math.abs(d.wz))*8;
-      if(d.z<=d.curS*.52&&speed<32)d.still+=dt;else d.still=0;
-      if(d.still>.58)settled++;
+      const onFloor=d.z<=d.curS*.6;
+      // ─── Steered settle ────────────────────────────────────────────────
+      // Once a die is on the floor and tumbling slowly, gently STEER its
+      // orientation toward the predetermined result face being up, and bleed
+      // off its spin. The die thus rolls to a natural stop ALREADY showing the
+      // right value — no post-settle snap/flip and no pip "eye swap". The
+      // steering strength ramps up as the die slows so it never looks forced.
+      if(onFloor && speed<150){
+        const t=Math.min(1, (1-speed/150)*9*dt);   // stronger as it slows
+        d.q=qslerp(d.q, resultUpQuat(d), t);
+        const damp=Math.pow(.86, dt*60);            // extra spin damping
+        d.wx*=damp; d.wy*=damp; d.wz*=damp;
+      }
+      if(onFloor&&speed<32)d.still+=dt;else d.still=0;
+      // Hard-lock once visually at rest: pin exactly to the result-up
+      // orientation and kill residual motion so the final frame is crisp.
+      if(d.still>.34 && !d.locked){
+        d.q=resultUpQuat(d);
+        d.wx=d.wy=d.wz=0; d.vx*=.4; d.vy*=.4;
+        d.locked=true;
+      }
+      if(d.still>.5)settled++;
     }
     for(let i=0;i<dice.length;i++)for(let j=i+1;j<dice.length;j++)collide(dice[i],dice[j],onClack);
     return settled;
@@ -258,7 +308,7 @@
   }
 
   function spawn(dice,d){dice.push(d);}
-  function newDie(o){const t=o.s||58;return{x:o.x||0,y:o.y||0,z:o.z||120,vx:o.vx||0,vy:o.vy||0,vz:o.vz||0,q:qaxis(norm([R(-1,1),R(-1,1),R(-1,1)]),R(0,Math.PI*2)),wx:o.wx||R(-8,8),wy:o.wy||R(-8,8),wz:o.wz||R(-8,8),s:t,curS:t*.03,r:t*.95,result:o.result||1,color:o.color||'',still:0};}
+  function newDie(o){const t=o.s||58;return{x:o.x||0,y:o.y||0,z:o.z||120,vx:o.vx||0,vy:o.vy||0,vz:o.vz||0,q:qaxis(norm([R(-1,1),R(-1,1),R(-1,1)]),R(0,Math.PI*2)),wx:o.wx||R(-8,8),wy:o.wy||R(-8,8),wz:o.wz||R(-8,8),s:t,curS:t*.03,r:t*.95,result:o.result||1,color:o.color||'',still:0,locked:false};}
 
   // Lay dice out facing the camera, each showing its real (predetermined) value.
   //
@@ -269,26 +319,20 @@
   // (z=d.curS*.55) keeps them off the floor so the camera can see the face
   // clearly; no XY shift. curS is forced to d.s so the natural size is the
   // final visible size (no growth animation on present).
+  // present() is now a gentle FINALIZER, not a re-layout. The steered settle in
+  // physics() already lands each die in place showing its result face up, so
+  // there is no jarring slide-apart / zoom / flip here anymore (that was the
+  // "dice settle then all turn to be visible while the eyes get swapped" bug).
+  // We only: pin the exact result-up orientation (in case a die hadn't fully
+  // locked), kill any residual motion, and ensure full size. Positions are left
+  // EXACTLY where the dice came to rest.
   function present(scene,dice){
-    dice.forEach((d,i)=>{
-      const v=Math.max(1,Math.min(6,d.result|0));
-      // Keep settled x/y. Only adjust z so the die clears the floor enough to
-      // see its top face. Cap so two dice never visibly overlap on present.
-      const minSpace = d.s * 1.6;
-      const idealX = (i - (dice.length-1)/2) * minSpace;
-      // Lerp from current to ideal x by a small amount so dice that ended up
-      // near each other slide apart slightly instead of teleporting.
-      d.x = d.x * .55 + idealX * .45;
-      d.y = d.y * .85;          // pull slightly toward y=0 (visual center), no big move
-      d.z = d.curS * .55;       // sit JUST above the floor (was 160 = camera-pull)
+    dice.forEach((d)=>{
+      d.q = resultUpQuat(d);     // crisp final face — minimal-tilt, in place
       d.vx=d.vy=d.vz=d.wx=d.wy=d.wz=0;
-      d.curS=d.s;                // final size — NEVER scale up further
-      const faceN=faceInfo[v].n;
-      // Rotate so the result face points UP (toward +Z), not toward the camera.
-      // Tiny random tilt makes it feel less rigid without making the face hard
-      // to read.
-      const tilt = qaxis([R(-1,1),R(-1,1),0], R(-.08,.08));
-      d.q = qmul(tilt, qfromTo(faceN, [0,0,1]));
+      d.curS=d.s;
+      d.z = Math.max(d.z, d.curS*.5);   // ensure it rests on (not in) the floor
+      d.locked=true;
     });
   }
 
