@@ -170,12 +170,20 @@ interface (`create / applyAction / viewFor / isOver` + optional
 When something breaks: **stop adding features, preserve the evidence, find the
 root cause, fix it, then guard against recurrence.** Don't guess.
 
-- **Verify UI/layout/interaction changes in a real browser**, not by reading CSS.
-  Use Playwright (already a devDependency) to drive the real app
-  (`window.setLocalSeats` + `window.startLocalForGame`), measure
-  `scrollHeight - clientHeight`, computed styles, and bounding rects, and capture
-  screenshots. This repo's bugs (clipped boards, invisible buttons) are only
-  provable at runtime.
+- **Verify UI/layout/interaction changes in a real browser BEFORE deploying —
+  this is mandatory, not optional** (user directive). Use Playwright (already a
+  devDependency) to drive the real app (`window.setLocalSeats` +
+  `window.startLocalForGame`), measure, AND **capture + visually inspect
+  screenshots** at desktop (e.g. 1280×800, 1440×900) and mobile (e.g. 390×844)
+  sizes. Numeric checks alone are NOT enough: a `transform:scale()`d board that
+  overflows its container gets **clipped without any document scroll**, so
+  `scrollHeight - clientHeight` reads 0 while the board is visibly cut off — the
+  Flip7/Skyjo clipping bugs were invisible to the metric and only caught by
+  eyeballing the screenshot. To check a fit board really fits, compare the
+  CONTENT's `getBoundingClientRect()` against its container's rect (left/right/
+  top/bottom within bounds), not document scroll.
+- **Per sprint, cycle through the WHOLE app** (every menu, every button/modal,
+  all four games) on mobile AND desktop and confirm each looks + works right.
 - Watch for **CSS cascade-order traps**: equal-specificity rules where a later
   one silently wins (this caused real bugs here — Skyjo cards ignoring
   `--bcard-w`). When a value "should" apply but doesn't, dump the *computed*

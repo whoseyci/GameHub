@@ -620,6 +620,12 @@ html,body,#app{min-height:100%;height:auto;max-height:none;overflow-x:hidden;ove
 .f7-focus-board{ width:min(760px,100%); min-width:0; }
 .f7-focus-board .f7-row{ max-width:100%; overflow:hidden; flex-wrap:wrap; }
 .f7-focus-board .kc-zone-f7{ transform-origin:center; }
+/* The focus-board header must never exceed the board width (its nowrap score
+   badge could otherwise blow the whole board out — which Kit.Fit then can't
+   scale to fit without clipping). Let the name shrink/ellipsize and the header
+   wrap if truly cramped. */
+.f7-focus-board .board-header{ max-width:100%; flex-wrap:wrap; min-width:0; }
+.f7-focus-board .board-header > span:first-child{ min-width:0; overflow:hidden; text-overflow:ellipsis; }
 @media(max-width:760px){
   .f7-mini-strip{ grid-template-columns:repeat(auto-fit,minmax(78px,1fr)); }
 }

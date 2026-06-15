@@ -53,18 +53,49 @@
   //    wrapper, creating a feedback loop where upscaling grows the measured
   //    natural width and the board overflows. We pin it to its intrinsic
   //    content size for the measurement, then restore.
-  function naturalSize(content) {
+  //
+  // `availW` lets us measure the board at the width it WILL actually live at
+  // (its responsive `width:100%`/`min(...)` resolved against the container),
+  // rather than `max-content` — which would let a nowrap header blow out to a
+  // huge intrinsic width and corrupt the fit. We then union descendant rects so
+  // any element that still overflows (a stubborn nowrap row) is accounted for,
+  // guaranteeing the scaled board never clips.
+  function naturalSize(content, availW) {
     const s = content.style;
     const prev = { transform: s.transform, width: s.width, height: s.height, maxWidth: s.maxWidth, maxHeight: s.maxHeight };
     s.transform = 'none';
-    s.width = 'max-content';
+    // Constrain to the real available width so responsive widths resolve sanely;
+    // height stays content-driven. Use !important so a game's own
+    // `width:…!important` can't override our measurement constraint.
+    if (availW) {
+      s.setProperty('width', Math.round(availW) + 'px', 'important');
+      s.setProperty('max-width', Math.round(availW) + 'px', 'important');
+    } else {
+      s.width = 'max-content'; s.maxWidth = 'none';
+    }
     s.height = 'max-content';
-    s.maxWidth = 'none';
     s.maxHeight = 'none';
-    const w = content.offsetWidth;
-    const h = content.offsetHeight;
-    s.transform = prev.transform; s.width = prev.width; s.height = prev.height;
-    s.maxWidth = prev.maxWidth; s.maxHeight = prev.maxHeight;
+    let w = Math.max(content.offsetWidth, content.scrollWidth);
+    let h = Math.max(content.offsetHeight, content.scrollHeight);
+    // Union descendant extents (captures children that overflow the box).
+    const base = content.getBoundingClientRect();
+    const kids = content.querySelectorAll('*');
+    for (let i = 0; i < kids.length; i++) {
+      const r = kids[i].getBoundingClientRect();
+      if (!r.width && !r.height) continue;
+      const right = r.right - base.left;
+      const bottom = r.bottom - base.top;
+      if (right > w) w = right;
+      if (bottom > h) h = bottom;
+    }
+    w = Math.ceil(w); h = Math.ceil(h);
+    // Restore (clear our !important measurement constraints first).
+    s.removeProperty('width'); s.removeProperty('max-width');
+    s.transform = prev.transform;
+    if (prev.width) s.width = prev.width;
+    s.height = prev.height;
+    if (prev.maxWidth) s.maxWidth = prev.maxWidth;
+    s.maxHeight = prev.maxHeight;
     return { w, h };
   }
 
@@ -75,7 +106,7 @@
     const pad = opts.padding || 0;
     const availW = Math.max(0, cr.width - pad * 2);
     const availH = Math.max(0, cr.height - pad * 2);
-    const nat = naturalSize(content);
+    const nat = naturalSize(content, availW);
     if (!nat.w || !nat.h || !availW || !availH) return null;
     const sw = availW / nat.w;
     const sh = availH / nat.h;
@@ -84,8 +115,12 @@
     else if (opts.axis === 'height') s = sh;
     else s = Math.min(sw, sh);
     if (!opts.grow) s = Math.min(s, 1);          // shrink-only mode
-    s = clamp(s, opts.min, opts.max);
-    return { s, nat };
+    // IMPORTANT: max may only ever SHRINK the fit scale, never grow it past what
+    // actually fits — otherwise a short/wide board upscaled to `max` overflows
+    // its container and gets visually clipped. So clamp the floor to min, but the
+    // ceiling is min(max, fit).
+    s = Math.max(opts.min, Math.min(s, opts.max));
+    return { s, nat, availW, availH };
   }
 
   function applyScale(st) {
@@ -112,15 +147,17 @@
     // Pin the content to its measured NATURAL size so a responsive width:100% /
     // height:100% can't re-expand against the (scaled) wrapper — the transform
     // alone then does the scaling. This breaks the upscale feedback loop.
-    content.style.width = Math.round(res.nat.w) + 'px';
-    content.style.height = Math.round(res.nat.h) + 'px';
+    content.style.setProperty('width', Math.round(res.nat.w) + 'px', 'important');
+    content.style.setProperty('height', Math.round(res.nat.h) + 'px', 'important');
     content.style.transform = s === 1 ? '' : `scale(${s.toFixed(4)})`;
+
     // Reserve the SCALED footprint so the flex parent centres/space-distributes
     // correctly (a transform doesn't change layout box, so we hint via wrapper).
     if (st.wrapper) {
       st.wrapper.style.height = Math.round(res.nat.h * s) + 'px';
       st.wrapper.style.width = Math.round(res.nat.w * s) + 'px';
     }
+    st.lastScale = s;            // remember the CORRECTED scale for hysteresis
     content.dataset.kitFitScale = s.toFixed(3);
   }
 
@@ -149,7 +186,7 @@
   function apply(container, content, options = {}) {
     if (!container || !content) return;
     const opts = Object.assign({
-      min: 0.55, max: 1.9, axis: 'both', align: 'center', padding: 8, grow: true, smooth: true,
+      min: 0.4, max: 1.9, axis: 'both', align: 'center', padding: 8, grow: true, smooth: true,
     }, options || {});
 
     // Reuse existing state if re-applied to the same content.
@@ -201,8 +238,9 @@
     if (st.container) delete st.container.__kitFitState;
     content.style.transform = '';
     content.style.transformOrigin = '';
-    content.style.width = '';
-    content.style.height = '';
+    content.style.transition = '';
+    content.style.removeProperty('width');
+    content.style.removeProperty('height');
     delete content.dataset.kitFitScale;
     // Unwrap (move content back out, drop the wrapper).
     if (st.wrapper && st.wrapper.parentElement && st.wrapper.contains(content)) {

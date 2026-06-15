@@ -85,6 +85,22 @@ describe("Kit.Fit — source contract + renderTable auto-wiring", () => {
     expect(fitSrc).toMatch(/Math\.min\(sw,\s*sh\)/);
   });
 
+  it("clamps max so it can only SHRINK the fit scale, never grow past what fits", () => {
+    // Regression: a short/wide board (e.g. Flip7) upscaled to `max` overflowed
+    // and clipped. The ceiling must be min(max, fit), not a blind clamp-up.
+    expect(fitSrc).toMatch(/Math\.max\(opts\.min,\s*Math\.min\(s,\s*opts\.max\)\)/);
+  });
+
+  it("unions descendant rects so an overflowing child (nowrap header) can't clip", () => {
+    // Regression: the Flip7 board-header resolved far wider than the board; the
+    // naturalSize union of child rects captures that so the fit shrinks to fit.
+    expect(fitSrc).toMatch(/querySelectorAll\(['"]\*['"]\)/);
+    expect(fitSrc).toMatch(/getBoundingClientRect/);
+    // and it measures at the real available width (not max-content) to keep
+    // responsive headers from blowing out the measurement.
+    expect(fitSrc).toMatch(/naturalSize\(content,\s*availW\)/);
+  });
+
   it("re-fits on container resize (ResizeObserver) and content change (MutationObserver)", () => {
     expect(fitSrc).toMatch(/new\s+ResizeObserver/);
     expect(fitSrc).toMatch(/new\s+MutationObserver/);
