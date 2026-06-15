@@ -136,10 +136,23 @@ describe("Kit.Roller — wired into Qwixx as the swappable renderer", () => {
     expect(src).toMatch(/const\s+ROLLER\s*=/);
     expect(src).toMatch(/ROLLER\.roll\(/);
     expect(src).toMatch(/ROLLER\.showStatic\(/);
-    // The lever is shown only for the active roller; opponents auto-pull.
-    expect(src).toMatch(/const\s+lever\s*=\s*usesLever\s*&&\s*isAct/);
-    expect(src).toMatch(/autoPull:\s*usesLever\s*&&\s*!isAct/);
+    // The lever is gated on CONTROL, not focus — activeIsMine is true when the
+    // active (rolling) seat is a non-bot seat THIS device controls. This is what
+    // makes pass-and-play correct: players 2+ on one device still get the lever
+    // instead of the slot auto-firing. (Regression guard for that bug.)
+    expect(src).toMatch(/const\s+activeIsMine\s*=/);
+    expect(src).toMatch(/const\s+lever\s*=\s*usesLever\s*&&\s*activeIsMine/);
+    expect(src).toMatch(/autoPull:\s*usesLever\s*&&\s*!activeIsMine/);
     // Reveal-on-pull: dice are marked revealed in onPull, not before the lever.
     expect(src).toMatch(/onPull:\s*\(\)\s*=>/);
+  });
+
+  it("pass-and-play: activeIsMine derives from controlledSeats + bot check (not focus)", () => {
+    // The auto-fire bug for players 2+ on one device came from gating on
+    // view.yourSeat (focus), which can lag the active seat during turn rotation.
+    // The fix reads window._controlledSeats and excludes bot seats.
+    const src = readFileSync(join(process.cwd(), "public/js/02-qwixx.js"), "utf8");
+    expect(src).toMatch(/window\._controlledSeats/);
+    expect(src).toMatch(/controlled\.includes\(\s*s\.activeSeat\s*\)\s*&&\s*!activeIsBot/);
   });
 });

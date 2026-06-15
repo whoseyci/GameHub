@@ -119,25 +119,63 @@
     container.innerHTML = '';
     container.classList.add('kit-roller');
 
+    // ── Cabinet ───────────────────────────────────────────────────────────
+    // An artsy little arcade machine: a lit marquee crown on top, a glass reel
+    // housing (with a centre payline + a ring of blinking bulbs), and a chunky
+    // side lever. The whole cabinet (.kit-slot) is what bounces/settles.
     const machine = document.createElement('div');
     machine.className = 'kit-slot';
     machine.style.setProperty('--reel-size', size + 'px');
+
+    // Marquee crown — shows a call-to-action while idle, "GO!" while spinning.
+    const marquee = document.createElement('div');
+    marquee.className = 'kit-slot-marquee';
+    const marqueeLabel = (opts.title != null) ? opts.title : 'ROLL';
+    marquee.innerHTML =
+      `<span class="kit-marquee-bulbs" aria-hidden="true">${'<i></i>'.repeat(7)}</span>` +
+      `<span class="kit-marquee-text">${marqueeLabel}</span>`;
+    machine.appendChild(marquee);
+
+    // Body = housing (reels + payline) on the left, lever on the right.
+    const body = document.createElement('div');
+    body.className = 'kit-slot-body';
+
+    const housing = document.createElement('div');
+    housing.className = 'kit-slot-housing';
 
     const bank = document.createElement('div');
     bank.className = 'kit-slot-bank';
     const reelEls = reels.map((r, i) => buildReel(r, opts, i));
     reelEls.forEach(el => bank.appendChild(el));
-    machine.appendChild(bank);
+    housing.appendChild(bank);
 
-    // Lever
+    // Centre payline (the win line) — flashes when the reels lock.
+    const payline = document.createElement('span');
+    payline.className = 'kit-slot-payline';
+    payline.setAttribute('aria-hidden', 'true');
+    housing.appendChild(payline);
+
+    body.appendChild(housing);
+
+    // Lever (chunky, with a mounting base) on the side.
     let lever = null;
     if (wantLever) {
       lever = document.createElement('button');
       lever.className = 'kit-slot-lever';
       lever.setAttribute('aria-label', 'Pull the lever to roll');
-      lever.innerHTML = `<span class="kit-lever-track"><span class="kit-lever-knob"></span></span>`;
-      machine.appendChild(lever);
+      lever.innerHTML =
+        `<span class="kit-lever-track"><span class="kit-lever-arm"></span><span class="kit-lever-knob"></span></span>` +
+        `<span class="kit-lever-base" aria-hidden="true"></span>`;
+      body.appendChild(lever);
     }
+
+    machine.appendChild(body);
+
+    // Little coin-slot / brand plate foot for personality.
+    const foot = document.createElement('div');
+    foot.className = 'kit-slot-foot';
+    foot.innerHTML = `<span class="kit-slot-coin" aria-hidden="true"></span>`;
+    machine.appendChild(foot);
 
     container.appendChild(machine);
 
@@ -177,9 +215,9 @@
             if (typeof opts.onClack === 'function') opts.onClack();
             stopped++;
             if (stopped === reelEls.length) {
-              // Whole machine settle-bounce, then resolve.
+              // Whole machine settle-bounce + payline flash, then resolve.
               machine.classList.remove('spinning');
-              machine.classList.add('settle');
+              machine.classList.add('settle', 'locked-in');
               if (typeof SFX !== 'undefined' && SFX.reveal) SFX.reveal();
               if (typeof opts.onLock === 'function') opts.onLock();
               setTimeout(() => { machine.classList.remove('settle'); resolve(); }, 420);
@@ -205,16 +243,22 @@
     if (!container) return;
     const size = opts.size || 56;
     const reels = (reelsOrDice || []).map(toReel);
+    const marqueeLabel = (opts.title != null) ? opts.title : 'ROLL';
     container.classList.add('kit-roller');
-    container.innerHTML = `<div class="kit-slot" style="--reel-size:${size}px"><div class="kit-slot-bank">` +
-      reels.map(r => {
-        const color = norm(r.color);
-        const pal = PALETTE[color];
-        const landed = r.icon ? { icon: r.icon } : (r.symbol != null ? r.symbol : r.value);
-        return `<div class="kit-reel locked" data-color="${color}" style="--reel-size:${size}px;--reel-face:${pal.face};--reel-edge:${pal.edge};--reel-text:${pal.text}">` +
-          `<div class="kit-reel-window"><div class="kit-reel-strip"><div class="kit-reel-cell">${symbolHTML(landed, color)}</div></div></div></div>`;
-      }).join('') +
-      `</div></div>`;
+    const reelsHTML = reels.map(r => {
+      const color = norm(r.color);
+      const pal = PALETTE[color];
+      const landed = r.icon ? { icon: r.icon } : (r.symbol != null ? r.symbol : r.value);
+      return `<div class="kit-reel locked" data-color="${color}" style="--reel-size:${size}px;--reel-face:${pal.face};--reel-edge:${pal.edge};--reel-text:${pal.text}">` +
+        `<div class="kit-reel-window"><div class="kit-reel-strip"><div class="kit-reel-cell">${symbolHTML(landed, color)}</div></div></div></div>`;
+    }).join('');
+    // Same cabinet chrome as spin() so the resting readout matches the machine.
+    container.innerHTML =
+      `<div class="kit-slot kit-slot-static" style="--reel-size:${size}px">` +
+        `<div class="kit-slot-marquee"><span class="kit-marquee-bulbs" aria-hidden="true">${'<i></i>'.repeat(7)}</span><span class="kit-marquee-text">${marqueeLabel}</span></div>` +
+        `<div class="kit-slot-body"><div class="kit-slot-housing"><div class="kit-slot-bank">${reelsHTML}</div><span class="kit-slot-payline" aria-hidden="true"></span></div></div>` +
+        `<div class="kit-slot-foot"><span class="kit-slot-coin" aria-hidden="true"></span></div>` +
+      `</div>`;
   }
 
   // Map a {color,value} (dice API) OR a {color,symbol/icon} (generic) to a reel.

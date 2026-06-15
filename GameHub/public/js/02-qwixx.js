@@ -259,6 +259,15 @@ window.GameClients = window.GameClients || {};
     const s = view.qwixx || view.state;
     const dice = s.dice || { w:[0,0], r:0, y:0, g:0, b:0 };
     const isAct = s.activeSeat === view.yourSeat;
+    // Lever gating must be about CONTROL, not focus. In pass-and-play every
+    // human seat is controlled by this one device, and the focused seat
+    // (view.yourSeat) can briefly differ from the active roller as turns rotate.
+    // Using isAct there caused the slot to AUTO-FIRE for players 2+ on the same
+    // device. activeIsMine is true when the active (rolling) seat is a non-bot
+    // seat this device controls — so the right person always gets the lever.
+    const controlled = Array.isArray(window._controlledSeats) ? window._controlledSeats : (view.controlledSeats || []);
+    const activeIsBot = (typeof isLocalBotSeat === 'function') ? isLocalBotSeat(s.activeSeat) : false;
+    const activeIsMine = controlled.includes(s.activeSeat) && !activeIsBot;
     const isWhite = s.phase === 'WHITE_PHASE';
     const isColor = s.phase === 'COLOR_PHASE';
     const pendingWhite = isWhite && s.pendingWhiteDecisions.includes(view.yourSeat);
@@ -425,7 +434,10 @@ window.GameClients = window.GameClients || {};
     // a lever to click. The WebGL dice ignore lever/autoPull and just animate.
     const doThrow = () => {
       if(throwBtn) throwBtn.classList.add('hidden');
-      const lever = usesLever && isAct;        // active player pulls; others auto
+      // The roller's active seat pulls the lever; everyone else (remote players,
+      // bots) auto-pulls. activeIsMine (control-based) is correct for both
+      // online play AND pass-and-play, where players 2+ share this device.
+      const lever = usesLever && activeIsMine;
       // IMPORTANT: the dice are only "revealed" (which lets bots act and shows
       // the combos/hints) once the roll actually STARTS — i.e. when the lever is
       // pulled. For the WebGL/auto path that's immediately; for the lever path
@@ -433,7 +445,7 @@ window.GameClients = window.GameClients || {};
       // the human pulls the lever.
       if(!lever) window._qwixxDiceSig = diceSig;
       ROLLER.roll(diceTray, diceList(dice), {
-        size: dsize, lever, autoPull: usesLever && !isAct,
+        size: dsize, lever, autoPull: usesLever && !activeIsMine,
         onPull: () => {
           window._qwixxDiceSig = diceSig;
           // Re-dispatch so bots/combos/hints wake the instant the reels start.
