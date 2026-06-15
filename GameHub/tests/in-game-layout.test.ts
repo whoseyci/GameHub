@@ -127,3 +127,28 @@ describe("No game still calls Kit.Layout.fit", () => {
     });
   }
 });
+
+describe("Action controls never overlap boards (bottom safe-zone)", () => {
+  const cards = readFileSync("public/js/00-cards.js", "utf8");
+  it("Kit.Controls reserves a measured bottom band on #gameScreen", () => {
+    // Controls + status bar height is reserved as --gs-bottom-reserve so boards
+    // (and Kit.Fit's available height) stop ABOVE the floating buttons.
+    expect(cards).toMatch(/--gs-bottom-reserve/);
+    expect(cards).toMatch(/function\s+syncBottomReserve/);
+  });
+  it("#mainBoardsContainer reserves that band via padding-bottom", () => {
+    expect(css).toMatch(/--gs-bottom-reserve/);
+    expect(css).toMatch(/padding-bottom:\s*calc\(var\(--gs-bottom-reserve/);
+  });
+});
+
+describe("Group picker is styled (was unstyled → giant button / unreadable input)", () => {
+  it("has .group-picker popover + sized input/join CSS", () => {
+    expect(css).toMatch(/\.group-picker\s*\{[\s\S]*?position:\s*fixed/);
+    expect(css).toMatch(/\.group-picker-input\s*\{/);
+    expect(css).toMatch(/\.group-picker-join-btn\s*\{/);
+    // the join button must be auto-width (not the full-width default .btn that
+    // overflowed off-screen)
+    expect(css).toMatch(/\.group-picker-join-btn\s*\{[\s\S]*?width:\s*auto/);
+  });
+});

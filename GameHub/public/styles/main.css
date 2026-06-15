@@ -346,6 +346,13 @@
   max-width:var(--gs-main-max-w, none);
   min-height:var(--gs-main-min-h, 0);
   padding:var(--gs-main-pad, 0);
+  /* Reserve a bottom safe-zone for the floating control bar + status pill
+     (Kit.Controls sets --gs-bottom-reserve to their measured height). Kit.Fit
+     measures this container's content box, so the focus board can NEVER grow
+     under the action buttons — controls and boards never overlap. box-sizing
+     keeps the reserve inside the flex track. */
+  box-sizing:border-box;
+  padding-bottom:calc(var(--gs-bottom-reserve, 0px) + 6px);
 }
 #gameScreen #topArea{
   max-height:var(--gs-center-max-h, none);
@@ -430,7 +437,7 @@ button .kit-icon,.btn .kit-icon{vertical-align:-.16em;margin-right:6px}
 @media(max-width:720px){.qwixx-score-row{grid-template-columns:34px minmax(0,1fr) 36px}.qwixx-row-hdr{font-size:.85rem}.qwixx-cell{font-size:.68rem;min-height:42px}.qwixx-hint{font-size:.48rem;padding:1px 3px}.qwixx-die{width:38px;height:38px;font-size:1.1rem}.qwixx-dice-zone{padding:.65rem}.qwixx-combo{font-size:.62rem;padding:3px 6px}}
 
 /* ===== mobile/table-fit pass ===== */
-html,body,#app{height:100%;max-height:100%;overflow:hidden}.screen{min-height:0}.game-topbar{flex:0 0 var(--topbar-h)}#gameScreen.active{display:flex;height:100dvh;max-height:100dvh;overflow:hidden;padding:6px;justify-content:flex-start}.top-area{flex:0 0 auto}.boards-container{flex:1 1 auto;min-height:0;overflow:hidden;width:100%;align-items:center;align-content:flex-start}.status-bar{flex:0 0 auto;margin:4px 0 0;padding:6px 10px;min-height:28px;font-size:.85rem}
+html,body,#app{height:100%;max-height:100%;overflow:hidden}.screen{min-height:0}.game-topbar{flex:0 0 var(--topbar-h)}#gameScreen.active{display:flex;height:100dvh;max-height:100dvh;overflow:hidden;padding:6px;justify-content:flex-start}.top-area{flex:0 0 auto}.boards-container{flex:1 1 auto;min-height:0;overflow:hidden;width:100%;align-items:flex-start;justify-content:center;align-content:flex-start}.status-bar{flex:0 0 auto;margin:4px 0 0;padding:6px 10px;min-height:28px;font-size:.85rem}
 /* Phase 7: .mini-boards-container max-height removed from this mobile-fit
    pass — it was clamping to 18vh and squashing opponent boards into
    illegibility. The clean breakpoint progression near line 450 owns
@@ -1553,7 +1560,7 @@ html, body, #app { height: 100dvh !important; min-height: 100dvh !important; max
    The wrapper reserves the SCALED footprint (Kit.Fit sets its width/height) so
    the flex parent still centres + distributes space correctly while the content
    inside is transform:scaled. */
-.kit-fit-wrap{display:flex;align-items:center;justify-content:center;margin:0 auto;
+.kit-fit-wrap{display:flex;align-items:center;justify-content:center;margin:auto;
   max-width:100%;max-height:100%}
 .kit-fit-wrap > *{flex:0 0 auto}
 /* The focus board is Kit.Fit-scaled, so its OWN padding gets magnified too — a
@@ -1615,3 +1622,24 @@ html, body, #app { height: 100dvh !important; min-height: 100dvh !important; max
   .reaction-fx{animation:reactionFadeReduced .9s ease forwards}
   @keyframes reactionFadeReduced{0%{opacity:0;transform:translateX(-50%) translateY(-20vh)}30%{opacity:1}100%{opacity:0;transform:translateX(-50%) translateY(-30vh)}}
 }
+
+/* ── Group picker dropdown (header "Group" button) ───────────────────────────
+   Was unstyled → default .input collapsed + .btn overflowed off-screen. This
+   makes it a compact, readable popover anchored to the top-right. */
+.group-picker{position:fixed;top:64px;right:12px;z-index:120;width:min(320px,calc(100vw - 24px));
+  background:var(--surface,#0f172a);border:1px solid rgba(255,255,255,.14);border-radius:16px;
+  box-shadow:0 20px 50px rgba(0,0,0,.55);overflow:hidden}
+.group-picker.hidden{display:none}
+.group-picker-inner{display:flex;flex-direction:column;gap:14px;padding:14px}
+.group-picker-action{margin:0;width:100%;padding:11px 14px;font-size:.95rem}
+.group-picker-section{display:flex;flex-direction:column;gap:7px}
+.group-picker-label{font-size:.66rem;font-weight:900;letter-spacing:1.5px;text-transform:uppercase;color:var(--text-dim,#94a3b8)}
+.group-picker-recents{display:flex;flex-wrap:wrap;gap:6px}
+.group-picker-recents .empty{font-size:.82rem;color:var(--text-dim,#64748b);font-style:italic}
+.group-picker-recent-chip{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);color:var(--text,#e5e7eb);
+  border-radius:999px;padding:6px 12px;font-size:.82rem;font-weight:800;cursor:pointer;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.group-picker-recent-chip:hover{background:rgba(124,92,255,.22);border-color:rgba(124,92,255,.4)}
+.group-picker-join{display:flex;gap:8px;align-items:stretch}
+.group-picker-input{flex:1 1 auto;min-width:0;margin:0;padding:10px 12px;font-size:.9rem;
+  text-transform:uppercase;letter-spacing:.5px}
+.group-picker-join-btn{flex:0 0 auto;margin:0;width:auto;padding:10px 18px;font-size:.9rem;white-space:nowrap}

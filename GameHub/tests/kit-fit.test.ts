@@ -91,6 +91,16 @@ describe("Kit.Fit — source contract + renderTable auto-wiring", () => {
     expect(fitSrc).toMatch(/Math\.max\(opts\.min,\s*Math\.min\(s,\s*opts\.max\)\)/);
   });
 
+  it("measures the container CONTENT box (subtracts its padding) so a reserved bottom safe-zone is respected", () => {
+    // Regression: using getBoundingClientRect / clientHeight WITHOUT subtracting
+    // padding ignored the bottom safe-zone reserved for the floating control bar,
+    // so the board grew under the buttons / clipped at the top. Must read
+    // computed padding and subtract it.
+    expect(fitSrc).toMatch(/getComputedStyle\(container\)/);
+    expect(fitSrc).toMatch(/paddingBottom/);
+    expect(fitSrc).toMatch(/clientHeight\s*-\s*padY/);
+  });
+
   it("unions descendant rects so an overflowing child (nowrap header) can't clip", () => {
     // Regression: the Flip7 board-header resolved far wider than the board; the
     // naturalSize union of child rects captures that so the fit shrinks to fit.

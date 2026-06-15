@@ -212,7 +212,32 @@
   // the one preset: declare buttons, it renders/auto-cleans a single shared bar.
   //   Kit.Controls.set([{ label:'End turn ▶', onClick, kind:'green', disabled }], { id })
   //   Kit.Controls.clear(id?)
+  //
+  // The bar is position:fixed at the bottom and on top (z-index) so it is NEVER
+  // covered by a board — and crucially, it RESERVES its own height + the status
+  // bar's height as a bottom safe-zone on #gameScreen (via --gs-bottom-reserve),
+  // so the boards area (and Kit.Fit's available height) stops ABOVE the buttons
+  // instead of growing a board underneath them. This is the contract: action
+  // controls and boards never overlap.
   const CONTROLS_ID = 'kcControls';
+  function syncBottomReserve(){
+    // Measure the live control bar + status bar and reserve that band at the
+    // bottom of the game screen so boards never grow under them.
+    const gs = document.getElementById('gameScreen');
+    if (!gs) return;
+    const bar = document.getElementById(CONTROLS_ID);
+    const status = gs.querySelector('.status-bar');
+    // Reserve = distance from the viewport bottom up to the TOP of the highest
+    // floating element, so boards never grow under it. Measure each element's
+    // actual top relative to the viewport bottom (covers the fixed bottom offsets
+    // + the element height in one go), then add a small gap.
+    const topGap = (el) => (el && el.offsetParent !== null)
+      ? Math.max(0, window.innerHeight - el.getBoundingClientRect().top) : 0;
+    const reserve = Math.round(Math.max(topGap(bar), topGap(status)) + 10);
+    gs.style.setProperty('--gs-bottom-reserve', reserve + 'px');
+    // Boards may have shrunk → re-fit.
+    if (typeof Kit !== 'undefined' && Kit.Fit && Kit.Fit.refresh) requestAnimationFrame(() => Kit.Fit.refresh());
+  }
   function controlsSet(buttons, opts){
     opts = opts || {};
     const id = opts.id || CONTROLS_ID;
@@ -229,10 +254,11 @@
       bar.appendChild(btn);
     });
     if (!bar.children.length) bar.remove();
+    syncBottomReserve();
     return bar;
   }
-  function controlsClear(id){ const bar = document.getElementById(id || CONTROLS_ID); if (bar) bar.remove(); }
-  Kit.Controls = { set: controlsSet, clear: controlsClear };
+  function controlsClear(id){ const bar = document.getElementById(id || CONTROLS_ID); if (bar) bar.remove(); syncBottomReserve(); }
+  Kit.Controls = { set: controlsSet, clear: controlsClear, syncReserve: syncBottomReserve };
 
   // ---- shared STATUS line -----------------------------------------------------
   // Every game wrote sb.innerHTML with ad-hoc inline-styled spans (your turn / waiting

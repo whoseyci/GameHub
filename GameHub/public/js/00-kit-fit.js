@@ -102,10 +102,16 @@
   function computeScale(st) {
     const { container, content, opts } = st;
     if (!container || !content || !container.isConnected) return null;
-    const cr = container.getBoundingClientRect();
     const pad = opts.padding || 0;
-    const availW = Math.max(0, cr.width - pad * 2);
-    const availH = Math.max(0, cr.height - pad * 2);
+    // Available area = the container's true CONTENT box. clientHeight/Width
+    // include the element's own padding, so we must subtract it explicitly —
+    // otherwise a reserved bottom safe-zone (padding-bottom for the floating
+    // control bar) is ignored and the board grows under the buttons / clips.
+    const cs = getComputedStyle(container);
+    const padX = (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0);
+    const padY = (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0);
+    const availW = Math.max(0, container.clientWidth - padX - pad * 2);
+    const availH = Math.max(0, container.clientHeight - padY - pad * 2);
     const nat = naturalSize(content, availW);
     if (!nat.w || !nat.h || !availW || !availH) return null;
     const sw = availW / nat.w;
@@ -159,6 +165,48 @@
     }
     st.lastScale = s;            // remember the CORRECTED scale for hysteresis
     content.dataset.kitFitScale = s.toFixed(3);
+
+    // ── Deferred overflow correction ─────────────────────────────────────
+    // Measurement can under-report height (a fixed-size hand/row that doesn't
+    // shrink, or content that reflows taller once pinned). On the NEXT frame —
+    // after layout has fully flushed — measure the ACTUAL rendered extent and, if
+    // it still overflows the container, shrink the scale to truly fit so the
+    // board can never clip (top or bottom). Guarded against feedback loops.
+    if (st._correcting) return;
+    st._correctRaf && cancelAnimationFrame(st._correctRaf);
+    st._correctRaf = requestAnimationFrame(() => {
+      st._correctRaf = 0;
+      if (!content.isConnected || !st.container) return;
+      const pad = (st.opts.padding || 0);
+      const ccs = getComputedStyle(st.container);
+      const cpadX = (parseFloat(ccs.paddingLeft) || 0) + (parseFloat(ccs.paddingRight) || 0);
+      const cpadY = (parseFloat(ccs.paddingTop) || 0) + (parseFloat(ccs.paddingBottom) || 0);
+      const availW = Math.max(1, st.container.clientWidth - cpadX - pad * 2);
+      const availH = Math.max(1, st.container.clientHeight - cpadY - pad * 2);
+      // Real rendered extent of the content (transform included), via union.
+      const base = content.getBoundingClientRect();
+      let realW = base.width, realH = base.height;
+      const kids = content.querySelectorAll('*');
+      for (let i = 0; i < kids.length; i++) {
+        const r = kids[i].getBoundingClientRect();
+        if (!r.width && !r.height) continue;
+        realW = Math.max(realW, r.right - base.left);
+        realH = Math.max(realH, r.bottom - base.top);
+      }
+      const over = Math.max(realW / availW, realH / availH);
+      if (over <= 1.01) return;                       // fits — done
+      const corrected = Math.max(st.opts.min, (st.lastScale || s) / over);
+      if (Math.abs(corrected - (st.lastScale || s)) < 0.005) return;
+      st._correcting = true;
+      st.lastScale = corrected;
+      content.style.transform = corrected === 1 ? '' : `scale(${corrected.toFixed(4)})`;
+      if (st.wrapper) {
+        st.wrapper.style.height = Math.round(res.nat.h * corrected) + 'px';
+        st.wrapper.style.width = Math.round(res.nat.w * corrected) + 'px';
+      }
+      content.dataset.kitFitScale = corrected.toFixed(3);
+      st._correcting = false;
+    });
   }
 
   // Shared observers (created lazily) so N boards cost one observer each.

@@ -91,6 +91,17 @@ interface (`create / applyAction / viewFor / isOver` + optional
   socket aren't per-request; CPU is trivial) — see `docs/FEATURE_FEASIBILITY.md`.
   Note: reaction emojis are intentionally exempt from the no-UI-emoji guard
   (`tests/no-ui-emojis.test.ts`) because they ARE the feature's payload.
+- **Action controls never overlap boards.** The floating bottom control bar
+  (`Kit.Controls`, `public/js/00-cards.js`) is `position:fixed` + high z-index AND
+  reserves its own height + the status pill's as a bottom safe-zone on
+  `#gameScreen` (`--gs-bottom-reserve`), applied as `#mainBoardsContainer`'s
+  `padding-bottom`. So Kit.Fit's available area stops ABOVE the buttons and a
+  board can never grow under them. Don't render game action buttons inside a
+  board — route them through `Kit.Controls`.
+- **Kit.Fit must measure the container's CONTENT box** — read `clientWidth/Height`
+  and SUBTRACT the computed padding (clientHeight INCLUDES padding). Using the
+  border box (getBoundingClientRect) or raw clientHeight ignores the reserved
+  safe-zone and the board grows under the controls / clips at the top.
 - **Adaptive board sizing is automatic via `Kit.Fit`** (`public/js/00-kit-fit.js`).
   `GameShell.renderTable` auto-fits the focus board to fill its container — it
   **grows into void space and shrinks to avoid overflow**, content-aware, for
