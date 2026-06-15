@@ -438,20 +438,31 @@ window.GameClients = window.GameClients || {};
       // bots) auto-pulls. activeIsMine (control-based) is correct for both
       // online play AND pass-and-play, where players 2+ share this device.
       const lever = usesLever && activeIsMine;
-      // IMPORTANT: the dice are only "revealed" (which lets bots act and shows
-      // the combos/hints) once the roll actually STARTS — i.e. when the lever is
-      // pulled. For the WebGL/auto path that's immediately; for the lever path
-      // it's deferred to onPull. Setting it earlier would let bots act before
-      // the human pulls the lever.
-      if(!lever) window._qwixxDiceSig = diceSig;
+      // HARDENING: the dice become "revealed" (which lets bots act and shows the
+      // combos/marking hints) ONLY when the roll has visually ENDED — i.e. in
+      // the roller's onLock, not on pull/start. Revealing earlier let marking
+      // options pop up the instant the lever was pulled, before the reels even
+      // landed. The roll() Promise also resolves at lock, so reveal there too
+      // for the non-slot (WebGL) path which has no onLock notion of "settled".
+      const reveal = () => {
+        if(window._qwixxDiceSig === diceSig) return;
+        window._qwixxDiceSig = diceSig;
+        if(window._renderView && window._renderView.game === 'qwixx') dispatchView(window._renderView);
+      };
       ROLLER.roll(diceTray, diceList(dice), {
         size: dsize, lever, autoPull: usesLever && !activeIsMine,
-        onPull: () => {
-          window._qwixxDiceSig = diceSig;
-          // Re-dispatch so bots/combos/hints wake the instant the reels start.
-          if(window._renderView && window._renderView.game === 'qwixx') dispatchView(window._renderView);
+        // Per-game themed crown.
+        marquee: 'QWIXX',
+        // Per-game jackpot: all four COLOURED dice show the same number — a rare,
+        // delightful Qwixx roll. Sparkles tinted to that lucky colour.
+        jackpot: (reels) => {
+          const cols = reels.filter(r => r.color !== 'white').map(r => r.value);
+          return cols.length >= 2 && cols.every(v => v === cols[0]);
         },
+        jackpotColor: 'yellow',
+        onLock: reveal,                 // reveal after the reels visually settle
       }).then(()=>{
+        reveal();                       // belt-and-braces (also covers WebGL path)
         diceTray.dataset.shown = diceSig;
         if(window._renderView && window._renderView.game === 'qwixx') dispatchView(window._renderView);
       });
@@ -549,6 +560,37 @@ window.GameClients = window.GameClients || {};
     if(_activeThrow){ const f=_activeThrow; _activeThrow=null; f(); return true; }
     return false;
   }
-  window.GameClients['qwixx'] = { render, act, inspect, unmount, roll };
+
+  // localFocusSeat — pass-and-play focus policy (fixes "P1 board shows on P2's
+  // turn" + "boards swap too frequently"). Qwixx's white phase is SIMULTANEOUS,
+  // so the engine's currentSeat is -1 and the default focus (first pending-white
+  // seat) ping-ponged the device between players on every sub-decision.
+  //
+  // Policy the user asked for: the ACTIVE ROLLER keeps the device for their whole
+  // turn (they roll, then mark/skip/penalty). Only once they're done do we pass
+  // the device to the next LOCAL human who still owes a white decision this turn.
+  // Online/bot seats resolve simultaneously without stealing the local focus.
+  function localFocusSeat(state, humanSeats){
+    if(!state) return (humanSeats && humanSeats[0]) || 0;
+    const isHuman = (seat) => Array.isArray(humanSeats) && humanSeats.includes(seat);
+    const pending = Array.isArray(state.pendingWhiteDecisions) ? state.pendingWhiteDecisions : [];
+    const active = state.activeSeat;
+    // 1) Hold focus on the active roller while THEY still have something to do
+    //    this turn: their white decision is unresolved, OR they're past white
+    //    (colour phase) and haven't ended the turn. (When the roller fully
+    //    finishes, the engine advances activeSeat — so this naturally releases.)
+    const rollerNotDone = pending.includes(active) || state.phase === 'COLOR_PHASE';
+    if(isHuman(active) && rollerNotDone) return active;
+    // 2) Roller is done (or is a bot/remote): hand the device to the next LOCAL
+    //    human who still owes a white mark this turn, in seat order.
+    const nextLocalPending = (humanSeats || []).filter(s => pending.includes(s)).sort((a,b)=>a-b)[0];
+    if(nextLocalPending != null) return nextLocalPending;
+    // 3) Nothing pending locally → keep the device on the roller if it's ours,
+    //    else the first local human (so the screen stays on a board we control).
+    if(isHuman(active)) return active;
+    return (humanSeats && humanSeats[0]) ?? active;
+  }
+
+  window.GameClients['qwixx'] = { render, act, inspect, unmount, roll, localFocusSeat };
 
 })();

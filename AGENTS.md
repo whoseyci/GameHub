@@ -90,9 +90,22 @@ interface (`create / applyAction / viewFor / isOver` + optional
     the generic API.
   - `Kit.Dice3D` — WebGL physics dice (steered settle; see below).
   A game picks a renderer via a single `const ROLLER = ...` (see Qwixx) — both are
-  drop-in, so swapping is one line. **Reveal-on-pull:** when a game gates other
-  players/bots on "dice revealed", flip that flag in the roller's `onPull`, not
-  before, so bots don't act before the human pulls the lever.
+  drop-in, so swapping is one line. **Per-game customization (define on the roll
+  opts):** `marquee` (themed crown text), `jackpot(reels)->bool` (when sparkles
+  fire — each game owns its win rule) + `jackpotColor`, plus the built-in
+  coin-drop on every pull.
+  **Reveal timing (hardened):** `onPull` fires at spin START, `onLock` fires only
+  after the reels VISUALLY settle (spin END). When a game gates marking
+  options/bots on "results are official", do it in **`onLock`** (and the `roll()`
+  Promise, which also resolves at settle) — never `onPull` — so options don't
+  appear mid-animation.
+- **Pass-and-play focus is per-game via `localFocusSeat(state, humanSeats)`** on
+  the game client. The device should stay on the **active player until they fully
+  finish their turn**, then pass to the next local human — don't let focus
+  ping-pong on every sub-decision (Qwixx's white phase is simultaneous, so its
+  `localFocusSeat` holds the roller, then rotates through other local
+  pending-white humans, then returns to the roller for the colour phase).
+  Online/bot seats resolve simultaneously without stealing local focus.
 - **Card sizing is height-aware.** Card widths are
   `min(widthClamp, --card-h-cap)` so they rescale on short viewports instead of
   being clipped. If you add a board with a different row count, tune

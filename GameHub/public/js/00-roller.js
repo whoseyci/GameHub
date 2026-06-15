@@ -24,8 +24,20 @@
         size: 56,                                  // reel size in px
         lever: true,                               // show + require a lever pull (default true)
         autoPull: false,                           // pull automatically (no lever) — for opponents
-        onPull, onLock, onClack,                   // callbacks
+        marquee: 'QWIXX',                          // PER-GAME themed crown text (alias: title)
+        jackpot: (reels) => boolean,               // PER-GAME: should sparkles fire on this lock?
+        jackpotColor: 'yellow',                    // optional sparkle tint (palette colour)
+        onPull, onLock, onClack,                   // callbacks (see timing below)
       }) -> Promise   // resolves once all reels have locked + the machine settled
+
+   Callback timing (HARDENED): onPull fires when the lever is pulled (spin
+   START); onLock fires ONLY after the reels have VISUALLY settled (spin END).
+   Games that gate other players/bots on "results are official" MUST use onLock,
+   not onPull — otherwise options appear before the animation finishes.
+
+   FX (per game): a coin-drop plays on every pull. Jackpot sparkles fire on lock
+   ONLY when opts.jackpot(reels) returns true — each game defines its own win
+   condition (e.g. all reels equal, a specific symbol, etc). Omit it for none.
 
    2) Drop-in dice compatibility (same shape as Kit.Dice3D.roll):
 
@@ -127,10 +139,11 @@
     machine.className = 'kit-slot';
     machine.style.setProperty('--reel-size', size + 'px');
 
-    // Marquee crown — shows a call-to-action while idle, "GO!" while spinning.
+    // Marquee crown — themed per game via opts.marquee (string) / opts.title.
+    // Shows the call-to-action while idle, "<text> · GO!" while spinning.
     const marquee = document.createElement('div');
     marquee.className = 'kit-slot-marquee';
-    const marqueeLabel = (opts.title != null) ? opts.title : 'ROLL';
+    const marqueeLabel = (opts.marquee != null) ? opts.marquee : (opts.title != null ? opts.title : 'ROLL');
     marquee.innerHTML =
       `<span class="kit-marquee-bulbs" aria-hidden="true">${'<i></i>'.repeat(7)}</span>` +
       `<span class="kit-marquee-text">${marqueeLabel}</span>`;
@@ -177,7 +190,59 @@
     foot.innerHTML = `<span class="kit-slot-coin" aria-hidden="true"></span>`;
     machine.appendChild(foot);
 
+    // FX layer (above everything): coin drops on pull + jackpot sparkles on a
+    // winning lock. Pointer-events:none so it never blocks the lever.
+    const fx = document.createElement('div');
+    fx.className = 'kit-slot-fx';
+    fx.setAttribute('aria-hidden', 'true');
+    machine.appendChild(fx);
+
     container.appendChild(machine);
+
+    // ── FX helpers (per-game customizable) ────────────────────────────────
+    // Coin-drop: a couple of coins plink into the slot when the lever is pulled.
+    function dropCoins() {
+      if (REDUCE) return;
+      const n = 3;
+      for (let i = 0; i < n; i++) {
+        const coin = document.createElement('span');
+        coin.className = 'kit-fx-coin';
+        coin.style.setProperty('--cx', (Math.random() * 40 - 20) + '%');
+        coin.style.animationDelay = (i * 90) + 'ms';
+        fx.appendChild(coin);
+        setTimeout(() => coin.remove(), 900 + i * 90);
+      }
+    }
+    // Jackpot sparkles: fired on a winning lock. WHETHER a roll is a "jackpot"
+    // is DEFINED PER GAME via opts.jackpot(reels) -> boolean. (Omit it and no
+    // sparkles ever fire.) opts.jackpotColor themes the sparkles.
+    function jackpotSparkles() {
+      if (REDUCE) return;
+      machine.classList.add('jackpot');
+      const color = opts.jackpotColor || null;
+      const N = 18;
+      for (let i = 0; i < N; i++) {
+        const s = document.createElement('span');
+        s.className = 'kit-fx-spark';
+        const ang = (i / N) * Math.PI * 2 + Math.random() * 0.4;
+        const dist = 60 + Math.random() * 70;
+        s.style.setProperty('--dx', Math.cos(ang) * dist + 'px');
+        s.style.setProperty('--dy', Math.sin(ang) * dist + 'px');
+        s.style.animationDelay = (Math.random() * 120) + 'ms';
+        if (color) {
+          const pal = PALETTE[norm(color)];
+          if (pal) s.style.background = pal.face;
+        }
+        fx.appendChild(s);
+        setTimeout(() => s.remove(), 1100);
+      }
+      if (typeof SFX !== 'undefined' && SFX.win) SFX.win();
+      setTimeout(() => machine.classList.remove('jackpot'), 1200);
+    }
+    function maybeJackpot() {
+      try { if (typeof opts.jackpot === 'function' && opts.jackpot(reels)) jackpotSparkles(); }
+      catch (e) { /* a bad predicate must never break the roll */ }
+    }
 
     return new Promise(resolve => {
       let started = false;
@@ -186,6 +251,7 @@
         if (started) return; started = true;
         if (lever) lever.classList.add('pulled');
         machine.classList.add('spinning');
+        dropCoins();                                      // coin-drop on pull
         if (typeof opts.onPull === 'function') opts.onPull();
         if (typeof SFX !== 'undefined' && SFX.draw) SFX.draw();
 
@@ -193,6 +259,9 @@
           // Reduced motion: skip the animation, show the landed faces at once.
           reelEls.forEach(el => { el.classList.add('locked'); el._strip.style.transform = `translateY(calc(-1 * var(--reel-size) * ${el._cellCount - 1}))`; });
           machine.classList.remove('spinning');
+          machine.classList.add('locked-in');
+          maybeJackpot();
+          // onLock fires at the VISUAL end — here, immediately (no animation).
           if (typeof opts.onLock === 'function') opts.onLock();
           setTimeout(resolve, 60);
           return;
@@ -215,10 +284,15 @@
             if (typeof opts.onClack === 'function') opts.onClack();
             stopped++;
             if (stopped === reelEls.length) {
-              // Whole machine settle-bounce + payline flash, then resolve.
+              // Whole machine settle-bounce + payline flash.
               machine.classList.remove('spinning');
               machine.classList.add('settle', 'locked-in');
               if (typeof SFX !== 'undefined' && SFX.reveal) SFX.reveal();
+              maybeJackpot();
+              // HARDENING: onLock (the game's "results are now official" hook)
+              // fires ONLY here, after the reels have VISUALLY settled — never on
+              // pull. This is what lets Qwixx defer revealing marking options
+              // until the animation has truly ended.
               if (typeof opts.onLock === 'function') opts.onLock();
               setTimeout(() => { machine.classList.remove('settle'); resolve(); }, 420);
             }
@@ -280,6 +354,9 @@
       lever: opts.lever !== false && opts.autoPull !== true,
       autoPull: opts.autoPull === true,
       autoPullDelay: opts.autoPullDelay,
+      // Forward the per-game customizations: themed crown + jackpot rule.
+      marquee: opts.marquee, title: opts.title,
+      jackpot: opts.jackpot, jackpotColor: opts.jackpotColor,
       onPull: opts.onPull, onLock: opts.onLock, onClack: opts.onClack,
     });
   }
