@@ -38,6 +38,12 @@ export function cleanInt(value: unknown, min: number, max: number): number | nul
 // remains the final authority on whether the fields are meaningful.
 export const MAX_PAYLOAD_KEYS = 12;
 export const MAX_PAYLOAD_STRING = 64;
+// Numeric payload fields are bounded to a sane range. Game action payloads are
+// board indices, card values, seat numbers, etc. — all small. Without a bound a
+// hostile client could send 1e308 (passes Number.isFinite) which a game might
+// feed to Array(n) / a loop bound / an index, hanging or OOM-ing the Durable
+// Object (amplification DoS). ±1,000,000 is far above any legitimate field.
+export const MAX_PAYLOAD_NUMBER = 1_000_000;
 const SAFE_KEY = /^[A-Za-z_][A-Za-z0-9_]{0,31}$/;
 // Reserved keys the hub itself interprets — never let the payload override them.
 const RESERVED_KEYS = new Set(["type", "action", "seat", "botSeat", "pid", "name"]);
@@ -54,7 +60,10 @@ export function cleanPayload(value: unknown): Record<string, string | number | b
       // strip control characters
       out[k] = v.replace(/[\u0000-\u001f\u007f]/g, "");
     } else if (typeof v === "number") {
-      if (!Number.isFinite(v)) continue;
+      // Finite AND magnitude-bounded — see MAX_PAYLOAD_NUMBER. Non-finite
+      // (NaN/Infinity) and out-of-range values are dropped, not clamped, so a
+      // game never silently acts on a coerced value.
+      if (!Number.isFinite(v) || Math.abs(v) > MAX_PAYLOAD_NUMBER) continue;
       out[k] = v;
     } else if (typeof v === "boolean") {
       out[k] = v;

@@ -51,4 +51,17 @@ describe("protocol guards", () => {
   it("normalizes empty names", () => {
     expect(cleanName("\u0000\n  ")).toBe("Player");
   });
+
+  it("bounds payload number MAGNITUDE (anti-DoS): huge finite numbers are dropped", () => {
+    // Hardening (S6): a hostile client could send a huge-but-finite number that
+    // a game feeds to Array(n) / a loop bound / an index, hanging or OOM-ing the
+    // Durable Object. Out-of-range numbers are DROPPED (not clamped) so the game
+    // never acts on a coerced value; in-range ones pass through.
+    const msg = parseClientMessage(JSON.stringify({
+      type: "action", action: "mark",
+      huge: 1e308, negHuge: -1e308, justOver: 1_000_001,
+      ok: 999_999, idx: 3, neg: -7,
+    }));
+    expect(msg).toEqual({ type: "action", action: "mark", ok: 999_999, idx: 3, neg: -7 });
+  });
 });

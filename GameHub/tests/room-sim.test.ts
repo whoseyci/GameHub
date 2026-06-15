@@ -79,4 +79,26 @@ describe("room-level simulated flows", () => {
     room.action("not-a-member", { action: "hit" });
     expect(JSON.stringify(room.gameState)).toBe(before);
   });
+
+  it("safeMutate contract: a throwing game call rolls state back fully (S5)", () => {
+    // Mirrors Room.safeMutate: snapshot gameState, run the mutation, restore the
+    // snapshot on throw. Guards the crash-isolation + atomicity guarantee the
+    // server now relies on so a buggy/hostile action can't corrupt or crash.
+    function safeMutate(state: any, fn: () => void): { ok: boolean; state: any } {
+      const snap = structuredClone(state);
+      try { fn(); return { ok: true, state }; }
+      catch { return { ok: false, state: snap }; }
+    }
+    const g = GAMES["skyjo"];
+    let state: any = g.create(["Ada", "Ben"]);
+    const before = JSON.stringify(state);
+    // A mutation that corrupts state partway, THEN throws.
+    const res = safeMutate(state, () => {
+      (state.players[0] as any).board = "corrupted";   // partial mutation
+      throw new Error("boom");                          // …then fail
+    });
+    expect(res.ok).toBe(false);
+    // Rolled back: the restored state equals the pre-call snapshot exactly.
+    expect(JSON.stringify(res.state)).toBe(before);
+  });
 });

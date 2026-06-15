@@ -246,6 +246,40 @@ export class Room extends Server<Env> {
   }
   private touch() { this.lastActivity = Date.now(); this.armAlarm(); }
   private log(entry: Omit<ReplayEntry, "seq" | "t">) { this.actionLog = appendReplay(this.actionLog, entry); }
+
+  // ─── Crash isolation for game-module calls (S5) ──────────────────────────
+  // Game modules are the largest, most-changed surface in the hub and run on
+  // attacker-influenced input (the validated-but-arbitrary action payload).
+  // A throw inside applyAction/tick/etc. previously escaped onMessage and could
+  // take down the Durable Object — AND, because applyAction mutates gameState
+  // in place, a mid-mutation throw left state half-applied and divergent from
+  // storage (persistRoom is never reached on the throwing path).
+  //
+  // safeMutate snapshots gameState, runs the mutation, and ROLLS BACK on any
+  // throw so the room state is exactly as it was before the bad call. Returns
+  // true on success, false if it rolled back (callers then skip persist/
+  // broadcast and surface a clean INTERNAL error to the client instead of
+  // crashing the room). The snapshot is a structured clone (gameState is, by
+  // contract, plain JSON), so rollback is total.
+  private safeMutate(label: string, fn: () => void): boolean {
+    let snapshot: any;
+    try { snapshot = this.gameState == null ? null : structuredClone(this.gameState); }
+    catch { snapshot = this.gameState == null ? null : JSON.parse(JSON.stringify(this.gameState)); }
+    try {
+      fn();
+      return true;
+    } catch (e) {
+      console.error(`game call '${label}' threw for ${this.gameId}; rolling back`, e);
+      this.gameState = snapshot;   // restore pre-call state
+      return false;
+    }
+  }
+  // Read-only game-module calls (isOver, viewFor, joinScore…) that must never
+  // throw out of a handler. Returns the fallback on error.
+  private safeRead<T>(label: string, fn: () => T, fallback: T): T {
+    try { return fn(); }
+    catch (e) { console.error(`game read '${label}' threw for ${this.gameId}`, e); return fallback; }
+  }
   private debugSnapshot() {
     return {
       code: this.name,
@@ -302,16 +336,20 @@ export class Room extends Server<Env> {
       this.tickAt = null;
       const g = getGame(this.gameId);
       if (g?.completeTick) {
-        g.completeTick(this.gameState);
-        this.log({ kind: "tick", gameId: this.gameId });
-        // Capture the tick as a pseudo-action so client replay can drive it the
-        // same way the server did. We use a synthetic action name the client's
-        // replay player understands (it calls completeTick instead of applyAction).
-        this.actionSeq += 1;
-        if (this.currentReplay) pushAction(this.currentReplay, -1, { action: "__tick__" }, this.actionSeq);
-        // Game might have ended on a tick — finalize so the replay is preserved.
-        if (g.isOver(this.gameState) && this.currentReplay && !this.currentReplay.endedAt) {
-          this.finalizeCurrentReplay();
+        // Crash-isolated: a throwing completeTick rolls back and is skipped
+        // rather than crashing the alarm handler / corrupting state.
+        const ticked = this.safeMutate("completeTick", () => g.completeTick!(this.gameState));
+        if (ticked) {
+          this.log({ kind: "tick", gameId: this.gameId });
+          // Capture the tick as a pseudo-action so client replay can drive it the
+          // same way the server did. We use a synthetic action name the client's
+          // replay player understands (it calls completeTick instead of applyAction).
+          this.actionSeq += 1;
+          if (this.currentReplay) pushAction(this.currentReplay, -1, { action: "__tick__" }, this.actionSeq);
+          // Game might have ended on a tick — finalize so the replay is preserved.
+          if (this.safeRead("isOver", () => g.isOver(this.gameState), false) && this.currentReplay && !this.currentReplay.endedAt) {
+            this.finalizeCurrentReplay();
+          }
         }
       }
       this.scheduleTick();        // a tick may queue another (e.g. chained turn-ends)
@@ -337,7 +375,9 @@ export class Room extends Server<Env> {
     if (this.gameId && this.gameState) {
       const g = getGame(this.gameId);
       if (g?.tick) {
-        const delay = g.tick(this.gameState);
+        // tick() is a pure read (returns a delay), but guard it anyway so a
+        // throwing game module can't break alarm scheduling for the room.
+        const delay = this.safeRead("tick", () => g.tick!(this.gameState), null);
         if (delay != null) this.tickAt = Date.now() + delay;
       }
     }
@@ -623,17 +663,28 @@ export class Room extends Server<Env> {
     if (msg.type === "next_round" && isHost && this.gameId && this.gameState) {
       this.touch();
       const g = getGame(this.gameId)!;
-      // Seat spectators at the game's fair join score, then advance.
-      if (g.addPlayer) {
-        const startScore = g.joinScore ? g.joinScore(this.gameState) : 0;
-        for (const p of this.pending) {
-          if (this.members.length >= this.maxPlayers) break;
-          g.addPlayer(this.gameState, p.name, startScore);
-          this.members.push({ id: p.id, name: p.name });
+      // Seat spectators + advance the round atomically. We snapshot members +
+      // pending alongside gameState (safeMutate only owns gameState) so a throw
+      // mid-loop can't leave members[] out of sync with the game state.
+      const membersSnap = this.members.slice();
+      const pendingSnap = this.pending.slice();
+      const advanced = this.safeMutate("next_round", () => {
+        if (g.addPlayer) {
+          const startScore = g.joinScore ? g.joinScore(this.gameState) : 0;
+          for (const p of this.pending) {
+            if (this.members.length >= this.maxPlayers) break;
+            g.addPlayer!(this.gameState, p.name, startScore);
+            this.members.push({ id: p.id, name: p.name });
+          }
+          this.pending = [];
         }
-        this.pending = [];
+        g.applyAction(this.gameState, seat, { action: "next_round" });
+      });
+      if (!advanced) {
+        this.members = membersSnap; this.pending = pendingSnap;   // full rollback
+        conn.send(JSON.stringify(serverError("INTERNAL", "Could not start the next round.", true)));
+        return;
       }
-      g.applyAction(this.gameState, seat, { action: "next_round" });
       this.actionSeq += 1;
       if (this.currentReplay) pushAction(this.currentReplay, seat, { action: "next_round" }, this.actionSeq);
       this.log({ kind: "next_round", actor: pid, seat, gameId: this.gameId });
@@ -682,13 +733,16 @@ export class Room extends Server<Env> {
       if (actSeat < 0) { conn.send(JSON.stringify(actionRejected("You are spectating.", String(msg.action ?? "")))); return; }
       this.touch();
       const g = getGame(this.gameId)!;
-      g.applyAction(this.gameState, actSeat, msg);
+      // Crash-isolated + atomic: a throwing/buggy action rolls back cleanly and
+      // surfaces an error instead of corrupting state or killing the room.
+      const ok = this.safeMutate("applyAction", () => g.applyAction(this.gameState, actSeat, msg));
+      if (!ok) { conn.send(JSON.stringify(serverError("INTERNAL", "That action could not be processed.", true))); return; }
       this.actionSeq += 1;
       if (this.currentReplay) pushAction(this.currentReplay, actSeat, msg, this.actionSeq);
       this.log({ kind: "action", actor: pid, seat: actSeat, gameId: this.gameId, action: msg.action, detail: msg.botSeat != null ? { botSeat: msg.botSeat } : undefined });
       // If this action ended the game, freeze the replay capture so it's persisted
       // even if the host stays in the post-game screen for a long time.
-      if (g.isOver(this.gameState) && this.currentReplay && !this.currentReplay.endedAt) {
+      if (this.safeRead("isOver", () => g.isOver(this.gameState), false) && this.currentReplay && !this.currentReplay.endedAt) {
         this.finalizeCurrentReplay();
       }
       this.scheduleTick();
@@ -708,8 +762,14 @@ export class Room extends Server<Env> {
     // without ending the prior cleanly), freeze and persist it first so we never
     // lose data — then start a fresh capture.
     if (this.currentReplay) this.finalizeCurrentReplay();
+    // Guard create(): a throwing game module must not leave the room with a
+    // gameId set but no state (a permanently broken room). On failure we abort
+    // the launch and stay in the lobby.
+    let created: any = null;
+    try { created = g.create(this.members.map((m) => m.name)); }
+    catch (e) { console.error(`create() threw for ${gameId}`, e); return `${g.meta.name} failed to start.`; }
     this.gameId = gameId;
-    this.gameState = g.create(this.members.map((m) => m.name));
+    this.gameState = created;
     // W6: stash the chosen variant on state so the game module can branch on
     // it. Games that don't implement variants ignore the field; the platform
     // never enforces a variant catalogue (each module owns its own set).
