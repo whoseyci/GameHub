@@ -1672,3 +1672,46 @@ html, body, #app { height: 100dvh !important; min-height: 100dvh !important; max
 .group-picker-input{flex:1 1 auto;min-width:0;margin:0;padding:10px 12px;font-size:.9rem;
   text-transform:uppercase;letter-spacing:.5px}
 .group-picker-join-btn{flex:0 0 auto;margin:0;width:auto;padding:10px 18px;font-size:.9rem;white-space:nowrap}
+
+/* ── Generic SCHEMA-game renderer (public/js/games/schema-game.js) ──────────── */
+/* Cards are framework .kc cards; the ONLY thing a zone may set is --kc-w (the
+   lockdown contract). Sizing context is set via the kc size class + this zone. */
+.kc-zone-schema{--kc-w:clamp(34px,7vw,52px)}
+.schema-mini-cards .kc-zone-schema{--kc-w:24px}
+.schema-tag{font-size:.6rem;font-weight:900;padding:2px 7px;border-radius:999px;letter-spacing:.5px}
+.schema-tag.bust{background:rgba(239,68,68,.2);color:#f87171}
+.schema-tag.stay{background:rgba(16,185,129,.2);color:#34d399}
+.schema-tag.active{background:rgba(124,92,255,.25);color:#c4b5fd}
+.schema-empty{color:var(--text-dim,#64748b);font-style:italic;font-size:.8rem}
+.schema-empty.big{font-size:.9rem;padding:18px 6px;display:inline-block}
+/* opponents strip */
+.schema-mini-strip{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;width:100%}
+.schema-mini{background:linear-gradient(180deg,rgba(30,41,59,.95),rgba(15,23,42,.95));border:1px solid rgba(255,255,255,.12);
+  border-radius:12px;padding:8px;min-width:0}
+.schema-mini.active{border-color:#7c5cff;box-shadow:0 0 0 1px rgba(124,92,255,.4)}
+.schema-mini-head{display:flex;justify-content:space-between;align-items:center;gap:6px;font-size:.78rem;font-weight:900;margin-bottom:5px}
+.schema-mini-head b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.schema-mini-cards{display:flex;flex-wrap:wrap;gap:3px;min-height:28px}
+.schema-mini-foot{font-size:.64rem;color:var(--text-dim,#94a3b8);margin-top:5px;font-weight:800}
+/* center: deck/discard/progress */
+.schema-center{display:flex;align-items:center;justify-content:center;gap:clamp(14px,5vw,40px);width:100%;flex-wrap:wrap}
+.schema-pile{display:flex;flex-direction:column;align-items:center;gap:5px}
+.schema-pile-label{font-size:.66rem;font-weight:900;letter-spacing:1.5px;color:var(--text-dim,#94a3b8)}
+.schema-pile .kc-zone-schema{--kc-w:54px}
+.schema-pile-card{position:relative}
+.schema-deck-count{position:absolute;bottom:2px;right:4px;font-size:.62rem;font-weight:900;color:rgba(255,255,255,.9)}
+/* discard placeholder (not a card — a simple empty slot) */
+.schema-pile-card:not(.kc){width:54px;height:76px;border-radius:11px;display:flex;align-items:center;justify-content:center;
+  font-weight:900;font-size:1.2rem;color:#fff;background:#1e293b;border:2px dashed rgba(255,255,255,.2)}
+.schema-pile-card.empty{opacity:.4}
+.schema-progress{text-align:center}
+.schema-round{font-weight:900;font-size:1rem}
+.schema-target{font-size:.78rem;color:var(--text-dim,#94a3b8);margin-top:3px}
+/* focus board */
+.schema-board{width:min(720px,100%);min-width:0}
+.schema-hand{display:flex;flex-wrap:wrap;gap:7px;justify-content:center;min-height:60px;padding:6px 0}
+.schema-foot{display:flex;gap:8px;align-items:center;justify-content:center;margin-top:6px;min-height:20px}
+.schema-distinct{font-size:.78rem;font-weight:800;color:#c4b5fd}
+@media(max-width:760px){
+  .schema-mini-strip{grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:6px}
+}

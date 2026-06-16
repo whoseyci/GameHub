@@ -23,16 +23,27 @@ const clientJs = [...topJs, ...gamesJs, ...botsJs]
 
 describe("server game ↔ client parity", () => {
   for (const id of Object.keys(GAMES)) {
+    // Schema-defined games (data → engine) deliberately have NO per-game client:
+    // the generic renderer (js/games/schema-game.js) registers GameClients[id] +
+    // GameRules[id] for every catalogue entry tagged __schema. Recognise that
+    // pattern so the parity guard still holds without a bespoke file per game.
+    const isSchema = (GAMES[id].meta as any).__schema === true;
     describe(id, () => {
+      const schemaRegisters = (sym: string) =>
+        isSchema &&
+        /js\/games\/schema-game\.js/.test(indexHtml) &&
+        new RegExp(`window\\.${sym}\\[g\\.id\\]\\s*=`).test(clientJs);
       // A client file registers either with a string literal (GameClients['id'])
-      // or via a local `const ID='id'` + GameClients[ID] (the scaffold's style).
+      // or via a local `const ID='id'` + GameClients[ID] (the scaffold's style),
+      // or via the generic schema client's per-catalogue loop.
       const registersWith = (sym: string) => {
         const literal = new RegExp(`${sym}\\[['"]${id}['"]\\]\\s*=`);
         if (literal.test(clientJs)) return true;
         // variable form: a file that declares ID='id' AND uses ${sym}[ID]=
         const idDecl = new RegExp(`ID\\s*=\\s*['"]${id}['"]`);
         const varUse = new RegExp(`${sym}\\[ID\\]\\s*=`);
-        return idDecl.test(clientJs) && varUse.test(clientJs);
+        if (idDecl.test(clientJs) && varUse.test(clientJs)) return true;
+        return schemaRegisters(sym);
       };
       it("has a client GameClients registration", () => {
         expect(registersWith("GameClients")).toBe(true);
@@ -53,6 +64,10 @@ describe("server game ↔ client parity", () => {
       it("if it advertises hasBots, a BotDriver strategy is registered + its bot script is loaded", () => {
         const hasBots = GAMES[id].meta.features?.hasBots === true;
         if (!hasBots) return; // games without bots need no strategy
+        // Schema games are bot-playable via the BotDriver's generic random-legal
+        // fallback (they implement legalActions), so they need no per-game
+        // strategy/script. Verified separately by the schema-engine self-play test.
+        if (isSchema) { expect(typeof GAMES[id].legalActions).toBe("function"); return; }
         // A strategy registration: BotDriver.register('<id>', …) somewhere in client JS.
         const registered = new RegExp(`BotDriver\\.register\\(\\s*['"]${id}['"]`).test(clientJs);
         expect(registered, `hasBots=true for "${id}" but no BotDriver.register('${id}') found`).toBe(true);
@@ -73,7 +88,9 @@ describe("server game ↔ client parity", () => {
           try { return new RegExp(`GameClients\\[['"]${id}['"]\\]`).test(pub(`js/${rel}`)); }
           catch { return false; }
         });
-        expect(loadedViaGames || registeredIn).toBe(true);
+        // Schema games are served by the loaded generic renderer.
+        const schemaLoaded = isSchema && indexHtml.includes("/js/games/schema-game.js");
+        expect(loadedViaGames || registeredIn || schemaLoaded).toBe(true);
       });
     });
   }

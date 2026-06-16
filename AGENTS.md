@@ -112,6 +112,18 @@ interface (`create / applyAction / viewFor / isOver` + optional
   so it can't re-measure itself into a flicker loop. The smooth transition only
   applies to genuine ResizeObserver-driven resizes. If you ever see a board
   twitch on an opponent move again, check these three things first.
+- **Schema-defined games (the visual-creator foundation).** A game can be pure
+  DATA: `src/games/schema/specs/*.ts` is a `GameSpec`, `makeSchemaGame(spec)`
+  (`src/games/schema/engine.ts`) interprets it into a normal `GameModule`, and the
+  generic client `public/js/games/schema-game.js` renders ANY schema game from its
+  `viewFor` payload (no per-game client). Sample: **Septet** (`septet`). Rules:
+  schema games reuse SHARED verbs (`hit`/`stay`/`next_round`) so the bot driver +
+  self-play harness understand them for free; private view data is namespaced
+  under `view[meta.id]`; cards go through `Kit.Cards.el`; the engine is tagged
+  `meta.__schema=true` so the catalogue + generic client/ parity tests detect it.
+  NEVER run untrusted code — a spec only selects among audited, bounded
+  behaviours. See `docs/GAME_SCHEMA.md`. Next: more spec `kind`s, then the visual
+  editor that emits a `GameSpec`, then a human-reviewed community submission queue.
 - **Adaptive board sizing is automatic via `Kit.Fit`** (`public/js/00-kit-fit.js`).
   `GameShell.renderTable` auto-fits the focus board to fill its container — it
   **grows into void space and shrinks to avoid overflow**, content-aware, for

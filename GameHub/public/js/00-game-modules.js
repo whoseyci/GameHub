@@ -1762,12 +1762,283 @@
     };
   }
 
+  // src/games/schema/spec.ts
+  function validateSpec(spec) {
+    const errs = [];
+    if (!spec || typeof spec !== "object") return ["spec is not an object"];
+    if (spec.kind !== "pressYourLuck") errs.push(`unsupported kind: ${spec.kind}`);
+    const m = spec.meta;
+    if (!m || !/^[a-z0-9_-]{2,32}$/.test(m.id || "")) errs.push("meta.id must be 2-32 [a-z0-9_-]");
+    if (!m?.name) errs.push("meta.name required");
+    if (!(m && m.minPlayers >= 2 && m.maxPlayers <= 8 && m.minPlayers <= m.maxPlayers))
+      errs.push("meta player counts must satisfy 2 <= min <= max <= 8");
+    if (!Array.isArray(spec.deck) || !spec.deck.length) errs.push("deck must be a non-empty array");
+    else {
+      let total = 0;
+      for (const d of spec.deck) {
+        if (!Number.isFinite(d.value) || !Number.isInteger(d.count) || d.count < 1 || d.count > 200) {
+          errs.push(`bad deck entry ${JSON.stringify(d)}`);
+          break;
+        }
+        total += d.count;
+      }
+      if (total < 8) errs.push("deck must have at least 8 cards total");
+      if (total > 1e3) errs.push("deck too large (max 1000 cards)");
+    }
+    if (spec.bust !== "duplicate") errs.push(`unsupported bust: ${spec.bust}`);
+    if (spec.scoring !== "sum") errs.push(`unsupported scoring: ${spec.scoring}`);
+    if (spec.bonus && !(spec.bonus.uniqueCount >= 2 && Number.isFinite(spec.bonus.points)))
+      errs.push("bad bonus");
+    if (!spec.win || !(spec.win.target > 0)) errs.push("win.target must be > 0");
+    return errs;
+  }
+
+  // src/games/schema/engine.ts
+  function buildDeck3(spec, st) {
+    const cards = [];
+    for (const d of spec.deck) for (let i = 0; i < d.count; i++) cards.push(d.value);
+    shuffleInPlace(cards, st);
+    return cards;
+  }
+  function roundActive(p) {
+    return p.status === "active";
+  }
+  function handScore(p) {
+    return p.kept.reduce((a, b) => a + b, 0);
+  }
+  function advanceTurn(s) {
+    const n = s.players.length;
+    for (let step = 1; step <= n; step++) {
+      const idx = (s.current + step) % n;
+      if (roundActive(s.players[idx])) {
+        s.current = idx;
+        return;
+      }
+    }
+    endRound(s);
+  }
+  function endRound(s, spec) {
+    for (const p of s.players) {
+      if (p.status === "active") {
+        p.banked += handScore(p);
+        p.lastRoundDelta = handScore(p);
+      }
+    }
+    const sp = spec || SPEC_BY_ID[s.specId];
+    const target = sp ? sp.win.target : Infinity;
+    const top = Math.max(...s.players.map((p) => p.banked));
+    if (top >= target) {
+      s.phase = "GAME_OVER";
+      return;
+    }
+    s.phase = "ROUND_END";
+  }
+  var SPEC_BY_ID = {};
+  function makeSchemaGame(spec) {
+    const errs = validateSpec(spec);
+    if (errs.length) throw new Error(`Invalid GameSpec "${spec?.meta?.id}": ${errs.join("; ")}`);
+    SPEC_BY_ID[spec.meta.id] = spec;
+    const deckTotal = spec.deck.reduce((a, d) => a + d.count, 0);
+    function startRound(s) {
+      s.deck = buildDeck3(spec, s);
+      s.discard = [];
+      for (const p of s.players) {
+        p.kept = [];
+        p.status = "active";
+        p.lastRoundDelta = 0;
+      }
+      s.current = (s.round - 1) % s.players.length;
+      s.phase = "PLAY";
+    }
+    const mod = {
+      meta: {
+        id: spec.meta.id,
+        name: spec.meta.name,
+        minPlayers: spec.meta.minPlayers,
+        maxPlayers: spec.meta.maxPlayers,
+        description: spec.meta.description,
+        emoji: spec.meta.emoji,
+        icon: spec.meta.icon,
+        // Reuse the shared press-your-luck verbs (Flip 7 uses hit/stay) so the
+        // hub's bot driver + cross-game self-play harness already understand them.
+        // "draw" is accepted as an alias for "hit".
+        actionTypes: ["hit", "stay", "next_round"],
+        features: {
+          hasBots: true,
+          simultaneousTurns: false,
+          usesTick: false,
+          hasMultiRound: true,
+          canSpectate: true,
+          minDurationSec: 120,
+          maxDurationSec: 900
+        }
+      },
+      create(playerNames) {
+        const s = {
+          schemaVersion: 1,
+          specId: spec.meta.id,
+          players: playerNames.slice(0, spec.meta.maxPlayers).map((name) => ({
+            name: (name || "Player").slice(0, 20),
+            kept: [],
+            banked: 0,
+            status: "active",
+            lastRoundDelta: 0
+          })),
+          deck: [],
+          discard: [],
+          current: 0,
+          round: 1,
+          phase: "PLAY",
+          rngState: makeSeed(`${spec.meta.id}:${playerNames.join("|")}`)
+        };
+        ensureRngState(s);
+        startRound(s);
+        return s;
+      },
+      applyAction(state, seat, msg) {
+        const action = msg.action;
+        if (state.phase === "ROUND_END" && action === "next_round") {
+          state.round += 1;
+          startRound(state);
+          return;
+        }
+        if (state.phase !== "PLAY") return;
+        if (seat !== state.current) return;
+        const p = state.players[seat];
+        if (!roundActive(p)) return;
+        if (action === "stay") {
+          p.banked += handScore(p);
+          p.lastRoundDelta = handScore(p);
+          p.status = "stayed";
+          advanceTurn(state);
+          return;
+        }
+        if (action === "hit" || action === "draw") {
+          if (!state.deck.length) {
+            if (state.discard.length) {
+              state.deck = state.discard;
+              state.discard = [];
+              shuffleInPlace(state.deck, state);
+            } else {
+              endRound(state, spec);
+              return;
+            }
+          }
+          const card = state.deck.pop();
+          if (spec.bust === "duplicate" && p.kept.includes(card)) {
+            state.discard.push(card);
+            p.kept = [];
+            p.status = "busted";
+            p.lastRoundDelta = 0;
+            advanceTurn(state);
+            return;
+          }
+          p.kept.push(card);
+          if (spec.bonus) {
+            const distinct = new Set(p.kept).size;
+            if (distinct >= spec.bonus.uniqueCount) {
+              p.banked += handScore(p) + spec.bonus.points;
+              p.lastRoundDelta = handScore(p) + spec.bonus.points;
+              p.status = "stayed";
+              advanceTurn(state);
+            }
+          }
+          return;
+        }
+      },
+      isOver(state) {
+        return state.phase === "GAME_OVER";
+      },
+      legalActions(state, seat) {
+        if (state.phase === "ROUND_END") return seat === 0 ? [{ action: "next_round" }] : [];
+        if (state.phase !== "PLAY" || seat !== state.current) return [];
+        if (!roundActive(state.players[seat])) return [];
+        return [{ action: "hit" }, { action: "stay" }];
+      },
+      viewFor(state, seat) {
+        const vstate = {
+          currentSeat: state.phase === "PLAY" ? state.current : -1,
+          pendingAction: state.phase === "PLAY" ? "draw_or_stay" : null,
+          players: state.players.map((p, i) => ({
+            seat: i,
+            name: p.name,
+            status: p.status,
+            score: handScore(p),
+            banked: p.banked
+          })),
+          actingCount: state.phase === "PLAY" ? 1 : 0,
+          focusSeat: state.phase === "PLAY" ? state.current : seat
+        };
+        const over = state.phase === "GAME_OVER";
+        const view = {
+          game: spec.meta.id,
+          phase: mapPhase(state.phase),
+          over,
+          yourSeat: seat,
+          state: vstate,
+          // generic schema payload the schema client renders — namespaced under
+          // the game's own id (the hub contract: view[meta.id] is the private bag).
+          [spec.meta.id]: {
+            kind: spec.kind,
+            deckCount: state.deck.length,
+            discardCount: state.discard.length,
+            round: state.round,
+            target: spec.win.target,
+            bonus: spec.bonus || null,
+            players: state.players.map((p, i) => ({
+              seat: i,
+              name: p.name,
+              kept: p.kept.slice(),
+              live: handScore(p),
+              banked: p.banked,
+              status: p.status
+            }))
+          }
+        };
+        if (over) {
+          const ranked = state.players.map((p, i) => ({ seat: i, name: p.name, score: p.banked, delta: p.lastRoundDelta })).sort((a, b) => b.score - a.score);
+          const best = ranked.length ? ranked[0].score : 0;
+          view.summary = { rows: ranked, winners: ranked.filter((r) => r.score === best).map((r) => r.seat) };
+        }
+        return view;
+      },
+      summarize(state) {
+        return { round: state.round, phase: state.phase, banked: state.players.map((p) => p.banked) };
+      }
+    };
+    mod.__schema = true;
+    mod.meta.__schema = true;
+    return mod;
+  }
+
+  // src/games/schema/specs/septet.ts
+  var Septet = {
+    kind: "pressYourLuck",
+    meta: {
+      id: "septet",
+      name: "Septet",
+      description: "Push your luck \u2014 flip number cards, don't repeat, race to 200.",
+      emoji: "\u{1F3B4}",
+      icon: "cards",
+      minPlayers: 2,
+      maxPlayers: 8
+    },
+    // One 0, two 1s, three 2s, … thirteen 12s (higher = more copies = riskier).
+    deck: Array.from({ length: 13 }, (_, v) => ({ value: v, count: v + 1 })),
+    bust: "duplicate",
+    bonus: { uniqueCount: 7, points: 15 },
+    scoring: "sum",
+    win: { target: 200 }
+  };
+
   // src/games/registry.ts
+  var SeptetGame = makeSchemaGame(Septet);
   var GAMES = {
     [Skyjo.meta.id]: Skyjo,
     [Flip7.meta.id]: Flip7,
     [Qwixx.meta.id]: Qwixx,
-    [Schotten.meta.id]: Schotten
+    [Schotten.meta.id]: Schotten,
+    [SeptetGame.meta.id]: SeptetGame
   };
   var GAME_CATALOGUE = Object.values(GAMES).map((g) => ({
     id: g.meta.id,
@@ -1778,7 +2049,10 @@
     emoji: g.meta.emoji,
     icon: g.meta.icon,
     // Phosphor icon name; the hub UI prefers it over emoji.
-    features: g.meta.features
+    features: g.meta.features,
+    // Schema-defined games carry this so the bundled client attaches the generic
+    // renderer (no hand-written client module). Hand-written games omit it.
+    ...g.meta.__schema ? { __schema: true } : {}
   }));
 
   // src/client-games.ts
