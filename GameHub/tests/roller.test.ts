@@ -150,13 +150,37 @@ describe("Kit.Roller — slot-machine structure + landing", () => {
     expect(numCells.some((t: string) => /[0-9]/.test(t))).toBe(true);    // number reel still streams digits
   });
 
-  it("shows a lever cue (arrow + label) for the active player, themed via opts.leverHint", () => {
+  it("shows a VERTICAL lever cue + DOWN arrow for the active player (opts.leverHint)", () => {
     const c = win.document.createElement("div");
-    win.Kit.Roller.roll(c, [{ color: "white", value: 4 }], { autoPull: false, leverHint: "YOUR ROLL" });
+    win.Kit.Roller.roll(c, [{ color: "white", value: 4 }], { autoPull: false, leverHint: "ROLL" });
     const cue = q(c, ".kit-lever-cue")[0];
     expect(cue).toBeTruthy();
-    expect(q(c, ".kit-lever-cue-arrow").length).toBe(1);
-    expect(q(c, ".kit-lever-cue-label")[0].textContent).toBe("YOUR ROLL");
+    // arrow points DOWN at the lever
+    expect(q(c, ".kit-lever-cue-arrow")[0].textContent).toBe("\u2193");
+    // label is stacked vertically: one <span> per glyph
+    const spans = [...q(c, ".kit-lever-cue-label span")];
+    expect(spans.length).toBe(4);                                   // R-O-L-L
+    expect(spans.map((s: any) => s.textContent).join("")).toBe("ROLL");
+  });
+
+  it("showStatic supports a SELECT-style animated prompt + pickable reels", () => {
+    const c = win.document.createElement("div");
+    let clicked = -1;
+    win.Kit.Roller.showStatic(c, [
+      { color: "blue", symbol: "" }, { color: "white", symbol: "3" },
+    ], {
+      prompt: "SELECT", pickable: true,
+      reelState: (i: number) => (i === 0 ? "chosen" : "pick"),
+      onReelClick: (i: number) => { clicked = i; },
+    });
+    expect(q(c, ".kit-slot-prompt").length).toBe(1);
+    expect(q(c, ".kit-marquee-text")[0].textContent).toBe("SELECT");
+    expect(q(c, ".kit-reel-pickable").length).toBe(2);
+    expect(q(c, ".kit-reel-chosen").length).toBe(1);
+    expect(q(c, ".kit-reel-pick").length).toBe(1);
+    // reels are clickable and report their index
+    q(c, ".kit-reel[data-reel]")[1].click();
+    expect(clicked).toBe(1);
   });
 });
 

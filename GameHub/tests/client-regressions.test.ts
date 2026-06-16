@@ -230,19 +230,36 @@ describe("schema game client (Encore) regressions", () => {
     expect(schemaClient).toContain("function rwPerfectBlocks");
     expect(schemaClient).toContain("function rwFillBlock");
     expect(schemaClient).toContain("rw-perfect");
-    // a perfect block must size-match a usable die exactly
-    expect(schemaClient).toContain("usableNums.has(clump.length)");
+    // a perfect block must size-match the CHOSEN number die exactly
+    expect(schemaClient).toContain("pick.sizes.includes(clump.size)");
   });
 
-  it("shows a coloured cross on selected cells and locks the colour", () => {
+  it("shows a coloured cross on selected cells and greys out non-targets after a pick", () => {
     expect(schemaClient).toContain("rw-selcross");
     expect(schemaClient).toContain("rw-locked-out");
-    // colour-lock greys out other-colour cells while a run is in progress
-    expect(schemaClient).toMatch(/runActive && cell\.c !== rwSelColor/);
+    // once dice are chosen, everything that isn't a legal target greys out
+    expect(schemaClient).toMatch(/showHints && !sel && !block && !isHint/);
   });
 
-  it("passes a leverHint so the roller's slot machine shows a 'your roll' cue", () => {
-    expect(schemaClient).toContain("leverHint");
+  it("requires picking dice FIRST, then shows pick-gated highlights", () => {
+    // highlights only appear once a colour + number die are chosen (or a run is live)
+    expect(schemaClient).toContain("function rwPickResolved");
+    expect(schemaClient).toContain("function rwPickColors");
+    expect(schemaClient).toMatch(/showHints = interactive && \(pickComplete \|\| runActive\)/);
+    // req: don't highlight clumps too small for the chosen number
+    expect(schemaClient).toContain("clump.size < minNeeded");
+  });
+
+  it("auto-locks the dice pick at 2 (no select-dice button) via the slot machine", () => {
+    expect(schemaClient).toContain("function pickReel");
+    expect(schemaClient).toContain("auto-lock");
+    // the slot SELECT phase is driven through Kit.Roller showStatic prompt/pickable
+    expect(schemaClient).toMatch(/prompt: promptable \? 'SELECT'/);
+    expect(schemaClient).toContain("onReelClick: pickReel");
+  });
+
+  it("passes a leverHint ('ROLL') so the roller's slot machine shows a cue", () => {
+    expect(schemaClient).toContain("leverHint: 'ROLL'");
   });
 });
 

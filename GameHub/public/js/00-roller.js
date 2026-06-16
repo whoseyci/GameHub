@@ -200,14 +200,17 @@
         `<span class="kit-lever-base" aria-hidden="true"></span>`;
       body.appendChild(lever);
 
-      // "Your turn — pull it!" cue: a bobbing arrow + label pointing at the lever
-      // so the active player knows the roll is theirs to start. opts.leverHint sets
-      // the label (default "PULL!"); hidden once the lever is pulled.
+      // "Your turn — pull it!" cue: a bobbing label stacked VERTICALLY above a
+      // DOWN arrow that points at the lever, so the active player knows the roll
+      // is theirs to start. opts.leverHint sets the label (default "ROLL");
+      // hidden once the lever is pulled.
       const cue = document.createElement('div');
       cue.className = 'kit-lever-cue';
       cue.setAttribute('aria-hidden', 'true');
-      const hint = (opts.leverHint != null) ? opts.leverHint : 'PULL!';
-      cue.innerHTML = `<span class="kit-lever-cue-label">${hint}</span><span class="kit-lever-cue-arrow">\u2192</span>`;
+      const hint = (opts.leverHint != null) ? opts.leverHint : 'ROLL';
+      // vertical text: one glyph per line
+      const vtext = String(hint).split('').map(ch => `<span>${ch === ' ' ? '&nbsp;' : ch}</span>`).join('');
+      cue.innerHTML = `<span class="kit-lever-cue-label">${vtext}</span><span class="kit-lever-cue-arrow">\u2193</span>`;
       body.appendChild(cue);
       lever._cue = cue;
     }
@@ -437,22 +440,47 @@
     if (!container) return;
     const size = opts.size || 56;
     const reels = (reelsOrDice || []).map(toReel);
-    const marqueeLabel = (opts.title != null) ? opts.title : 'ROLL';
+    // A PHASE PROMPT (first-class API): an animated marquee phrase for a phase
+    // that isn't a spin — e.g. "SELECT" while players choose their dice. Set
+    // opts.prompt to a string (or {text}) and it loops in the marquee. Falls
+    // back to opts.title / 'ROLL' for a plain resting readout.
+    const promptText = (opts.prompt != null)
+      ? (typeof opts.prompt === 'object' ? (opts.prompt.text || '') : String(opts.prompt))
+      : null;
+    const marqueeLabel = promptText != null ? promptText : ((opts.title != null) ? opts.title : 'ROLL');
+    // When reels are PICKABLE the player taps them to choose; reelState(i) tints
+    // each reel: 'chosen' (selected) / 'dim' (unavailable) / 'pick' (selectable).
+    const pickable = !!opts.pickable;
+    const reelState = typeof opts.reelState === 'function' ? opts.reelState : () => null;
     container.classList.add('kit-roller');
-    const reelsHTML = reels.map(r => {
+    const reelsHTML = reels.map((r, i) => {
       const color = norm(r.color);
       const pal = PALETTE[color];
       const landed = r.icon ? { icon: r.icon } : (r.symbol != null ? r.symbol : r.value);
-      return `<div class="kit-reel locked" data-color="${color}" style="--reel-size:${size}px;--reel-face:${pal.face};--reel-edge:${pal.edge};--reel-text:${pal.text}">` +
+      const st = reelState(i);
+      const cls = ['kit-reel', 'locked'];
+      if (pickable) cls.push('kit-reel-pickable');
+      if (st === 'chosen') cls.push('kit-reel-chosen');
+      else if (st === 'dim') cls.push('kit-reel-dim');
+      else if (st === 'pick') cls.push('kit-reel-pick');
+      return `<div class="${cls.join(' ')}" data-reel="${i}" data-color="${color}" style="--reel-size:${size}px;--reel-face:${pal.face};--reel-edge:${pal.edge};--reel-text:${pal.text}">` +
         `<div class="kit-reel-window"><div class="kit-reel-strip"><div class="kit-reel-cell">${symbolHTML(landed, color)}</div></div></div></div>`;
     }).join('');
+    const slotCls = 'kit-slot kit-slot-static' + (promptText != null ? ' kit-slot-prompt' : '') + (pickable ? ' kit-slot-pickable' : '');
     // Same cabinet chrome as spin() so the resting readout matches the machine.
     container.innerHTML =
-      `<div class="kit-slot kit-slot-static" style="--reel-size:${size}px">` +
+      `<div class="${slotCls}" style="--reel-size:${size}px">` +
         `<div class="kit-slot-marquee"><span class="kit-marquee-bulbs" aria-hidden="true">${'<i></i>'.repeat(7)}</span><span class="kit-marquee-text">${marqueeLabel}</span></div>` +
         `<div class="kit-slot-body"><div class="kit-slot-housing"><div class="kit-slot-bank">${reelsHTML}</div><span class="kit-slot-payline" aria-hidden="true"></span></div></div>` +
         `<div class="kit-slot-foot"><span class="kit-slot-coin" aria-hidden="true"></span></div>` +
       `</div>`;
+    // Wire reel clicks for pick mode.
+    if (pickable && typeof opts.onReelClick === 'function') {
+      container.querySelectorAll('.kit-reel[data-reel]').forEach((el) => {
+        const i = parseInt(el.getAttribute('data-reel'), 10);
+        el.addEventListener('click', () => opts.onReelClick(i));
+      });
+    }
   }
 
   // Map a {color,value} (dice API) OR a {color,symbol/icon} (generic) to a reel.

@@ -1498,18 +1498,34 @@ html, body, #app { height: 100dvh !important; min-height: 100dvh !important; max
 .kit-slot.await-pull .kit-lever-knob{animation:kitLeverHint 1.6s ease-in-out infinite}
 @keyframes kitLeverHint{0%,100%{top:2%}55%{top:12%}}
 /* "your turn — pull it!" cue: a bobbing label + arrow pointing at the lever */
-.kit-lever-cue{display:flex;align-items:center;gap:calc(var(--reel-size,56px)*.06);align-self:center;
+/* lever cue: VERTICAL label stacked above a DOWN arrow pointing at the lever */
+.kit-lever-cue{display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:calc(var(--reel-size,56px)*.04);align-self:center;
   margin-left:calc(var(--reel-size,56px)*-.02);pointer-events:none;
   transition:opacity .25s ease, transform .25s ease}
-.kit-lever-cue.gone{opacity:0;transform:translateX(8px) scale(.8)}
-.kit-lever-cue-label{font-size:calc(var(--reel-size,56px)*.2);font-weight:900;letter-spacing:.5px;
+.kit-lever-cue.gone{opacity:0;transform:translateY(-8px) scale(.8)}
+.kit-lever-cue-label{display:flex;flex-direction:column;align-items:center;line-height:.96;
+  font-size:calc(var(--reel-size,56px)*.2);font-weight:900;letter-spacing:.5px;
   color:#0b1220;background:linear-gradient(180deg,#fde68a,#f59e0b);
-  padding:calc(var(--reel-size,56px)*.05) calc(var(--reel-size,56px)*.12);border-radius:999px;
-  box-shadow:0 2px 6px rgba(0,0,0,.45),inset 0 0 0 1px rgba(255,255,255,.4);white-space:nowrap}
+  padding:calc(var(--reel-size,56px)*.1) calc(var(--reel-size,56px)*.07);border-radius:calc(var(--reel-size,56px)*.18);
+  box-shadow:0 2px 6px rgba(0,0,0,.45),inset 0 0 0 1px rgba(255,255,255,.4)}
+.kit-lever-cue-label span{display:block}
 .kit-lever-cue-arrow{font-size:calc(var(--reel-size,56px)*.34);font-weight:900;color:#fcd34d;
   text-shadow:0 1px 2px rgba(0,0,0,.5);animation:kitCueBob 1s ease-in-out infinite}
-@keyframes kitCueBob{0%,100%{transform:translateX(0)}50%{transform:translateX(5px)}}
+@keyframes kitCueBob{0%,100%{transform:translateY(0)}50%{transform:translateY(5px)}}
 @media (prefers-reduced-motion: reduce){.kit-lever-cue-arrow{animation:none}}
+/* animated phase prompt (e.g. SELECT) — a looping pulse + colour shimmer */
+.kit-slot-prompt .kit-marquee-text{animation:kitPromptPulse 1.1s ease-in-out infinite}
+.kit-slot-prompt .kit-marquee-bulbs i{animation:kitBulb .7s steps(1,end) infinite}
+@keyframes kitPromptPulse{0%,100%{transform:scale(1);filter:brightness(1)}50%{transform:scale(1.08);filter:brightness(1.3)}}
+@media (prefers-reduced-motion: reduce){.kit-slot-prompt .kit-marquee-text{animation:none}}
+/* pickable reels in a static SELECT phase */
+.kit-slot-pickable .kit-reel-pickable{cursor:pointer;transition:transform .12s ease, box-shadow .12s ease, opacity .12s ease}
+.kit-reel-pick{box-shadow:0 0 0 2px rgba(255,255,255,.55), 0 0 9px rgba(255,255,255,.4)}
+.kit-reel-pickable:hover{transform:translateY(-2px) scale(1.06)}
+.kit-reel-chosen{box-shadow:0 0 0 3px #fff, 0 0 12px rgba(255,255,255,.8);transform:translateY(-3px) scale(1.09)}
+.kit-reel-dim{opacity:.32;filter:grayscale(.55);cursor:default}
+.kit-reel-dim:hover{transform:none}
 .kit-slot-lever.pulled .kit-lever-knob,.kit-slot.spinning .kit-lever-knob{top:50%;animation:none}
 .kit-slot-lever.pulled .kit-lever-arm,.kit-slot.spinning .kit-lever-arm{top:46%;height:30%}
 .kit-slot-lever:hover .kit-lever-knob{filter:brightness(1.12)}

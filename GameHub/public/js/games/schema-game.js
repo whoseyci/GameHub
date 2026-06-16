@@ -184,28 +184,21 @@
     return set;
   }
 
-  // PERFECT-MATCH blocks: a connected same-colour clump of UNMARKED cells that
-  // can be crossed off entirely in ONE mark right now — i.e. the clump is fully
-  // reachable (seeded from the centre column or next to a crossed box, then grown
-  // by same-colour adjacency), its colour is usable, and its size EXACTLY equals
-  // a number die you can play. Tapping any cell of such a block fills the WHOLE
-  // block in one click. Returns Map(cellKey -> {id, color, size}).
-  function rwPerfectBlocks(sc, p, faces, interactive) {
-    const blocks = new Map();
-    if (!interactive || !faces) return blocks;
-    if (rwSel.length) return blocks;                       // only when no run in progress
+  // All REACHABLE same-colour clumps for one colour: connected runs of unmarked
+  // cells where the whole run can be crossed in ONE mark (seeded from the centre
+  // column or next to an existing cross of any colour, then grown by same-colour
+  // adjacency). Returns [{cells:[[r,c]...], size}]. The max run you can take from
+  // a clump is its size, so a clump can satisfy a die N iff size >= N.
+  function rwClumpsForColor(sc, p, color) {
     const mset = new Set(p.marked || []);
     const seen = new Set();
-    let id = 0;
+    const clumps = [];
     for (let r = 0; r < sc.grid.length; r++) {
       for (let c = 0; c < sc.grid[r].length; c++) {
         const cell = sc.grid[r][c];
-        if (!cell) continue;
+        if (!cell || cell.c !== color) continue;
         const k = rwKey(r, c);
         if (seen.has(k) || mset.has(k)) continue;
-        const color = cell.c;
-        if (!rwUsableColor(sc, p, faces, color)) { seen.add(k); continue; }
-        // flood the connected same-colour unmarked clump
         const clump = []; const stack = [[r, c]]; const local = new Set([k]);
         while (stack.length) {
           const [cr, cc] = stack.pop();
@@ -217,44 +210,70 @@
           }
         }
         clump.forEach(([cr, cc]) => seen.add(rwKey(cr, cc)));
-        if (clump.length < 1 || clump.length > 5) continue;
-        // the clump must be reachable as one mark: at least one cell touches the
-        // centre column or a crossed box (cross-colour), then the rest connect.
-        const reachableSeed = clump.some(([cr, cc]) => {
+        // reachable as one mark: some cell touches centre column or a crossed box
+        const reachable = clump.some(([cr, cc]) => {
           if (cc === sc.startCol) return true;
           for (const [nr, nc] of [[cr - 1, cc], [cr + 1, cc], [cr, cc - 1], [cr, cc + 1]]) {
             if (mset.has(rwKey(nr, nc))) return true;
           }
           return false;
         });
-        if (!reachableSeed) continue;
-        const usableNums = rwUsableNumbers(sc, p, faces, clump.length);
-        if (!usableNums.has(clump.length)) continue;       // size must match a die EXACTLY
-        const meta = { id: ++id, color, size: clump.length, cells: clump.map(([cr, cc]) => [cr, cc]) };
-        clump.forEach(([cr, cc]) => blocks.set(rwKey(cr, cc), meta));
+        if (reachable) clumps.push({ cells: clump.map(([cr, cc]) => [cr, cc]), size: clump.length });
+      }
+    }
+    return clumps;
+  }
+
+  // PERFECT-MATCH blocks (pick-aware): once the player has chosen a colour + a
+  // number die, a clump whose size EXACTLY equals the chosen number (and whose
+  // colour the chosen colour die allows) glows gold and fills in one tap.
+  // Returns Map(cellKey -> {id, color, size, cells}).
+  function rwPerfectBlocks(sc, p, faces, interactive) {
+    const blocks = new Map();
+    if (!interactive || rwSel.length) return blocks;       // only when no run in progress
+    const pick = rwPickResolved(sc, p);
+    if (!pick) return blocks;                              // dice not chosen yet → no hints
+    const colors = rwPickColors(sc);
+    let id = 0;
+    for (const color of colors) {
+      for (const clump of rwClumpsForColor(sc, p, color)) {
+        // size must EXACTLY equal one of the playable sizes (concrete N, or a
+        // wild "?" can be exactly the clump size if ≤5).
+        const exact = pick.sizes.includes(clump.size);
+        if (!exact) continue;
+        const meta = { id: ++id, color, size: clump.size, cells: clump.cells };
+        clump.cells.forEach(([cr, cc]) => blocks.set(rwKey(cr, cc), meta));
       }
     }
     return blocks;
   }
 
-  // "Smart hint" — the set of cells the player could legally start (or extend the
-  // current run onto) RIGHT NOW. Highlighted on the board so players see exactly
-  // what they can mark with the dice available to them this turn.
+  // "Smart hint" — cells the player can legally mark RIGHT NOW. Strictly gated on
+  // the chosen dice: nothing lights up until BOTH a colour + number die are
+  // picked, then ONLY cells of an allowed colour whose reachable clump is big
+  // enough to fit the chosen number show (req: don't highlight areas too small
+  // for the number). While a run is in progress it's locked to that one colour.
   function rwHintSet(sc, p, faces, interactive) {
     const hint = new Set();
-    if (!interactive || !faces) return hint;
+    if (!interactive) return hint;
     const mset = new Set(p.marked || []);
     const chosen = new Set(rwSel.map(([r, c]) => rwKey(r, c)));
-    // If a run is already in progress it's locked to one colour; only show cells
-    // that extend THAT colour. Otherwise show every usable colour's reachable cells.
-    for (let r = 0; r < sc.grid.length; r++) {
-      for (let c = 0; c < sc.grid[r].length; c++) {
+    // Run in progress → only extend the locked colour (engine validates final size).
+    if (rwSel.length && rwSelColor) {
+      for (let r = 0; r < sc.grid.length; r++) for (let c = 0; c < sc.grid[r].length; c++) {
         const cell = sc.grid[r][c];
-        if (!cell) continue;
-        if (rwSelColor && cell.c !== rwSelColor) continue;        // run is one colour
-        if (!rwSelColor && !rwUsableColor(sc, p, faces, cell.c)) continue;
-        if (rwSelColor && !rwUsableColor(sc, p, faces, cell.c)) continue;
+        if (!cell || cell.c !== rwSelColor) continue;
         if (rwReachable(sc, mset, chosen, r, c, cell.c)) hint.add(rwKey(r, c));
+      }
+      return hint;
+    }
+    const pick = rwPickResolved(sc, p);
+    if (!pick) return hint;                                // dice not chosen yet
+    const minNeeded = Math.min.apply(null, pick.sizes);   // smallest run the die can make
+    for (const color of rwPickColors(sc)) {
+      for (const clump of rwClumpsForColor(sc, p, color)) {
+        if (clump.size < minNeeded) continue;             // clump too small for the number
+        clump.cells.forEach(([cr, cc]) => hint.add(rwKey(cr, cc)));
       }
     }
     return hint;
@@ -293,59 +312,115 @@
     const reels = []
       .concat(sc.roll.colors.map((cf) => cf === '*' ? { color: 'purple', symbol: '\u2605' } : { color: COLMAP[cf] || 'white', symbol: '' }))
       .concat(sc.roll.numbers.map((nf) => ({ color: 'white', symbol: nf === 0 ? '?' : String(nf) })));
+    const nC = sc.roll.colors.length;
     const sig = sc.round + ':' + sc.roll.colors.join('') + '|' + sc.roll.numbers.join('');
     const dsize = (typeof innerWidth !== 'undefined' && innerWidth < 760) ? 38 : 52;
     // Whose hand is on the lever? The ROLLER pulls it — but only when the device
     // is actually focused on (controls) the roller's seat and they're a human.
-    // Everyone else (opponents, bots, remote) sees the reels auto-pull so they
-    // watch the same spin without a lever to click. Matches Qwixx.
     const controlled = (typeof window !== 'undefined' && Array.isArray(window._controlledSeats)) ? window._controlledSeats
       : (Array.isArray(view.controlledSeats) ? view.controlledSeats : []);
     const rollerIsBot = (typeof isLocalBotSeat === 'function') ? isLocalBotSeat(sc.active) : false;
     const rollerIsMine = controlled.includes(sc.active) && !rollerIsBot;
     const focusedOnRoller = seat === sc.active;
     const useLever = rollerIsMine && focusedOnRoller && !view.over;
-    // Animate the roll only when the roll signature changes; otherwise show static.
+
+    // Reset my MARK-phase pick when a fresh roll arrives.
+    if (rwPick.sig !== sig) rwPickReset(sig);
+
+    // Am I in a SELECT phase (choosing my dice)? Either the roller drafting, or a
+    // pending player who hasn't picked their colour+number yet.
+    const pickComplete = rwPick.colorFace != null && rwPick.numberFace != null;
+    const amSelecting = !view.over && (amDrafting || (amPending && !isDraft && !pickComplete));
+
+    // Which faces may I select from? Roller-draft picks from ALL rolled dice; a
+    // marking player picks from the dice available to them (myFaces).
+    function reelSelectable(i) {
+      if (amDrafting) return true;                          // roller may keep any pair
+      const isColor = i < nC;
+      const face = isColor ? sc.roll.colors[i] : sc.roll.numbers[i - nC];
+      return (isColor ? faces.colors : faces.numbers).includes(face);
+    }
+    // Click a reel during SELECT: choose that colour OR number (one of each).
+    function pickReel(i) {
+      if (!reelSelectable(i)) return;
+      const isColor = i < nC;
+      if (amDrafting) {
+        // roller reserves by INDEX (engine draft is index-based)
+        if (isColor) rwDraft.colorIdx = (rwDraft.colorIdx === i ? -1 : i);
+        else rwDraft.numberIdx = (rwDraft.numberIdx === (i - nC) ? -1 : (i - nC));
+        if (rwDraft.colorIdx >= 0 && rwDraft.numberIdx >= 0) {     // 2 picked → auto-lock
+          const d = rwDraft; rwDraft = { colorIdx: -1, numberIdx: -1 };
+          GameActions.send('draft', { colorIdx: d.colorIdx, numberIdx: d.numberIdx }, seat);
+          return;
+        }
+      } else {
+        const face = isColor ? sc.roll.colors[i] : sc.roll.numbers[i - nC];
+        if (isColor) rwPick.colorFace = (rwPick.colorFace === face ? null : face);
+        else rwPick.numberFace = (rwPick.numberFace === face ? null : face);
+      }
+      dispatchView(window._renderView);
+    }
+    // Visual state for each reel in SELECT mode.
+    function reelState(i) {
+      const isColor = i < nC;
+      if (amDrafting) {
+        const chosen = isColor ? rwDraft.colorIdx === i : rwDraft.numberIdx === (i - nC);
+        return chosen ? 'chosen' : 'pick';
+      }
+      if (amSelecting) {
+        if (!reelSelectable(i)) return 'dim';
+        const face = isColor ? sc.roll.colors[i] : sc.roll.numbers[i - nC];
+        const chosen = isColor ? rwPick.colorFace === face : rwPick.numberFace === face;
+        return chosen ? 'chosen' : 'pick';
+      }
+      // Not selecting: after my pick, keep the chosen pair highlighted, dim the rest.
+      if (amPending && pickComplete) {
+        const face = isColor ? sc.roll.colors[i] : sc.roll.numbers[i - nC];
+        const chosen = isColor ? rwPick.colorFace === face : rwPick.numberFace === face;
+        return chosen ? 'chosen' : 'dim';
+      }
+      return null;
+    }
+
+    // Paint the settled machine: a SELECT prompt + pickable reels while choosing,
+    // otherwise a plain static readout (with the chosen pair highlighted). NEVER
+    // paint over a machine that is mid-spin or awaiting a lever pull — that would
+    // destroy the animation.
+    function paintStatic() {
+      const slot = tray.querySelector('.kit-slot');
+      if (slot) {
+        // Mid-spin → never repaint (kills the animation).
+        if (slot.classList.contains('spinning')) return;
+        // Awaiting a lever pull (and not yet spun) → keep the lever; don't repaint.
+        if (slot.classList.contains('await-pull') && !slot.classList.contains('locked-in')) return;
+      }
+      const promptable = amSelecting;
+      Kit.Roller.showStatic(tray, reels, {
+        size: dsize,
+        prompt: promptable ? 'SELECT' : null,
+        pickable: promptable || (amPending && pickComplete),
+        onReelClick: pickReel,
+        reelState,
+      });
+    }
+
+    // Animate the roll once per fresh roll; the static SELECT/readout state is
+    // painted ONLY after the spin resolves (or immediately on a re-render with the
+    // same roll). Calling paintStatic eagerly would wipe the spin animation.
     if (tray.dataset.sig !== sig) {
       tray.dataset.sig = sig;
       try {
         Kit.Roller.roll(tray, reels, {
           size: dsize, marquee: 'ENCORE',
           lever: useLever, autoPull: !useLever, autoPullDelay: 0,
-          leverHint: 'YOUR ROLL',
-        }).then(() => { decorateReels(); });
-      } catch (e) { Kit.Roller.showStatic(tray, reels, { size: dsize }); decorateReels(); }
+          leverHint: 'ROLL',
+        }).then(() => { paintStatic(); });
+      } catch (e) { paintStatic(); }
     } else {
-      Kit.Roller.showStatic(tray, reels, { size: dsize });
-      decorateReels();
+      paintStatic();
+      // re-assert next frame to cover the persisted-static re-render path
+      if (typeof requestAnimationFrame !== 'undefined') requestAnimationFrame(paintStatic);
     }
-
-    // After settle, mark each reel: dim non-usable (post-draft), highlight drafted,
-    // and make them clickable for the active roller during DRAFT.
-    function decorateReels() {
-      const els = [...tray.querySelectorAll('.kit-reel')];
-      const nC = sc.roll.colors.length;
-      els.forEach((el, i) => {
-        el.classList.remove('rw-die-dim', 'drafted', 'rw-die-pick', 'rw-die-chosen');
-        const isColor = i < nC;
-        const idx = isColor ? i : i - nC;
-        const draftedIdx = isColor ? (sc.draft && sc.draft.colorIdx) : (sc.draft && sc.draft.numberIdx);
-        if (draftedIdx === idx) el.classList.add('drafted');
-        if (amDrafting) {
-          el.classList.add('rw-die-pick');
-          const chosen = isColor ? rwDraft.colorIdx === idx : rwDraft.numberIdx === idx;
-          if (chosen) el.classList.add('rw-die-chosen');
-          el.onclick = () => rwDraftPick(isColor ? 'color' : 'number', idx);
-        } else {
-          el.onclick = null;
-          const dimmable = sc.draft && !sc.draft.noDraft && !isDraft;
-          const face = isColor ? sc.roll.colors[idx] : sc.roll.numbers[idx];
-          if (dimmable && !(isColor ? faces.colors : faces.numbers).includes(face)) el.classList.add('rw-die-dim');
-        }
-      });
-    }
-    // run decoration next frame too (covers the persisted-static path)
-    if (typeof requestAnimationFrame !== 'undefined') requestAnimationFrame(decorateReels);
 
     const focus = node('div', 'rw-board player-board' + (amPending || amDrafting ? ' active' : ''));
     const header = node('div', 'board-header');
@@ -356,9 +431,11 @@
     focus.appendChild(rwSheet(view, sc, me, seat, amPending, faces));
     focus.appendChild(rwSelectionBar(view, sc, me, seat, amPending, faces));
 
+    const pickDone = rwPick.colorFace != null && rwPick.numberFace != null;
     const status = view.over ? 'Game Over'
-      : amDrafting ? 'Draft your dice (the rest go to everyone else)'
+      : amDrafting ? 'Tap a colour + a number die to keep (the rest go to everyone else)'
       : isDraft ? `Waiting for ${escText(rollerName)} to draft\u2026`
+      : (amPending && !pickDone) ? 'Tap a colour die + a number die to choose your move'
       : amPending ? 'Cross connected boxes, then Mark \u2014 or Skip'
       : 'Waiting for other players\u2026';
     GameShell.renderTable({ game: view.game, opponents, center, focus, status, topMode: 'custom', opponentClass: 'rw-top-strip' });
@@ -366,26 +443,53 @@
     Kit.Controls.clear('schemaControls');
     if (view.over) { /* play-again handled elsewhere */ }
     else if (amDrafting) {
-      const ready = rwDraft.colorIdx >= 0 && rwDraft.numberIdx >= 0;
+      // Dice are reserved by tapping the reels (auto-locks at 2). Only a "Take
+      // none" escape hatch remains on the bar.
       Kit.Controls.set([
-        { label: 'Keep dice', kind: 'green', disabled: !ready, onClick: () => { const d = rwDraft; rwDraft = { colorIdx: -1, numberIdx: -1 }; GameActions.send('draft', { colorIdx: d.colorIdx, numberIdx: d.numberIdx }, seat); } },
         { label: 'Take none', kind: 'secondary', onClick: () => { rwDraft = { colorIdx: -1, numberIdx: -1 }; GameActions.send('skip', {}, seat); } },
+      ], { id: 'schemaControls' });
+    }
+    else if (amPending && !pickDone) {
+      // Must pick dice first — no Mark yet; just a Skip escape.
+      Kit.Controls.set([
+        { label: 'Skip turn', kind: 'secondary', onClick: () => { rwSel = []; rwSelColor = null; rwPickReset(sig); GameActions.send('skip', {}, seat); } },
       ], { id: 'schemaControls' });
     }
     else if (amPending) {
       const valid = rwSelValid(sc, me, faces);
       Kit.Controls.set([
-        { label: rwSel.length ? `Mark ${rwSel.length}` : 'Mark', kind: 'green', disabled: !valid, onClick: () => rwSubmit(view, sc, seat, faces) },
-        { label: 'Skip', kind: 'secondary', onClick: () => { rwSel = []; rwSelColor = null; GameActions.send('skip', {}, seat); } },
+        { label: rwSel.length ? `Mark ${rwSel.length}` : 'Mark', kind: 'green', disabled: !valid, onClick: () => { rwSubmit(view, sc, seat, faces); rwPickReset(sig); } },
+        { label: 'Change dice', kind: 'secondary', onClick: () => { rwSel = []; rwSelColor = null; rwPick.colorFace = null; rwPick.numberFace = null; dispatchView(window._renderView); } },
+        { label: 'Skip', kind: 'ghost', onClick: () => { rwSel = []; rwSelColor = null; rwPickReset(sig); GameActions.send('skip', {}, seat); } },
       ], { id: 'schemaControls' });
     }
   }
 
+  // Roller draft selection (index-based, used during the DRAFT phase).
   let rwDraft = { colorIdx: -1, numberIdx: -1 };
-  function rwDraftPick(kind, i) {
-    if (kind === 'color') rwDraft.colorIdx = (rwDraft.colorIdx === i ? -1 : i);
-    else rwDraft.numberIdx = (rwDraft.numberIdx === i ? -1 : i);
-    dispatchView(window._renderView);
+
+  // ── MARK-phase die selection (the "select dice first" flow) ──────────────
+  // Each player first picks ONE colour reel + ONE number reel from the dice they
+  // may use; only THEN do mark hints appear, restricted to that exact pair.
+  // rwPick stores the chosen FACE values ('*' = wild colour, 0 = wild number).
+  let rwPick = { colorFace: null, numberFace: null, sig: null };
+  function rwPickReset(sig) { rwPick = { colorFace: null, numberFace: null, sig: sig }; }
+  // What the picked dice mean for highlighting. Returns null until BOTH chosen.
+  function rwPickResolved(sc, p) {
+    if (rwPick.colorFace == null || rwPick.numberFace == null) return null;
+    const wildColor = rwPick.colorFace === '*';
+    const wildNumber = rwPick.numberFace === 0;
+    const wildLeft = (sc.wilds || 0) - ((p && p.wildsUsed) || 0);
+    // sizes this number die can mark: a concrete N, or 1..5 for a wild '?'
+    const sizes = wildNumber ? [1, 2, 3, 4, 5].filter(() => wildLeft >= (wildColor ? 2 : 1)) : [rwPick.numberFace];
+    return { wildColor, wildNumber, sizes };
+  }
+  // The colours a chosen colour die allows: a concrete colour, or ANY colour for
+  // a wild '*' (subject to budget — checked by the caller).
+  function rwPickColors(sc) {
+    if (rwPick.colorFace == null) return [];
+    if (rwPick.colorFace === '*') return Object.keys(sc.colors);
+    return [rwPick.colorFace];
   }
 
   // The full sheet: a column header (letters + point values), the colour grid,
@@ -420,9 +524,14 @@
     const wrap = node('div', 'rw-grid');
     const mset = new Set(p.marked || []);
     const chosen = new Set(rwSel.map(([r, c]) => rwKey(r, c)));
-    const hintable = rwHintSet(sc, p, faces, interactive);     // cells legal to mark NOW
-    const perfect = rwPerfectBlocks(sc, p, faces, interactive); // whole-block one-tap fills
-    const runActive = rwSel.length > 0;                         // locked into rwSelColor
+    // Highlights only exist once the player has CHOSEN their dice (or a run is in
+    // progress). Before that, nothing lights up — you pick your colour+number on
+    // the slot machine first.
+    const pickComplete = rwPick.colorFace != null && rwPick.numberFace != null;
+    const runActive = rwSel.length > 0;
+    const showHints = interactive && (pickComplete || runActive);
+    const hintable = showHints ? rwHintSet(sc, p, faces, interactive) : new Set();
+    const perfect = showHints ? rwPerfectBlocks(sc, p, faces, interactive) : new Map();
     for (let r = 0; r < sc.grid.length; r++) {
       const rowEl = node('div', 'rw-row');
       for (let c = 0; c < sc.grid[r].length; c++) {
@@ -436,6 +545,7 @@
         const marked = mset.has(k);
         const sel = chosen.has(k);
         const block = perfect.get(k);
+        const isHint = hintable.has(k);
         if (marked) el.classList.add('rw-marked');
         if (sel) {
           // Selected this turn → coloured cross + drop the "available" glow.
@@ -443,15 +553,14 @@
           el.appendChild(node('span', 'rw-selcross', '\u2715'));
         }
         if (interactive && !marked) {
-          el.classList.add('rw-click');
-          // While a run is active the player is LOCKED to that colour: grey out
-          // every other-colour cell so the lock reads at a glance.
-          if (runActive && cell.c !== rwSelColor && !sel) el.classList.add('rw-locked-out');
-          if (!sel && block) el.classList.add('rw-perfect');     // exact one-tap fill
-          else if (!sel && hintable.has(k)) el.classList.add('rw-markable');
-          el.onclick = block
-            ? () => rwFillBlock(view, sc, p, block)
-            : () => rwToggle(view, sc, p, r, c, cell.c);
+          // Once dice are chosen, GREY OUT everything that isn't a legal target
+          // for the selection (and isn't already selected) — so the picked
+          // colour+number's options pop and the rest recede.
+          if (showHints && !sel && !block && !isHint) el.classList.add('rw-locked-out');
+          if (!sel && block) { el.classList.add('rw-perfect', 'rw-click'); el.onclick = () => rwFillBlock(view, sc, p, block); }
+          else if (!sel && isHint) { el.classList.add('rw-markable', 'rw-click'); el.onclick = () => rwToggle(view, sc, p, r, c, cell.c); }
+          else if (sel) { el.classList.add('rw-click'); el.onclick = () => rwToggle(view, sc, p, r, c, cell.c); }
+          // cells that are neither selectable nor selected get NO click handler.
         }
         rowEl.appendChild(el);
       }
@@ -536,18 +645,38 @@
     dispatchView(window._renderView);
   }
 
-  function rwSelValid(sc, p, faces) {
-    faces = faces || sc.myFaces || sc.roll;
-    if (!rwSel.length || !rwSelColor) return false;
+  // How the current selection maps to the chosen dice. Prefers the explicit PICK
+  // (the new "select dice first" flow); falls back to deriving from available
+  // faces for safety. Returns {concreteColor, concreteNum} or null if no die fits.
+  function rwSelDice(sc, faces) {
     const len = rwSel.length;
-    if (len > 5) return false;
+    if (!len || !rwSelColor) return null;
+    if (rwPick.colorFace != null && rwPick.numberFace != null) {
+      const wildColor = rwPick.colorFace === '*';
+      const wildNumber = rwPick.numberFace === 0;
+      // chosen colour die must allow the run's colour
+      if (!wildColor && rwPick.colorFace !== rwSelColor) return null;
+      // chosen number die must match the run length (concrete = exact)
+      if (!wildNumber && rwPick.numberFace !== len) return null;
+      if (wildNumber && (len < 1 || len > 5)) return null;
+      return { concreteColor: !wildColor, concreteNum: !wildNumber };
+    }
+    // fallback: derive from faces
     const concreteNum = faces.numbers.includes(len);
     const wildNum = faces.numbers.includes(0);
     const concreteColor = faces.colors.includes(rwSelColor);
     const wildColor = faces.colors.includes('*');
-    if (!concreteNum && !wildNum) return false;
-    if (!concreteColor && !wildColor) return false;
-    const cost = (concreteColor ? 0 : 1) + (concreteNum ? 0 : 1);
+    if (!concreteNum && !wildNum) return null;
+    if (!concreteColor && !wildColor) return null;
+    return { concreteColor, concreteNum };
+  }
+
+  function rwSelValid(sc, p, faces) {
+    faces = faces || sc.myFaces || sc.roll;
+    if (rwSel.length > 5) return false;
+    const d = rwSelDice(sc, faces);
+    if (!d) return false;
+    const cost = (d.concreteColor ? 0 : 1) + (d.concreteNum ? 0 : 1);
     if (cost && (p.wildsUsed | 0) + cost > (sc.wilds | 0)) return false;
     return true;
   }
@@ -556,25 +685,33 @@
     faces = faces || sc.myFaces || sc.roll;
     const bar = node('div', 'rw-selbar');
     if (!interactive) return bar;
-    const len = rwSel.length;
-    if (!len) {
-      const anyPerfect = rwPerfectBlocks(sc, p, faces, interactive).size > 0;
-      bar.appendChild(node('span', 'rw-hint', anyPerfect
-        ? 'Tap a glowing block to fill it in one move \u2014 or tap connected boxes of one colour.'
-        : 'Tap connected boxes of one colour (from centre or next to a crossed box).'));
+    const pickDone = rwPick.colorFace != null && rwPick.numberFace != null;
+    // Before a pick: prompt to choose dice on the slot machine.
+    if (!pickDone && !rwSel.length) {
+      bar.appendChild(node('span', 'rw-hint', 'Choose a colour die + a number die above \u2014 then your moves light up.'));
       return bar;
     }
-    const concreteNum = faces.numbers.includes(len);
-    const concreteColor = faces.colors.includes(rwSelColor);
-    const wildCost = (concreteColor ? 0 : 1) + (concreteNum ? 0 : 1);
-    const ok = rwSelValid(sc, p, faces);
-    const chip = node('span', 'rw-selchip' + (ok ? ' ok' : ' bad'),
-      `${len} ${rwSelColor}` + (wildCost ? ` \u00b7 ${wildCost} wild${wildCost > 1 ? 's' : ''}` : '') + (ok ? '' : ' \u2014 no matching die'));
-    chip.style.setProperty('--c', sc.colors[rwSelColor] || '#64748b');
-    bar.appendChild(chip);
-    const clear = node('button', 'rw-clear', 'Clear');
-    clear.onclick = () => { rwSel = []; rwSelColor = null; dispatchView(window._renderView); };
-    bar.appendChild(clear);
+    // Show the chosen dice as a chip (colour swatch + number / wild glyphs).
+    if (pickDone) {
+      const colName = rwPick.colorFace === '*' ? 'any colour' : ({ B: 'blue', O: 'orange', Y: 'yellow', G: 'green', R: 'red' }[rwPick.colorFace] || rwPick.colorFace);
+      const numTxt = rwPick.numberFace === 0 ? 'any (?)' : String(rwPick.numberFace);
+      const pchip = node('span', 'rw-selchip ok', `${numTxt} \u00d7 ${colName}`);
+      pchip.style.setProperty('--c', rwPick.colorFace === '*' ? '#a855f7' : (sc.colors[rwPick.colorFace] || '#64748b'));
+      bar.appendChild(pchip);
+    }
+    const len = rwSel.length;
+    if (len) {
+      const ok = rwSelValid(sc, p, faces);
+      const d = rwSelDice(sc, faces);
+      const wildCost = d ? ((d.concreteColor ? 0 : 1) + (d.concreteNum ? 0 : 1)) : 0;
+      const chip = node('span', 'rw-selchip' + (ok ? ' ok' : ' bad'),
+        `${len} ${rwSelColor}` + (wildCost ? ` \u00b7 ${wildCost} wild${wildCost > 1 ? 's' : ''}` : '') + (ok ? '' : ' \u2014 doesn\u2019t fit'));
+      chip.style.setProperty('--c', sc.colors[rwSelColor] || '#64748b');
+      bar.appendChild(chip);
+      const clear = node('button', 'rw-clear', 'Clear cells');
+      clear.onclick = () => { rwSel = []; rwSelColor = null; dispatchView(window._renderView); };
+      bar.appendChild(clear);
+    }
     return bar;
   }
 
@@ -597,13 +734,11 @@
     faces = faces || sc.myFaces || sc.roll;
     const me = sc.players[seat];
     if (!rwSelValid(sc, me, faces)) return;
-    const len = rwSel.length;
-    const concreteNum = faces.numbers.includes(len);
-    const concreteColor = faces.colors.includes(rwSelColor);
+    const d = rwSelDice(sc, faces);
     const msg = { color: rwSelColor, cells: rwSel.map(([r, c]) => [r, c]) };
-    if (!concreteColor) msg.wildColor = true;
-    if (!concreteNum) msg.wildNumber = true;
-    const cells = rwSel; rwSel = []; rwSelColor = null;   // clear before send
+    if (!d.concreteColor) msg.wildColor = true;
+    if (!d.concreteNum) msg.wildNumber = true;
+    rwSel = []; rwSelColor = null;   // clear before send
     GameActions.send('mark', msg, seat);
   }
 
