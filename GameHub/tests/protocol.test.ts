@@ -81,12 +81,15 @@ describe("protocol guards", () => {
       .toEqual({ type: "chat", text: "yo" });   // bad pid dropped, message still valid
   });
 
-  it("parses react: bounded emoji string, drops empties", () => {
+  it("parses react: bounded mood/emote id string, drops empties", () => {
+    // `emoji` now carries an emotion id (e.g. "furious"); legacy emoji still pass.
+    expect(parseClientMessage(JSON.stringify({ type: "react", emoji: "furious" })))
+      .toEqual({ type: "react", emoji: "furious" });
     expect(parseClientMessage(JSON.stringify({ type: "react", emoji: "🎉" })))
       .toEqual({ type: "react", emoji: "🎉" });
     expect(parseClientMessage(JSON.stringify({ type: "react", emoji: "  " }))).toBeNull();
     expect(parseClientMessage(JSON.stringify({ type: "react" }))).toBeNull();
     const clipped = parseClientMessage(JSON.stringify({ type: "react", emoji: "x".repeat(64) }));
-    expect(clipped.emoji.length).toBe(16);
+    expect(clipped.emoji.length).toBe(24);
   });
 });

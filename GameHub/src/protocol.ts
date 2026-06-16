@@ -156,9 +156,11 @@ export function parseClientMessage(raw: string): any | null {
       return out;
     }
     case "react": {
-      // Animated reaction emoji. We allow a short, bounded string (an emoji can
-      // be several code units / a ZWJ sequence) and let the client map/animate it.
-      const emoji = typeof msg.emoji === "string" ? msg.emoji.slice(0, 16) : "";
+      // Animated reaction. `emoji` now carries an EMOTION ID (e.g. "furious",
+      // "smug") that the client maps to a self-contained animated character — no
+      // literal emoji. Bounded to a short safe token; legacy emoji strings still
+      // pass (the client falls back gracefully).
+      const emoji = typeof msg.emoji === "string" ? msg.emoji.slice(0, 24) : "";
       if (!emoji.trim()) return null;
       const out: any = { type: "react", emoji };
       const pid = cleanId(msg.pid);

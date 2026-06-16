@@ -408,11 +408,36 @@ function playBoardRotation(){
     if(typeof Kit!=='undefined'&&Kit.CardManager)Kit.CardManager.sync();
   },360);
 }
+// Track the highest event seq we've already auto-emoted for, per game, so a
+// re-dispatch of the same view doesn't re-fire contextual emotes.
+let _emoteSeqSeen = {};
+function maybeContextualEmotes(view){
+  if(!window.Kit || !Kit.Emotes || !Kit.Emotes.fromEvent || !window.Social || !window.Social.emote) return;
+  const g = view.game;
+  const bag = view[g];
+  const events = bag && Array.isArray(bag.events) ? bag.events : null;
+  if(!events || !events.length) return;
+  const seen = _emoteSeqSeen[g] || 0;
+  let maxSeq = seen;
+  for(const ev of events){
+    const seq = (ev && typeof ev.seq === 'number') ? ev.seq : null;
+    if(seq != null && seq <= seen) continue;                 // already handled
+    if(seq != null && seq > maxSeq) maxSeq = seq;
+    const hit = Kit.Emotes.fromEvent(g, ev);
+    if(hit && hit.seat != null && hit.seat >= 0 && (hit.prob == null || Math.random() < hit.prob)){
+      const seats = window._currentSeats || [];
+      const name = (seats[hit.seat] && seats[hit.seat].name) || (window.localSeats && localSeats[hit.seat] && localSeats[hit.seat].name) || '';
+      try { Social.emote(hit.mood, name, hit.seat); } catch(e){}
+    }
+  }
+  _emoteSeqSeen[g] = maxSeq;
+}
 function dispatchView(view){
   const client=window.GameClients[view.game];
   if(!client){toast('Unknown game: '+view.game);return;}
   window._renderView=view;
   if(animating){pendingView=view;return;}
+  maybeContextualEmotes(view);
   const rotate=shouldRotateBoards(view);
   _lastDisplaySeat=view.yourSeat;_lastDisplayGame=view.game;
   GameShell.render(view,client);
@@ -421,7 +446,7 @@ function dispatchView(view){
 }
 function flushView(){if(pendingView){const v=pendingView;pendingView=null;dispatchView(v);}}
 function removeQwixxUi(){const top=$('topArea');if(!top)return;top.querySelectorAll('.qwixx-dice-zone,.qwixx-top-mini-strip').forEach(el=>el.remove());}
-function resetGameUi(){curView=null;prevView=null;animating=false;pendingView=null;summaryShown=false;lastRoundShown=false;_lastDisplaySeat=null;_lastDisplayGame=null;$('overlay').classList.add('hidden');$('overlay').style.opacity='';GameShell.unmount();$('topArea').style.display='';const piles=$('topArea').querySelector('.piles');if(piles)piles.style.display='flex';$('heldCardWrapper').style.display='';if(window._flip7ResetSeq)window._flip7ResetSeq();}
+function resetGameUi(){curView=null;prevView=null;animating=false;pendingView=null;summaryShown=false;lastRoundShown=false;_lastDisplaySeat=null;_lastDisplayGame=null;_emoteSeqSeen={};$('overlay').classList.add('hidden');$('overlay').style.opacity='';GameShell.unmount();$('topArea').style.display='';const piles=$('topArea').querySelector('.piles');if(piles)piles.style.display='flex';$('heldCardWrapper').style.display='';if(window._flip7ResetSeq)window._flip7ResetSeq();}
 function hideOverlay(){const o=$('overlay');if(o.classList.contains('hidden'))return;o.style.opacity='0';setTimeout(()=>{o.classList.add('hidden');o.style.opacity='';},220);}
 function bumpStatus(){const sb=$('statusBar');sb.classList.remove('bump');void sb.offsetWidth;sb.classList.add('bump');}
 

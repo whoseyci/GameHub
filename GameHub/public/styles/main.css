@@ -1592,15 +1592,21 @@ html, body, #app { height: 100dvh !important; min-height: 100dvh !important; max
 .social-chat-send{flex:0 0 auto;padding:9px 14px;border-radius:10px;border:0;background:var(--accent,#7c5cff);color:#fff;font-weight:900;cursor:pointer}
 .social-chat-send:hover{filter:brightness(1.08)}
 /* reaction bar (floats above the chat button) */
-.social-react-bar{position:fixed;right:12px;bottom:64px;display:flex;flex-wrap:wrap;gap:4px;max-width:min(320px,calc(100vw - 24px));
-  padding:8px;background:var(--surface,#0f172a);border:1px solid rgba(255,255,255,.12);border-radius:14px;
-  box-shadow:0 16px 40px rgba(0,0,0,.5);z-index:60;justify-content:center;
+.social-react-bar{position:fixed;right:12px;bottom:64px;display:grid;grid-template-columns:repeat(4,1fr);gap:6px;
+  width:min(280px,calc(100vw - 24px));
+  padding:10px;background:var(--surface,#0f172a);border:1px solid rgba(255,255,255,.12);border-radius:16px;
+  box-shadow:0 16px 40px rgba(0,0,0,.5);z-index:60;justify-items:center;
   transform:translateY(10px) scale(.96);opacity:0;pointer-events:none;transition:transform .18s ease,opacity .18s ease}
 .social-react-bar.open{transform:none;opacity:1;pointer-events:auto}
-.social-react-btn{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);border-radius:10px;
-  font-size:1.4rem;line-height:1;padding:6px 8px;cursor:pointer;transition:transform .12s ease,background .12s ease}
-.social-react-btn:hover{background:rgba(255,255,255,.14);transform:translateY(-2px)}
+.social-react-btn{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);border-radius:12px;
+  line-height:0;padding:4px;cursor:pointer;transition:transform .12s ease,background .12s ease;width:54px;height:54px;
+  display:flex;align-items:center;justify-content:center;overflow:hidden}
+.social-react-btn svg{width:44px;height:44px}
+.social-react-btn:hover{background:rgba(124,92,255,.22);transform:translateY(-2px) scale(1.06)}
 .social-react-btn.pop{animation:socialPop .26s ease}
+/* freeze the per-emotion looping animation in the PICKER (preview only); it
+   plays fully when launched into the FX layer. */
+.social-react-btn .emo-char{animation-iteration-count:1!important}
 @keyframes socialPop{0%{transform:scale(1)}40%{transform:scale(1.4)}100%{transform:scale(1)}}
 /* unread badge on the chat button — pulses to draw the eye */
 .social-unread{position:absolute;top:-4px;right:-4px;min-width:17px;height:17px;padding:0 4px;border-radius:999px;
@@ -1617,39 +1623,81 @@ html, body, #app { height: 100dvh !important; min-height: 100dvh !important; max
 .social-chat-peek span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 @keyframes socialPeek{0%{opacity:0;transform:translateX(20px)}8%{opacity:1;transform:none}88%{opacity:1;transform:none}100%{opacity:0;transform:translateX(20px)}}
 
-/* ── Animated CHARACTER emotes (Clash-Royale style) ──────────────────────── */
+/* ── Animated EMOTION-CHARACTER emotes (Kit.Emotes) ───────────────────────── */
 .reaction-fx-layer{position:fixed;inset:0;pointer-events:none;z-index:55;overflow:hidden}
-.emote-actor{position:absolute;bottom:-4vh;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;
-  filter:drop-shadow(0 6px 10px rgba(0,0,0,.45));animation:emoteEnter .5s cubic-bezier(.34,1.56,.5,1) forwards,
-  emoteExit .5s ease-in 1.9s forwards}
-/* the mascot rises up, does a squash-bounce, then ducks back down */
-@keyframes emoteEnter{0%{transform:translateX(-50%) translateY(0)}100%{transform:translateX(-50%) translateY(calc(-1 * var(--rise,10vh)))}}
-@keyframes emoteExit{0%{transform:translateX(-50%) translateY(calc(-1 * var(--rise,10vh)))}100%{transform:translateX(-50%) translateY(2vh);opacity:0}}
-.emote-mascot{display:block;transform-origin:50% 100%;animation:emoteBob 1.9s ease-in-out 0s 1}
-@keyframes emoteBob{
-  0%{transform:scale(.4) translateY(20px)}
-  18%{transform:scale(1.12,.9)}
-  30%{transform:scale(.94,1.08)}
-  42%{transform:scale(1.03,.98) rotate(-4deg)}
-  56%{transform:scale(1) rotate(4deg)}
-  70%{transform:scale(1) rotate(-2deg)}
-  84%{transform:scale(1) rotate(0)}
-  100%{transform:scale(1)}
-}
-.emote-mascot .emote-pupil{animation:emoteBlink 1.9s steps(1,end) infinite}
-@keyframes emoteBlink{0%,90%,100%{opacity:1}93%,97%{opacity:0}}
-/* speech bubble with the emoji, popping above the mascot */
-.emote-bubble{position:relative;background:#fff;border-radius:14px;padding:5px 10px;margin-bottom:4px;
-  box-shadow:0 3px 8px rgba(0,0,0,.35);transform-origin:50% 120%;animation:emoteBubblePop .5s cubic-bezier(.2,1.7,.4,1) .12s both}
-.emote-glyph{font-size:30px;line-height:1;display:block}
-.emote-bubble-tail{position:absolute;left:50%;bottom:-6px;width:0;height:0;transform:translateX(-50%);
-  border-left:7px solid transparent;border-right:7px solid transparent;border-top:8px solid #fff}
-@keyframes emoteBubblePop{0%{transform:scale(0);opacity:0}70%{transform:scale(1.18)}100%{transform:scale(1);opacity:1}}
-.emote-who{margin-top:3px;font-size:.6rem;font-weight:900;color:#fff;background:rgba(0,0,0,.5);padding:1px 7px;border-radius:999px;white-space:nowrap}
+/* the actor rises up from the bottom, holds, then ducks back down */
+.emote-actor{position:absolute;bottom:-6vh;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;
+  animation:emoteRise .5s cubic-bezier(.34,1.56,.5,1) forwards, emoteSink .5s ease-in 2.1s forwards}
+@keyframes emoteRise{0%{transform:translateX(-50%) translateY(0)}100%{transform:translateX(-50%) translateY(calc(-1 * var(--rise,10vh)))}}
+@keyframes emoteSink{0%{transform:translateX(-50%) translateY(calc(-1 * var(--rise,10vh)))}100%{transform:translateX(-50%) translateY(3vh);opacity:0}}
+/* a coloured ring behind the character keyed to the player's seat colour */
+.emote-stage{position:relative;width:104px;height:104px;display:flex;align-items:center;justify-content:center;
+  border-radius:50%;background:radial-gradient(circle at 50% 45%, rgba(255,255,255,.12), rgba(15,23,42,.55) 70%);
+  box-shadow:0 0 0 3px var(--ring,rgba(124,92,255,.6)), 0 10px 22px rgba(0,0,0,.5);
+  animation:emotePop .5s cubic-bezier(.2,1.7,.4,1) both}
+@keyframes emotePop{0%{transform:scale(.3);opacity:0}65%{transform:scale(1.12)}100%{transform:scale(1);opacity:1}}
+.emote-char{display:block;transform-origin:50% 60%}
+.emote-who{margin-top:5px;font-size:.62rem;font-weight:900;color:#fff;background:rgba(0,0,0,.55);padding:2px 9px;border-radius:999px;white-space:nowrap}
+
+/* ── per-emotion signature animations (each conveys the feeling) ──────────── */
+/* happy: cheerful bouncing + sparkle twinkle */
+.emo-bounce{animation:emoHop .6s ease-in-out 3}
+@keyframes emoHop{0%,100%{transform:translateY(0)}50%{transform:translateY(-7px)}}
+.emo-spark{animation:emoTwinkle .7s ease-in-out infinite}
+@keyframes emoTwinkle{0%,100%{opacity:.3;transform:scale(.8)}50%{opacity:1;transform:scale(1.15)}}
+/* laugh: head tips back & shakes with mirth */
+.emo-laugh{animation:emoLaugh .32s ease-in-out 6}
+@keyframes emoLaugh{0%,100%{transform:rotate(-6deg) translateY(0)}50%{transform:rotate(6deg) translateY(-3px)}}
+/* furious: hard rapid shake + red, steam puffs */
+.emo-rage{animation:emoShake .07s linear 22}
+@keyframes emoShake{0%,100%{transform:translate(0,0) rotate(0)}25%{transform:translate(-3px,1px) rotate(-3deg)}75%{transform:translate(3px,-1px) rotate(3deg)}}
+.emo-steam{animation:emoSteam 1s ease-out infinite;transform-origin:50% 100%}
+@keyframes emoSteam{0%{opacity:0;transform:translateY(4px) scale(.7)}40%{opacity:.9}100%{opacity:0;transform:translateY(-8px) scale(1.1)}}
+/* smug: slow confident lean */
+.emo-lean{animation:emoLean 2.4s ease-in-out 1}
+@keyframes emoLean{0%{transform:rotate(0)}25%{transform:rotate(-9deg)}70%{transform:rotate(-9deg)}100%{transform:rotate(0)}}
+/* cool: chill slow nod */
+.emo-nod{animation:emoNod 1.1s ease-in-out 2}
+@keyframes emoNod{0%,100%{transform:rotate(0)}40%{transform:rotate(7deg) translateY(2px)}}
+/* shocked: sharp jolt then settle */
+.emo-jolt{animation:emoJolt .5s cubic-bezier(.2,2,.3,1) 1}
+@keyframes emoJolt{0%{transform:scale(1)}15%{transform:scale(1.25,.85) translateY(-6px)}40%{transform:scale(.95,1.05)}100%{transform:scale(1)}}
+/* sad: slow droop + the tear slides */
+.emo-droop{animation:emoDroop 2.4s ease-in-out 1}
+@keyframes emoDroop{0%{transform:translateY(0)}30%{transform:translateY(4px) rotate(-4deg)}100%{transform:translateY(4px) rotate(-4deg)}}
+.emo-tear{animation:emoTear 1.4s ease-in infinite;transform-origin:36px 57px}
+@keyframes emoTear{0%{opacity:0;transform:translateY(0) scale(.6)}30%{opacity:1}100%{opacity:0;transform:translateY(16px) scale(1)}}
+/* cry: sob shudder + streaming tears */
+.emo-sob{animation:emoSob .5s ease-in-out 5}
+@keyframes emoSob{0%,100%{transform:translateY(0) scale(1)}50%{transform:translateY(2px) scale(1.02,.98)}}
+.emo-tears{animation:emoStream .8s ease-in infinite}
+@keyframes emoStream{0%{opacity:0}30%{opacity:1}100%{opacity:.2}}
+/* think: thoughtful tilt + rising dots */
+.emo-tilt{animation:emoTilt 2.4s ease-in-out 1}
+@keyframes emoTilt{0%{transform:rotate(0)}30%{transform:rotate(8deg)}80%{transform:rotate(8deg)}100%{transform:rotate(0)}}
+.emo-dots circle{opacity:0;animation:emoDots 1.6s ease-in-out infinite}
+.emo-dots circle:nth-child(1){animation-delay:0s}.emo-dots circle:nth-child(2){animation-delay:.25s}.emo-dots circle:nth-child(3){animation-delay:.5s}
+@keyframes emoDots{0%{opacity:0;transform:translateY(4px)}40%{opacity:1;transform:translateY(0)}80%{opacity:1}100%{opacity:0}}
+/* love: heart throb + floating hearts */
+.emo-throb{animation:emoThrob .5s ease-in-out 5}
+@keyframes emoThrob{0%,100%{transform:scale(1)}50%{transform:scale(1.08)}}
+.emo-heart-eye{animation:emoThrob .5s ease-in-out 5}
+.emo-hearts path{animation:emoFloatHeart 1.4s ease-out infinite}
+@keyframes emoFloatHeart{0%{opacity:0;transform:translateY(6px) scale(.6)}40%{opacity:1}100%{opacity:0;transform:translateY(-10px) scale(1)}}
+/* nervous: wobble + sweat */
+.emo-wobble{animation:emoWobble .3s ease-in-out 7}
+@keyframes emoWobble{0%,100%{transform:rotate(-4deg)}50%{transform:rotate(4deg)}}
+.emo-sweat{animation:emoTear 1.2s ease-in infinite;transform-origin:72px 40px}
+/* party: excited jump-spin + confetti */
+.emo-party{animation:emoParty .6s ease-in-out 4}
+@keyframes emoParty{0%,100%{transform:translateY(0) rotate(0)}25%{transform:translateY(-8px) rotate(-8deg)}75%{transform:translateY(-8px) rotate(8deg)}}
+.emo-confetti rect{animation:emoConfetti 1s ease-in infinite}
+@keyframes emoConfetti{0%{opacity:0;transform:translateY(-4px)}30%{opacity:1}100%{opacity:0;transform:translateY(10px) rotate(180deg)}}
+
 @media (prefers-reduced-motion: reduce){
-  .emote-actor.reduced{bottom:14vh;animation:emoteReducedFade 1s ease forwards}
-  .emote-actor.reduced .emote-mascot,.emote-actor.reduced .emote-bubble{animation:none}
-  @keyframes emoteReducedFade{0%{opacity:0}20%{opacity:1}80%{opacity:1}100%{opacity:0}}
+  .emote-actor{animation:emoteReducedFade 1.2s ease forwards;bottom:14vh}
+  .emote-actor .emote-stage,.emote-char,.emote-char *{animation:none!important}
+  @keyframes emoteReducedFade{0%{opacity:0}18%{opacity:1}82%{opacity:1}100%{opacity:0}}
 }
 
 /* ── Group picker dropdown (header "Group" button) ───────────────────────────

@@ -24,7 +24,11 @@
 (function () {
   'use strict';
 
-  const REACTIONS = ['👍', '😂', '🎉', '😮', '😢', '🔥', '❤️', '🤔', '👏', '🤯', '😎', '🍀'];
+  // The emote picker shows a CAST of emotion characters (Kit.Emotes), not emojis.
+  // Each id maps to a self-contained animated character expressing the feeling.
+  const REACTIONS = (typeof Kit !== 'undefined' && Kit.Emotes)
+    ? ['happy', 'laugh', 'love', 'cool', 'party', 'smug', 'think', 'shocked', 'nervous', 'sad', 'cry', 'furious']
+    : [];
   const MAX_RENDERED = 120;        // cap chat DOM nodes
   const SEND_COOLDOWN = 600;       // ms between reactions (client-side anti-spam)
 
@@ -58,10 +62,13 @@
 
     barEl = document.createElement('div');
     barEl.className = 'social-react-bar';
-    barEl.innerHTML = REACTIONS.map((e) => `<button class="social-react-btn" type="button" data-emoji="${e}">${e}</button>`).join('');
+    barEl.innerHTML = REACTIONS.map((id) => {
+      const svg = (typeof Kit !== 'undefined' && Kit.Emotes) ? Kit.Emotes.svg(id, { size: 44 }) : id;
+      return `<button class="social-react-btn" type="button" data-emote="${id}" title="${id}">${svg}</button>`;
+    }).join('');
     document.body.appendChild(barEl);
     barEl.querySelectorAll('.social-react-btn').forEach((b) => {
-      b.onclick = () => { sendReaction(b.dataset.emoji); flashBtn(b); };
+      b.onclick = () => { sendReaction(b.dataset.emote); flashBtn(b); };
     });
   }
 
@@ -151,66 +158,34 @@
     } else if (dot) { dot.remove(); }
   }
 
-  // ── Animated CHARACTER emote (Clash-Royale style) ───────────────────
-  // A little mascot slides up from the bottom, squash-bounces with a speech
-  // bubble holding the emoji, then ducks back down. Far more alive than a
-  // floating glyph. Pure inline SVG — themeable, no assets.
-  // A small palette so successive emotes / different players get varied mascots.
-  const MASCOT_COLORS = [
-    { body: '#7c5cff', belly: '#b9a8ff', dark: '#5b3fd6' },
-    { body: '#22c55e', belly: '#9ff0bf', dark: '#15803d' },
-    { body: '#f59e0b', belly: '#fcd884', dark: '#b45309' },
-    { body: '#ec4899', belly: '#f9b6d6', dark: '#be185d' },
-    { body: '#38bdf8', belly: '#bae6fd', dark: '#0369a1' },
-    { body: '#a855f7', belly: '#e2c7fd', dark: '#7e22ce' },
-  ];
-
-  function mascotSvg(c, seat) {
-    const pal = MASCOT_COLORS[(seat >= 0 ? seat : (Math.random() * MASCOT_COLORS.length) | 0) % MASCOT_COLORS.length];
-    return (
-      '<svg class="emote-mascot" viewBox="0 0 100 110" width="84" height="92" aria-hidden="true">' +
-      // shadow
-      '<ellipse class="emote-shadow" cx="50" cy="104" rx="26" ry="6" fill="rgba(0,0,0,.35)"/>' +
-      // ears
-      `<circle cx="28" cy="34" r="11" fill="${pal.body}"/><circle cx="72" cy="34" r="11" fill="${pal.body}"/>` +
-      `<circle cx="28" cy="34" r="5" fill="${pal.dark}"/><circle cx="72" cy="34" r="5" fill="${pal.dark}"/>` +
-      // body
-      `<ellipse cx="50" cy="62" rx="34" ry="36" fill="${pal.body}"/>` +
-      `<ellipse cx="50" cy="70" rx="22" ry="22" fill="${pal.belly}"/>` +
-      // eyes
-      '<circle cx="40" cy="54" r="6" fill="#fff"/><circle cx="60" cy="54" r="6" fill="#fff"/>' +
-      '<circle class="emote-pupil" cx="41" cy="55" r="3" fill="#1e293b"/>' +
-      '<circle class="emote-pupil" cx="61" cy="55" r="3" fill="#1e293b"/>' +
-      // cheeks + smile
-      `<circle cx="32" cy="64" r="4" fill="${pal.dark}" opacity=".35"/>` +
-      `<circle cx="68" cy="64" r="4" fill="${pal.dark}" opacity=".35"/>` +
-      `<path d="M42 66 Q50 73 58 66" stroke="${pal.dark}" stroke-width="2.6" fill="none" stroke-linecap="round"/>` +
-      '</svg>'
-    );
-  }
-
-  function floatReaction(emoji, who, seat) {
-    if (!emoji) return;
+  // ── Animated EMOTION-CHARACTER emote ─────────────────────────────────
+  // A self-contained character (Kit.Emotes) that expresses the FEELING through
+  // its face + signature animation — no emoji. It pops up from the bottom, holds
+  // the expression, then ducks back down. Per-player name tag + a coloured ring
+  // so you can tell WHO reacted.
+  function floatReaction(mood, who, seat) {
+    if (!mood) return;
     const layer = $('reactionFxLayer');
     if (!layer) return;
     const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
     const el = document.createElement('div');
     el.className = 'emote-actor' + (reduce ? ' reduced' : '');
-    // Spread mascots across the lower band so multiple emotes don't stack.
+    // Spread characters across the lower band so multiple emotes don't stack.
     const x = 12 + Math.random() * 66;     // vw %
     el.style.left = x + '%';
-    el.style.setProperty('--rise', (8 + Math.random() * 6) + 'vh');   // varied hop height
+    el.style.setProperty('--rise', (8 + Math.random() * 6) + 'vh');
+    if (seat != null && seat >= 0) el.style.setProperty('--ring', seatColor(seat));
+    const charSvg = (typeof Kit !== 'undefined' && Kit.Emotes) ? Kit.Emotes.svg(mood, { size: 104 }) : esc(mood);
     el.innerHTML =
-      '<div class="emote-bubble"><span class="emote-glyph">' + emoji + '</span>' +
-      '<i class="emote-bubble-tail"></i></div>' +
-      mascotSvg(emoji, seat == null ? -1 : seat) +
+      '<div class="emote-stage">' + charSvg + '</div>' +
       (who ? '<span class="emote-who">' + esc(who) + '</span>' : '');
     layer.appendChild(el);
 
     if (typeof SFX !== 'undefined' && SFX.tap) SFX.tap();
-    setTimeout(() => el.remove(), reduce ? 1100 : 2400);
+    setTimeout(() => el.remove(), reduce ? 1200 : 2600);
   }
+
 
   // ── Toggles + visibility ────────────────────────────────────────────
   function toggleChat(force) {

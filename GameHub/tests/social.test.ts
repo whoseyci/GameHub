@@ -23,10 +23,16 @@ function mount() {
   // a fake net so sends don't throw
   win.net = { send: (o: any) => { (win.__sent ||= []).push(o); return true; }, ws: { readyState: 1 } };
   win.getPid = () => "p_test";
-  const code = readFileSync(join(process.cwd(), "public/js/00-social.js"), "utf8");
-  const s = win.document.createElement("script");
-  s.textContent = code;
-  win.document.body.appendChild(s);
+  // Kit.Emotes (00-emotes.js) is a dependency of the emote rendering. It needs a
+  // global `Kit`; 00-cards/00-core define it in the app, but for this focused
+  // test we provide a minimal Kit before loading the emote + social modules.
+  win.Kit = win.Kit || {};
+  for (const f of ["public/js/00-emotes.js", "public/js/00-social.js"]) {
+    const code = readFileSync(join(process.cwd(), f), "utf8");
+    const s = win.document.createElement("script");
+    s.textContent = code;
+    win.document.body.appendChild(s);
+  }
   return win;
 }
 
@@ -64,21 +70,43 @@ describe("Social — API + behaviour", () => {
     expect(win.document.querySelectorAll(".social-chat-msg").length).toBe(2);
   });
 
-  it("spawns an animated character emote (mascot + bubble) into the FX layer", () => {
-    win.Social.handleNet({ type: "react", seat: 2, name: "Cara", emoji: "🎉", ts: 1 });
+  it("spawns a self-contained animated EMOTION character (no emoji bubble) into the FX layer", () => {
+    win.Social.handleNet({ type: "react", seat: 2, name: "Cara", emoji: "furious", ts: 1 });
     const actor = win.document.querySelector("#reactionFxLayer .emote-actor");
     expect(actor).not.toBeNull();
-    expect(actor!.querySelector(".emote-mascot")).not.toBeNull();   // the character
-    expect(actor!.querySelector(".emote-bubble")).not.toBeNull();   // speech bubble
-    expect(actor!.querySelector(".emote-glyph")!.textContent).toContain("🎉");
+    expect(actor!.querySelector(".emote-stage")).not.toBeNull();    // ring/stage
+    const char = actor!.querySelector("svg.emo-char");
+    expect(char).not.toBeNull();                                    // the character SVG
+    expect(char!.classList.contains("emo-rage")).toBe(true);        // furious signature anim
+    expect(actor!.querySelector(".emote-glyph")).toBeNull();        // NO emoji bubble anymore
     expect(actor!.textContent).toContain("Cara");                   // who emoted
   });
 
-  it("Social.emote() fires a LOCAL character emote without sending over the wire (for bots)", () => {
+  it("Social.emote() fires a LOCAL emotion character without sending over the wire (for bots)", () => {
     win.__sent = [];
-    win.Social.emote("🔥", "Botley", 1);
-    expect(win.document.querySelectorAll("#reactionFxLayer .emote-actor").length).toBeGreaterThan(0);
+    win.Social.emote("party", "Botley", 1);
+    const actor = win.document.querySelector("#reactionFxLayer .emote-actor");
+    expect(actor).not.toBeNull();
+    expect(actor!.querySelector("svg.emo-party")).not.toBeNull();
     expect((win.__sent || []).filter((o: any) => o.type === "react").length).toBe(0);
+  });
+
+  it("Kit.Emotes exposes the cast + a contextual event→mood mapper", () => {
+    expect(typeof win.Kit.Emotes.svg).toBe("function");
+    expect(win.Kit.Emotes.has("furious")).toBe(true);
+    expect(win.Kit.Emotes.list().length).toBeGreaterThanOrEqual(10);
+    // Flip 7 bust → a furious character, attributed to the busting seat.
+    const hit = win.Kit.Emotes.fromEvent("flip7", { type: "bust", player: 3 });
+    expect(hit.mood).toBe("furious");
+    expect(hit.seat).toBe(3);
+    // Flip 7 (the bonus) → party.
+    expect(win.Kit.Emotes.fromEvent("flip7", { type: "flip7", player: 0 }).mood).toBe("party");
+    // CRITICAL: it must match the NORMALIZED event shape Flip 7 actually emits
+    // (type:"effect.bust", seat in `actor`, original name in `legacy`) — this was
+    // the bug where auto-emotes silently never fired.
+    const norm = win.Kit.Emotes.fromEvent("flip7", { type: "effect.bust", actor: 2, legacy: "bust" });
+    expect(norm.mood).toBe("furious");
+    expect(norm.seat).toBe(2);
   });
 
   it("sendReaction emits a react message and is cooldown-limited", () => {

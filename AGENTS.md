@@ -78,6 +78,18 @@ interface (`create / applyAction / viewFor / isOver` + optional
   `Kit.Layout.fit` solver was removed — don't reintroduce one). The
   `#gameScreen.active` flex column distributes height; `#mainBoardsContainer`
   is the single **grower that may also shrink** (`flex:1 1 auto; min-height:0`).
+- **Emotes are animated EMOTION CHARACTERS (`public/js/00-emotes.js`,
+  `Kit.Emotes`)** — a cast of distinct characters (happy, furious, smug, cool,
+  shocked, sad, cry, think, love, nervous, party, laugh) that express the FEELING
+  via face + signature CSS animation, NO emoji attached. `Kit.Emotes.svg(id)`
+  renders one; the wire `react` message's `emoji` field now carries an emotion id.
+  **Contextual auto-emotes:** `Kit.Emotes.fromEvent(game, ev)` maps a game event
+  → a mood; the `dispatchView` hook (01-network-local.js) fires them for NEW
+  events (dedup by seq) so dramatic moments react automatically (Flip 7 bust →
+  furious, Flip 7 bonus → party, Qwixx lock → party, Skyjo low-card discard →
+  smug…). NOTE games NORMALIZE events (Flip 7 emits `type:"effect.bust",
+  actor:<seat>, legacy:"bust"`), so `fromEvent` matches on `legacy` and strips the
+  `effect.`/`card.` prefix — don't break that or auto-emotes go silent.
 - **Social layer (`public/js/00-social.js`, `window.Social`)** — online-only room
   **chat** + animated **reaction emojis**. Rides the existing WebSocket: the
   server (`src/server.ts`) parses `chat`/`react` (see `parseClientMessage` in
