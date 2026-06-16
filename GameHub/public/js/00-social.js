@@ -68,7 +68,7 @@
     }).join('');
     document.body.appendChild(barEl);
     barEl.querySelectorAll('.social-react-btn').forEach((b) => {
-      b.onclick = () => { sendReaction(b.dataset.emote); flashBtn(b); };
+      b.onclick = () => { sendReaction(b.dataset.emote); flashBtn(b); toggleReactions(false); };
     });
   }
 
@@ -198,6 +198,16 @@
   function toggleReactions(force) {
     ensureUi();
     barOpen = (force == null) ? !barOpen : !!force;
+    if (barOpen) {
+      // Anchor the picker so it pops out from directly under the #reactBtn.
+      const btn = $('reactBtn');
+      if (btn) {
+        const r = btn.getBoundingClientRect();
+        // distance from the viewport right edge to the button's right edge
+        barEl.style.setProperty('--emote-anchor-right', Math.max(8, Math.round(window.innerWidth - r.right)) + 'px');
+      }
+      if (chatOpen) toggleChat(false);   // don't overlap the chat panel
+    }
     barEl.classList.toggle('open', barOpen);
     $('reactBtn') && $('reactBtn').classList.toggle('on', barOpen);
   }

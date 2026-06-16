@@ -57,10 +57,29 @@ Schema games live in `src/games/schema/specs/*.ts` (just data), are wrapped by
 sample shipped with the prototype is **"Septet"** (id `septet`) — a clean Flip-7-
 style demo proving the pipeline end-to-end.
 
-## Roadmap (after the prototype is proven)
-1. ✅ Engine + one data-only sample game + tests (this prototype).
-2. Generic schema client renderer wired into the catalogue.
-3. More patterns (roll-and-mark grid; set-collect) as additional `kind`s.
-4. The **visual editor** that writes a `GameSpec` (and a layout descriptor for
-   Kit.Fit) — no code.
-5. Submission + **human-review** queue for community specs (never auto-publish).
+## Kinds shipped
+- **`pressYourLuck`** (`engine-pyl.ts`) — Flip-7 / can't-stop family. Sample:
+  **Septet** (`septet`).
+- **`rollAndWrite`** (`engine-raw.ts`) — Encore!/Noch mal! spatial roll-and-write:
+  a colour grid laid out as DATA (`grid` rows of `{c,star?}`), colour+number
+  dice, cross CONNECTED same-colour runs from the centre column outward, race to
+  finish columns + whole colours, stars = penalties, limited wilds. Sample:
+  **Encore!** (`encore`). The generic client (`schema-game.js`) renders the grid
+  with click-to-select connected runs (live-validated) + Mark/Skip.
+  - **Grid invariant:** every colour region MUST be connected to the centre
+    column via same-colour adjacency, or cells get stranded (unreachable →
+    unwinnable). The Encore spec GENERATES a guaranteed-reachable grid rather
+    than hand-drawing one (a hand-drawn layout stranded Orange+Red at 0% reach).
+  - Schema games reuse the hub's verbs; the self-play fuzzer now tries each
+    game's own `legalActions` first (so bespoke action shapes like
+    `{action:"mark",color,cells}` are exercised).
+
+## Roadmap
+1. ✅ `pressYourLuck` kind + Septet + tests.
+2. ✅ Generic client wired into the catalogue.
+3. ✅ `rollAndWrite` kind + Encore! (spatial grid, dice, wilds, stars).
+4. More `kind`s: `cardPhases` (Phase 10 — rummy phases), set-collect, and a
+   richer card-engine kind for action/property games (Monopoly Deal).
+5. The **visual editor** that writes a `GameSpec` (+ a Kit.Fit layout
+   descriptor) — no code.
+6. Submission + **human-review** queue for community specs (never auto-publish).

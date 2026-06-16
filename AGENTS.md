@@ -134,8 +134,17 @@ interface (`create / applyAction / viewFor / isOver` + optional
   under `view[meta.id]`; cards go through `Kit.Cards.el`; the engine is tagged
   `meta.__schema=true` so the catalogue + generic client/ parity tests detect it.
   NEVER run untrusted code — a spec only selects among audited, bounded
-  behaviours. See `docs/GAME_SCHEMA.md`. Next: more spec `kind`s, then the visual
-  editor that emits a `GameSpec`, then a human-reviewed community submission queue.
+  behaviours. See `docs/GAME_SCHEMA.md`. TWO kinds today: `pressYourLuck`
+  (`engine-pyl.ts`, Septet) and `rollAndWrite` (`engine-raw.ts`, Encore! — a
+  spatial colour grid with dice/wilds/stars; the engine carries
+  `meta.__schemaKind` so the catalogue + client pick the right renderer/rules).
+  FOOTGUN for `rollAndWrite`: every colour region MUST connect to the centre/start
+  column via same-colour adjacency or cells get stranded (unwinnable) — the Encore
+  spec GENERATES a reachable grid rather than hand-drawing one. The self-play
+  fuzzer (`tests/self-play.test.ts`) now prefers a game's own `legalActions`, so
+  bespoke schema action shapes (`{action:"mark",color,cells}`) are exercised.
+  Next: a `cardPhases` kind (Phase 10), a card-engine kind (Monopoly Deal), then
+  the visual editor that emits a `GameSpec`, then a human-reviewed submission queue.
 - **Adaptive board sizing is automatic via `Kit.Fit`** (`public/js/00-kit-fit.js`).
   `GameShell.renderTable` auto-fits the focus board to fill its container — it
   **grows into void space and shrinks to avoid overflow**, content-aware, for

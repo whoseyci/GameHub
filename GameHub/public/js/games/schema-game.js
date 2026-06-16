@@ -58,9 +58,15 @@
 
   function escText(s) { const d = document.createElement('div'); d.textContent = String(s == null ? '' : s); return d.innerHTML; }
 
+  // Dispatch by schema kind — one client serves every schema game.
   function render(view) {
     const sc = view[view.game];
     if (!sc || sc.kind == null) return;
+    if (sc.kind === 'rollAndWrite') return renderRollAndWrite(view, sc);
+    return renderPressYourLuck(view, sc);
+  }
+
+  function renderPressYourLuck(view, sc) {
     const seat = view.yourSeat;
     const me = sc.players[seat] || sc.players[0] || { seat: 0, name: 'You', kept: [], live: 0, banked: 0, status: 'active' };
     const activeSeat = view.state ? view.state.currentSeat : -1;
@@ -133,7 +139,205 @@
     }
   }
 
+  // ── rollAndWrite (Encore!/Noch mal!) renderer ───────────────────────
+  // Click connected same-colour cells to build a run, then Mark. The grid is
+  // data (sc.grid); marks are per-player. Selection is validated live against the
+  // current roll + reachability so only legal runs can be submitted.
+  let rwSel = [];          // [[r,c],...] currently-selected cells (this turn)
+  let rwSelColor = null;
+
+  function rwKey(r, c) { return r + ',' + c; }
+  function rwReachable(sc, mset, chosen, r, c, color) {
+    const cell = sc.grid[r] && sc.grid[r][c];
+    if (!cell || cell.c !== color) return false;
+    if (mset.has(rwKey(r, c)) || chosen.has(rwKey(r, c))) return false;
+    if (c === sc.startCol) return true;
+    const nb = [[r - 1, c], [r + 1, c], [r, c - 1], [r, c + 1]];
+    for (const [nr, ncx] of nb) {
+      const k = rwKey(nr, ncx);
+      if (mset.has(k) || chosen.has(k)) { const adj = sc.grid[nr] && sc.grid[nr][ncx]; if (adj && adj.c === color) return true; }
+    }
+    return false;
+  }
+
+  function renderRollAndWrite(view, sc) {
+    const seat = view.yourSeat;
+    const me = sc.players[seat] || sc.players[0];
+    const amPending = (sc.pending || []).includes(seat) && !view.over;
+    // reset selection when it's no longer my turn / new roll
+    if (!amPending) { rwSel = []; rwSelColor = null; }
+
+    // Opponents strip — compact grids.
+    const opponents = node('div', 'rw-mini-strip');
+    sc.players.filter((p) => p.seat !== me.seat).forEach((p) => opponents.appendChild(rwMini(sc, p)));
+
+    // Center: the dice roll + round + who's the roller.
+    const center = node('div', 'rw-center');
+    const dice = node('div', 'rw-dice');
+    sc.roll.colors.forEach((cf) => {
+      const d = node('div', 'rw-die rw-die-color');
+      if (cf === '*') { d.classList.add('wild'); d.textContent = '★'; }
+      else { d.style.background = sc.colors[cf] || '#64748b'; }
+      dice.appendChild(d);
+    });
+    sc.roll.numbers.forEach((nf) => {
+      const d = node('div', 'rw-die rw-die-num', nf === 0 ? '?' : String(nf));
+      if (nf === 0) d.classList.add('wild');
+      dice.appendChild(d);
+    });
+    center.appendChild(dice);
+    const info = node('div', 'rw-roll-info');
+    info.appendChild(node('span', 'rw-round', `Round ${sc.round | 0}`));
+    const rollerName = (sc.players[sc.active] && sc.players[sc.active].name) || '';
+    info.appendChild(node('span', 'rw-roller', `${escText(rollerName)} rolled \u00b7 finish ${sc.endColorsToFinish} colours to end`));
+    center.appendChild(info);
+
+    // Focus: my full grid (clickable).
+    const focus = node('div', 'rw-board player-board' + (amPending ? ' active' : ''));
+    const header = node('div', 'board-header');
+    header.appendChild(node('span', '', escText(me.name) + (me.seat === seat ? ' (you)' : '')));
+    const wildsLeft = Math.max(0, (sc.wilds | 0) - (me.wildsUsed | 0));
+    header.appendChild(node('span', 'score-badge', `Score ${me.score | 0} \u00b7 ${wildsLeft} wilds`));
+    focus.appendChild(header);
+    focus.appendChild(rwGrid(view, sc, me, seat, amPending));
+    focus.appendChild(rwSelectionBar(view, sc, me, seat, amPending));
+
+    const status = view.over ? 'Game Over'
+      : amPending ? 'Cross connected boxes, then Mark \u2014 or Skip'
+      : 'Waiting for other players\u2026';
+    GameShell.renderTable({ game: view.game, opponents, center, focus, status, topMode: 'custom', opponentClass: 'rw-top-strip' });
+
+    // Controls: Mark (enabled when a valid run is selected) + Skip.
+    Kit.Controls.clear('schemaControls');
+    if (view.over) { /* play-again handled elsewhere */ }
+    else if (amPending) {
+      const valid = rwSelValid(sc, me);
+      Kit.Controls.set([
+        { label: rwSel.length ? `Mark ${rwSel.length}` : 'Mark', kind: 'green', disabled: !valid, onClick: () => rwSubmit(view, sc, seat) },
+        { label: 'Skip', kind: 'secondary', onClick: () => { rwSel = []; rwSelColor = null; GameActions.send('skip', {}, seat); } },
+      ], { id: 'schemaControls' });
+    }
+  }
+
+  function rwGrid(view, sc, p, seat, interactive) {
+    const wrap = node('div', 'rw-grid');
+    const mset = new Set(p.marked || []);
+    const chosen = new Set(rwSel.map(([r, c]) => rwKey(r, c)));
+    for (let r = 0; r < sc.grid.length; r++) {
+      const rowEl = node('div', 'rw-row');
+      for (let c = 0; c < sc.grid[r].length; c++) {
+        const cell = sc.grid[r][c];
+        if (!cell) { rowEl.appendChild(node('div', 'rw-cell rw-gap')); continue; }
+        const el = node('div', 'rw-cell');
+        el.style.background = sc.colors[cell.c] || '#64748b';
+        if (c === sc.startCol) el.classList.add('rw-start');
+        if (cell.star) el.appendChild(node('span', 'rw-star', '\u2605'));
+        const marked = mset.has(rwKey(r, c));
+        const sel = chosen.has(rwKey(r, c));
+        if (marked) el.classList.add('rw-marked');
+        if (sel) el.classList.add('rw-sel');
+        if (interactive && !marked) {
+          el.classList.add('rw-click');
+          el.onclick = () => rwToggle(view, sc, p, r, c, cell.c);
+        }
+        rowEl.appendChild(el);
+      }
+      wrap.appendChild(rowEl);
+    }
+    return wrap;
+  }
+
+  function rwToggle(view, sc, p, r, c, color) {
+    const k = rwKey(r, c);
+    const idx = rwSel.findIndex(([rr, cc]) => rr === r && cc === c);
+    if (idx >= 0) { rwSel.splice(idx, 1); if (!rwSel.length) rwSelColor = null; dispatchView(window._renderView); return; }
+    // must be same colour as current selection
+    if (rwSelColor && color !== rwSelColor) { rwSel = []; }
+    rwSelColor = color;
+    // validate reachability given marks + current selection
+    const mset = new Set(p.marked || []);
+    const chosen = new Set(rwSel.map(([rr, cc]) => rwKey(rr, cc)));
+    if (!rwReachable(sc, mset, chosen, r, c, color)) {
+      // allow starting fresh on this cell if it's itself reachable from scratch
+      const fresh = new Set();
+      if (rwReachable(sc, mset, fresh, r, c, color)) { rwSel = [[r, c]]; rwSelColor = color; dispatchView(window._renderView); return; }
+      return; // illegal — ignore
+    }
+    rwSel.push([r, c]);
+    dispatchView(window._renderView);
+  }
+
+  function rwSelValid(sc, p) {
+    if (!rwSel.length || !rwSelColor) return false;
+    // length must match an available number die (concrete) or a wild number with budget
+    const len = rwSel.length;
+    const concreteNum = sc.roll.numbers.includes(len);
+    const wildNum = sc.roll.numbers.includes(0);
+    const concreteColor = sc.roll.colors.includes(rwSelColor);
+    const wildColor = sc.roll.colors.includes('*');
+    if (!concreteNum && !wildNum) return false;
+    if (!concreteColor && !wildColor) return false;
+    const cost = (concreteColor ? 0 : 1) + (concreteNum ? 0 : 1);
+    if (cost && (p.wildsUsed | 0) + cost > (sc.wilds | 0)) return false;
+    return true;
+  }
+
+  function rwSelectionBar(view, sc, p, seat, interactive) {
+    const bar = node('div', 'rw-selbar');
+    if (!interactive) return bar;
+    const len = rwSel.length;
+    if (!len) { bar.appendChild(node('span', 'rw-hint', 'Tap connected boxes of one colour (from centre or next to a crossed box).')); return bar; }
+    const concreteNum = sc.roll.numbers.includes(len), wildNum = sc.roll.numbers.includes(0);
+    const concreteColor = sc.roll.colors.includes(rwSelColor), wildColor = sc.roll.colors.includes('*');
+    const wildCost = (concreteColor ? 0 : 1) + (concreteNum ? 0 : 1);
+    const ok = rwSelValid(sc, p);
+    const chip = node('span', 'rw-selchip' + (ok ? ' ok' : ' bad'),
+      `${len} ${rwSelColor}` + (wildCost ? ` \u00b7 ${wildCost} wild${wildCost > 1 ? 's' : ''}` : '') + (ok ? '' : ' \u2014 no matching die'));
+    chip.style.setProperty('--c', sc.colors[rwSelColor] || '#64748b');
+    bar.appendChild(chip);
+    const clear = node('button', 'rw-clear', 'Clear');
+    clear.onclick = () => { rwSel = []; rwSelColor = null; dispatchView(window._renderView); };
+    bar.appendChild(clear);
+    return bar;
+  }
+
+  function rwSubmit(view, sc, seat) {
+    const me = sc.players[seat];
+    if (!rwSelValid(sc, me)) return;
+    const len = rwSel.length;
+    const concreteNum = sc.roll.numbers.includes(len);
+    const concreteColor = sc.roll.colors.includes(rwSelColor);
+    const msg = { color: rwSelColor, cells: rwSel.map(([r, c]) => [r, c]) };
+    if (!concreteColor) msg.wildColor = true;
+    if (!concreteNum) msg.wildNumber = true;
+    const cells = rwSel; rwSel = []; rwSelColor = null;   // clear before send
+    GameActions.send('mark', msg, seat);
+  }
+
+  function rwMini(sc, p) {
+    const mini = node('div', 'rw-mini');
+    const head = node('div', 'rw-mini-head');
+    head.appendChild(node('b', '', escText(p.name)));
+    head.appendChild(node('span', 'rw-mini-score', String(p.score | 0)));
+    mini.appendChild(head);
+    const mset = new Set(p.marked || []);
+    const g = node('div', 'rw-mini-grid');
+    for (let r = 0; r < sc.grid.length; r++) {
+      const row = node('div', 'rw-mini-row');
+      for (let c = 0; c < sc.grid[r].length; c++) {
+        const cell = sc.grid[r][c];
+        const d = node('div', 'rw-mini-cell' + (cell ? '' : ' gap') + (cell && mset.has(rwKey(r, c)) ? ' on' : ''));
+        if (cell) d.style.background = mset.has(rwKey(r, c)) ? '#1e293b' : (sc.colors[cell.c] || '#64748b');
+        row.appendChild(d);
+      }
+      g.appendChild(row);
+    }
+    mini.appendChild(g);
+    return mini;
+  }
+
   function unmount() {
+    rwSel = []; rwSelColor = null;
     Kit.Controls.clear('schemaControls');
     const mini = document.getElementById('miniBoardsContainer');
     if (mini) { mini.innerHTML = ''; mini.className = 'mini-boards-container'; }
@@ -147,7 +351,18 @@
     if (!g.__schema) return;
     window.GameClients[g.id] = client;
     if (!window.GameRules[g.id]) {
-      window.GameRules[g.id] = {
+      window.GameRules[g.id] = (g.__schemaKind === 'rollAndWrite') ? {
+        title: g.name,
+        quick: g.description || 'Roll dice, cross connected boxes, race to finish columns and colours.',
+        steps: [
+          'Each turn the roller rolls colour dice + number dice; everyone marks boxes.',
+          'Cross <b>that many connected boxes</b> of one colour \u2014 from the centre column or next to a crossed box.',
+          'Be the <b>first</b> to fill a whole column or a whole colour for the most points.',
+          'Stars left uncrossed cost points; leftover wilds score 1 each.',
+          'The game ends right after someone completes their second whole colour.',
+        ],
+        tip: 'Push toward the edge columns (worth more), but never strand boxes \u2014 connectivity is everything.',
+      } : {
         title: g.name,
         quick: g.description || 'Push your luck \u2014 draw, don\u2019t repeat, bank before you bust.',
         steps: [

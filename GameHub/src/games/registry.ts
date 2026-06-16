@@ -10,8 +10,10 @@ import { Schotten } from "./schotten/server";
 // for the visual game creator: a brand-new game with NO custom code.
 import { makeSchemaGame } from "./schema/engine";
 import { Septet } from "./schema/specs/septet";
+import { Encore } from "./schema/specs/encore";
 
 const SeptetGame = makeSchemaGame(Septet);
+const EncoreGame = makeSchemaGame(Encore);
 
 export const GAMES: Record<string, GameModule> = {
   [Skyjo.meta.id]: Skyjo,
@@ -19,6 +21,7 @@ export const GAMES: Record<string, GameModule> = {
   [Qwixx.meta.id]: Qwixx,
   [Schotten.meta.id]: Schotten,
   [SeptetGame.meta.id]: SeptetGame,
+  [EncoreGame.meta.id]: EncoreGame,
 };
 
 // Public catalogue for the hub UI (no logic, just metadata + features).
@@ -33,7 +36,7 @@ export const GAME_CATALOGUE = Object.values(GAMES).map((g) => ({
   features: g.meta.features,
   // Schema-defined games carry this so the bundled client attaches the generic
   // renderer (no hand-written client module). Hand-written games omit it.
-  ...((g.meta as any).__schema ? { __schema: true } : {}),
+  ...((g.meta as any).__schema ? { __schema: true, __schemaKind: (g.meta as any).__schemaKind } : {}),
 }));
 
 // Feature lookup for server-side decisions (bot controls, timeouts, etc.)

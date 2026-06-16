@@ -99,7 +99,16 @@ function playOut(module: GameModule, names: string[], seed: number, maxTurns = 4
     let progressed = false;
     const before = sig(module, state);
     outer: for (const seat of seats) {
-      for (const cand of shuffled(CANDIDATES, mulberry32(seed + turns + seat))) {
+      // Prefer the game's OWN legalActions (exact valid payloads — essential for
+      // schema games whose bespoke action shape the generic candidate grid can't
+      // express, e.g. Encore's {action:"mark",color,cells}). Fall back to the
+      // generic candidate grid for games without legalActions.
+      let pool: any[];
+      try {
+        const legal = module.legalActions ? module.legalActions(state, seat) : null;
+        pool = (Array.isArray(legal) && legal.length) ? legal : CANDIDATES;
+      } catch { pool = CANDIDATES; }
+      for (const cand of shuffled(pool, mulberry32(seed + turns + seat))) {
         const snapshot = sig(module, state);
         module.applyAction(state, seat, cand);
         flushTicks(module, state);

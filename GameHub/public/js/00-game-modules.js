@@ -4,8 +4,8 @@
 
 (() => {
   var __defProp = Object.defineProperty;
-  var __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
-  var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "symbol" ? key + "" : key, value);
+  var __defNormalProp = (obj, key2, value) => key2 in obj ? __defProp(obj, key2, { enumerable: true, configurable: true, writable: true, value }) : obj[key2] = value;
+  var __publicField = (obj, key2, value) => __defNormalProp(obj, typeof key2 !== "symbol" ? key2 + "" : key2, value);
 
   // src/games/types.ts
   var CANONICAL_PHASES = {
@@ -1763,15 +1763,16 @@
   }
 
   // src/games/schema/spec.ts
-  function validateSpec(spec) {
-    const errs = [];
-    if (!spec || typeof spec !== "object") return ["spec is not an object"];
-    if (spec.kind !== "pressYourLuck") errs.push(`unsupported kind: ${spec.kind}`);
-    const m = spec.meta;
-    if (!m || !/^[a-z0-9_-]{2,32}$/.test(m.id || "")) errs.push("meta.id must be 2-32 [a-z0-9_-]");
-    if (!m?.name) errs.push("meta.name required");
+  function metaErrors(m, out) {
+    if (!m || !/^[a-z0-9_-]{2,32}$/.test(m.id || "")) out.push("meta.id must be 2-32 [a-z0-9_-]");
+    if (!m?.name) out.push("meta.name required");
     if (!(m && m.minPlayers >= 2 && m.maxPlayers <= 8 && m.minPlayers <= m.maxPlayers))
-      errs.push("meta player counts must satisfy 2 <= min <= max <= 8");
+      out.push("meta player counts must satisfy 2 <= min <= max <= 8");
+  }
+  function validatePressYourLuck(spec) {
+    const errs = [];
+    if (!spec || spec.kind !== "pressYourLuck") return ["not a pressYourLuck spec"];
+    metaErrors(spec.meta, errs);
     if (!Array.isArray(spec.deck) || !spec.deck.length) errs.push("deck must be a non-empty array");
     else {
       let total = 0;
@@ -1787,13 +1788,51 @@
     }
     if (spec.bust !== "duplicate") errs.push(`unsupported bust: ${spec.bust}`);
     if (spec.scoring !== "sum") errs.push(`unsupported scoring: ${spec.scoring}`);
-    if (spec.bonus && !(spec.bonus.uniqueCount >= 2 && Number.isFinite(spec.bonus.points)))
-      errs.push("bad bonus");
+    if (spec.bonus && !(spec.bonus.uniqueCount >= 2 && Number.isFinite(spec.bonus.points))) errs.push("bad bonus");
     if (!spec.win || !(spec.win.target > 0)) errs.push("win.target must be > 0");
     return errs;
   }
+  function validateRollAndWrite(spec) {
+    const errs = [];
+    if (!spec || spec.kind !== "rollAndWrite") return ["not a rollAndWrite spec"];
+    metaErrors(spec.meta, errs);
+    const colorIds2 = spec.colors ? Object.keys(spec.colors) : [];
+    if (colorIds2.length < 2 || colorIds2.length > 8) errs.push("colors must have 2-8 entries");
+    if (!Array.isArray(spec.grid) || !spec.grid.length) errs.push("grid must be a non-empty array of rows");
+    else {
+      const w = spec.grid[0].length;
+      if (!(w > 0 && w <= 30)) errs.push("grid width must be 1-30");
+      let cells = 0;
+      for (const row of spec.grid) {
+        if (!Array.isArray(row) || row.length !== w) {
+          errs.push("all grid rows must be the same width");
+          break;
+        }
+        for (const cell of row) {
+          if (cell === null) continue;
+          cells++;
+          if (!cell.c || !colorIds2.includes(cell.c)) {
+            errs.push(`grid cell colour "${cell?.c}" not in colors`);
+            break;
+          }
+        }
+      }
+      if (cells < 4) errs.push("grid must have at least 4 cells");
+      if (cells > 600) errs.push("grid too large (max 600 cells)");
+      if (!(spec.startCol >= 0 && spec.startCol < w)) errs.push("startCol out of range");
+    }
+    const d = spec.dice;
+    if (!d || !(d.colorCount >= 1 && d.colorCount <= 6) || !(d.numberCount >= 1 && d.numberCount <= 6)) errs.push("bad dice counts");
+    if (!Array.isArray(d?.numberFaces) || !d.numberFaces.length || d.numberFaces.some((n) => !Number.isInteger(n) || n < 1 || n > 9)) errs.push("numberFaces must be ints 1-9");
+    if (!(spec.wilds >= 0 && spec.wilds <= 50)) errs.push("wilds 0-50");
+    const sc = spec.scoring;
+    if (!sc || !Array.isArray(sc.columns) || !Array.isArray(sc.colorBonus)) errs.push("scoring.columns / colorBonus required");
+    if (sc && !(sc.starPenalty >= 0)) errs.push("starPenalty must be >= 0");
+    if (!(spec.endColorsToFinish >= 1)) errs.push("endColorsToFinish must be >= 1");
+    return errs;
+  }
 
-  // src/games/schema/engine.ts
+  // src/games/schema/engine-pyl.ts
   function buildDeck3(spec, st) {
     const cards = [];
     for (const d of spec.deck) for (let i = 0; i < d.count; i++) cards.push(d.value);
@@ -1834,8 +1873,8 @@
     s.phase = "ROUND_END";
   }
   var SPEC_BY_ID = {};
-  function makeSchemaGame(spec) {
-    const errs = validateSpec(spec);
+  function makePressYourLuckGame(spec) {
+    const errs = validatePressYourLuck(spec);
     if (errs.length) throw new Error(`Invalid GameSpec "${spec?.meta?.id}": ${errs.join("; ")}`);
     SPEC_BY_ID[spec.meta.id] = spec;
     const deckTotal = spec.deck.reduce((a, d) => a + d.count, 0);
@@ -2008,7 +2047,353 @@
     };
     mod.__schema = true;
     mod.meta.__schema = true;
+    mod.meta.__schemaKind = "pressYourLuck";
     return mod;
+  }
+
+  // src/games/schema/engine-raw.ts
+  var SPEC = {};
+  function key(r, c) {
+    return r + "," + c;
+  }
+  function gridWidth(spec) {
+    return spec.grid[0].length;
+  }
+  function colorIds(spec) {
+    return Object.keys(spec.colors);
+  }
+  function cellAt(spec, r, c) {
+    return spec.grid[r] && spec.grid[r][c] || null;
+  }
+  function roll(spec, s) {
+    const cols = colorIds(spec);
+    const cFaces = [];
+    for (let i = 0; i < spec.dice.colorCount; i++) {
+      const idx = randomInt(s, cols.length + (spec.dice.wildColor ? 1 : 0));
+      cFaces.push(idx < cols.length ? cols[idx] : "*");
+    }
+    const nFaces = [];
+    const faces = spec.dice.numberFaces.slice();
+    if (spec.dice.wildNumber) faces.push(0);
+    for (let i = 0; i < spec.dice.numberCount; i++) nFaces.push(faces[randomInt(s, faces.length)]);
+    s.rollColors = cFaces;
+    s.rollNumbers = nFaces;
+  }
+  function neighbors(r, c) {
+    return [[r - 1, c], [r + 1, c], [r, c - 1], [r, c + 1]];
+  }
+  function markedSet(p) {
+    return new Set(p.marked);
+  }
+  function reachable(spec, mset, chosen, r, c, color) {
+    const cell = cellAt(spec, r, c);
+    if (!cell || cell.c !== color) return false;
+    if (mset.has(key(r, c)) || chosen.has(key(r, c))) return false;
+    if (c === spec.startCol) return true;
+    for (const [nr, nc] of neighbors(r, c)) {
+      const k = key(nr, nc);
+      if (mset.has(k) || chosen.has(k)) {
+        const adj = cellAt(spec, nr, nc);
+        if (adj && adj.c === color) return true;
+        if (nc === spec.startCol && adj && adj.c === color) return true;
+      }
+    }
+    return false;
+  }
+  function validRun(spec, p, color, cells) {
+    if (!cells.length) return false;
+    const mset = markedSet(p);
+    const chosen = /* @__PURE__ */ new Set();
+    for (const [r, c] of cells) {
+      if (!reachable(spec, mset, chosen, r, c, color)) return false;
+      chosen.add(key(r, c));
+    }
+    return true;
+  }
+  function settleCompletions(spec, s, seat) {
+    const p = s.players[seat];
+    const mset = markedSet(p);
+    const W2 = gridWidth(spec);
+    const cols = colorIds(spec);
+    for (let c = 0; c < W2; c++) {
+      if (p.colsDone.includes(c)) continue;
+      let total = 0, marked = 0;
+      for (let r = 0; r < spec.grid.length; r++) {
+        const cell = cellAt(spec, r, c);
+        if (cell) {
+          total++;
+          if (mset.has(key(r, c))) marked++;
+        }
+      }
+      if (total > 0 && marked === total) {
+        p.colsDone.push(c);
+        const sc = spec.scoring.columns[c] || [0, 0];
+        const first = s.colClaimed[c] == null;
+        if (first) s.colClaimed[c] = seat;
+        p.colScore += first ? sc[0] : sc[1];
+      }
+    }
+    for (let ci = 0; ci < cols.length; ci++) {
+      if (p.colorsDone.includes(ci)) continue;
+      const color = cols[ci];
+      let total = 0, marked = 0;
+      for (let r = 0; r < spec.grid.length; r++) for (let c = 0; c < W2; c++) {
+        const cell = cellAt(spec, r, c);
+        if (cell && cell.c === color) {
+          total++;
+          if (mset.has(key(r, c))) marked++;
+        }
+      }
+      if (total > 0 && marked === total) {
+        p.colorsDone.push(ci);
+        const sc = spec.scoring.colorBonus[ci] || [0, 0];
+        const first = s.colorClaimed[ci] == null;
+        if (first) s.colorClaimed[ci] = seat;
+        p.colorScore += first ? sc[0] : sc[1];
+      }
+    }
+    if (p.colorsDone.length >= spec.endColorsToFinish) p.done = true;
+  }
+  function finalScore(spec, p) {
+    let stars = 0;
+    const mset = markedSet(p);
+    for (let r = 0; r < spec.grid.length; r++) for (let c = 0; c < gridWidth(spec); c++) {
+      const cell = cellAt(spec, r, c);
+      if (cell && cell.star && !mset.has(key(r, c))) stars++;
+    }
+    const leftoverWilds = Math.max(0, spec.wilds - p.wildsUsed);
+    return p.colScore + p.colorScore + leftoverWilds - stars * spec.scoring.starPenalty;
+  }
+  function makeRollAndWriteGame(spec) {
+    const errs = validateRollAndWrite(spec);
+    if (errs.length) throw new Error(`Invalid RollAndWriteSpec "${spec?.meta?.id}": ${errs.join("; ")}`);
+    SPEC[spec.meta.id] = spec;
+    const cols = colorIds(spec);
+    function beginRoll(s) {
+      roll(spec, s);
+      s.pending = s.players.map((_, i) => i).filter((i) => !s.players[i].done);
+      s.phase = s.pending.length ? "MARK" : "GAME_OVER";
+    }
+    function endIfOver(s) {
+      if (s.players.some((p) => p.done)) {
+        s.phase = "GAME_OVER";
+        return true;
+      }
+      return false;
+    }
+    function advanceRoll(s) {
+      if (endIfOver(s)) return;
+      const n = s.players.length;
+      for (let step = 1; step <= n; step++) {
+        const idx = (s.active + step) % n;
+        if (!s.players[idx].done) {
+          s.active = idx;
+          break;
+        }
+      }
+      s.round += 1;
+      beginRoll(s);
+    }
+    const mod = {
+      meta: {
+        id: spec.meta.id,
+        name: spec.meta.name,
+        minPlayers: spec.meta.minPlayers,
+        maxPlayers: spec.meta.maxPlayers,
+        description: spec.meta.description,
+        emoji: spec.meta.emoji,
+        icon: spec.meta.icon,
+        actionTypes: ["mark", "skip", "next_round"],
+        features: { hasBots: true, simultaneousTurns: true, usesTick: false, hasMultiRound: false, canSpectate: true, minDurationSec: 300, maxDurationSec: 1200 }
+      },
+      create(playerNames) {
+        const s = {
+          schemaVersion: 1,
+          specId: spec.meta.id,
+          players: playerNames.slice(0, spec.meta.maxPlayers).map((name) => ({
+            name: (name || "Player").slice(0, 20),
+            marked: [],
+            wildsUsed: 0,
+            colsDone: [],
+            colorsDone: [],
+            colScore: 0,
+            colorScore: 0,
+            passed: false,
+            done: false
+          })),
+          active: 0,
+          phase: "MARK",
+          round: 1,
+          rollColors: [],
+          rollNumbers: [],
+          colClaimed: {},
+          colorClaimed: {},
+          pending: [],
+          rngState: makeSeed(`${spec.meta.id}:${playerNames.join("|")}`)
+        };
+        ensureRngState(s);
+        beginRoll(s);
+        return s;
+      },
+      applyAction(state, seat, msg) {
+        if (state.phase !== "MARK") return;
+        if (!state.pending.includes(seat)) return;
+        const p = state.players[seat];
+        const isActive = seat === state.active;
+        if (msg.action === "skip") {
+          state.pending = state.pending.filter((x) => x !== seat);
+          if (!state.pending.length) advanceRoll(state);
+          return;
+        }
+        if (msg.action === "mark") {
+          const color = String(msg.color ?? "");
+          const cells = Array.isArray(msg.cells) ? msg.cells.map((x) => [x[0] | 0, x[1] | 0]) : [];
+          const useWildColor = !!msg.wildColor;
+          const useWildNumber = !!msg.wildNumber;
+          if (!cols.includes(color)) return;
+          if (!cells.length || cells.length > 9) return;
+          const concreteColor = state.rollColors.includes(color);
+          const concreteNumber = state.rollNumbers.includes(cells.length);
+          const colorOk = concreteColor || useWildColor && state.rollColors.includes("*");
+          const numberOk = concreteNumber || useWildNumber && state.rollNumbers.includes(0);
+          if (!colorOk || !numberOk) return;
+          if (useWildColor && concreteColor) return;
+          if (useWildNumber && concreteNumber) return;
+          const wildCost = (useWildColor ? 1 : 0) + (useWildNumber ? 1 : 0);
+          if (wildCost && p.wildsUsed + wildCost > spec.wilds) return;
+          if (!validRun(spec, p, color, cells)) return;
+          for (const [r, c] of cells) p.marked.push(key(r, c));
+          p.wildsUsed += wildCost;
+          settleCompletions(spec, state, seat);
+          state.pending = state.pending.filter((x) => x !== seat);
+          if (!state.pending.length) advanceRoll(state);
+          return;
+        }
+      },
+      isOver(state) {
+        return state.phase === "GAME_OVER";
+      },
+      legalActions(state, seat) {
+        if (state.phase !== "MARK" || !state.pending.includes(seat)) return [];
+        const p = state.players[seat];
+        const acts = [];
+        const concreteColors = state.rollColors.filter((c) => c !== "*");
+        const hasWildColor = state.rollColors.includes("*");
+        const colorFaces = new Set(concreteColors);
+        if (hasWildColor && p.wildsUsed < spec.wilds) cols.forEach((c) => colorFaces.add(c));
+        const numberFaces = state.rollNumbers.filter((n) => n > 0);
+        const hasWildNumber = state.rollNumbers.includes(0) && p.wildsUsed < spec.wilds;
+        const lengths = Array.from(/* @__PURE__ */ new Set([...numberFaces, ...hasWildNumber ? [1, 2, 3] : []])).sort((a, b) => b - a);
+        const mset = markedSet(p);
+        const growRun = (color, len) => {
+          for (let r0 = 0; r0 < spec.grid.length; r0++) for (let c0 = 0; c0 < gridWidth(spec); c0++) {
+            if (!reachable(spec, mset, /* @__PURE__ */ new Set(), r0, c0, color)) continue;
+            const run = [[r0, c0]];
+            const chosen = /* @__PURE__ */ new Set([key(r0, c0)]);
+            while (run.length < len) {
+              let grew = false;
+              outer: for (const [r, c] of run) {
+                for (const [nr, nc] of neighbors(r, c)) {
+                  if (reachable(spec, mset, chosen, nr, nc, color)) {
+                    run.push([nr, nc]);
+                    chosen.add(key(nr, nc));
+                    grew = true;
+                    break outer;
+                  }
+                }
+              }
+              if (!grew) break;
+            }
+            if (run.length === len) return run;
+          }
+          return null;
+        };
+        for (const color of colorFaces) {
+          for (const len of lengths) {
+            const run = growRun(color, len);
+            if (!run) continue;
+            const act = { action: "mark", color, cells: run };
+            if (!concreteColors.includes(color)) act.wildColor = true;
+            if (!numberFaces.includes(len)) act.wildNumber = true;
+            const cost = (act.wildColor ? 1 : 0) + (act.wildNumber ? 1 : 0);
+            if (cost && p.wildsUsed + cost > spec.wilds) continue;
+            acts.push(act);
+            if (acts.length >= 10) break;
+          }
+          if (acts.length >= 10) break;
+        }
+        acts.push({ action: "skip" });
+        return acts;
+      },
+      viewFor(state, seat) {
+        const vstate = {
+          currentSeat: -1,
+          // simultaneous within a roll
+          pendingAction: state.phase === "MARK" ? "mark_or_skip" : null,
+          players: state.players.map((p, i) => ({
+            seat: i,
+            name: p.name,
+            status: p.done ? "stayed" : state.pending.includes(i) ? "active" : "waiting",
+            score: finalScore(spec, p),
+            banked: finalScore(spec, p)
+          })),
+          actingCount: state.pending.length,
+          focusSeat: seat >= 0 ? seat : state.active
+        };
+        const over = state.phase === "GAME_OVER";
+        const view = {
+          game: spec.meta.id,
+          phase: mapPhase(state.phase),
+          over,
+          yourSeat: seat,
+          state: vstate,
+          [spec.meta.id]: {
+            kind: "rollAndWrite",
+            colors: spec.colors,
+            grid: spec.grid,
+            startCol: spec.startCol,
+            round: state.round,
+            active: state.active,
+            roll: { colors: state.rollColors, numbers: state.rollNumbers },
+            pending: state.pending.slice(),
+            wilds: spec.wilds,
+            endColorsToFinish: spec.endColorsToFinish,
+            colClaimed: state.colClaimed,
+            colorClaimed: state.colorClaimed,
+            players: state.players.map((p, i) => ({
+              seat: i,
+              name: p.name,
+              marked: p.marked.slice(),
+              wildsUsed: p.wildsUsed,
+              colsDone: p.colsDone.slice(),
+              colorsDone: p.colorsDone.slice(),
+              score: finalScore(spec, p),
+              done: p.done
+            }))
+          }
+        };
+        if (over) {
+          const ranked = state.players.map((p, i) => ({ seat: i, name: p.name, score: finalScore(spec, p) })).sort((a, b) => b.score - a.score);
+          const best = ranked.length ? ranked[0].score : 0;
+          view.summary = { rows: ranked, winners: ranked.filter((r) => r.score === best).map((r) => r.seat) };
+        }
+        return view;
+      },
+      summarize(state) {
+        return { round: state.round, phase: state.phase, scores: state.players.map((p) => finalScore(spec, p)) };
+      }
+    };
+    mod.__schema = true;
+    mod.meta.__schema = true;
+    mod.meta.__schemaKind = "rollAndWrite";
+    return mod;
+  }
+
+  // src/games/schema/engine.ts
+  function makeSchemaGame(spec) {
+    if (spec && spec.kind === "pressYourLuck") return makePressYourLuckGame(spec);
+    if (spec && spec.kind === "rollAndWrite") return makeRollAndWriteGame(spec);
+    throw new Error(`Unsupported GameSpec kind: ${spec?.kind}`);
   }
 
   // src/games/schema/specs/septet.ts
@@ -2031,14 +2416,75 @@
     win: { target: 200 }
   };
 
+  // src/games/schema/specs/encore.ts
+  var COLORS3 = { B: "#3b82f6", O: "#f97316", Y: "#eab308", G: "#22c55e", R: "#ef4444" };
+  var W = 15;
+  var H = 7;
+  var C = ["B", "O", "Y", "G", "R"];
+  var STAR_SET = /* @__PURE__ */ new Set();
+  (function placeStars() {
+    const perColorRows = {};
+    for (let r = 0; r < H; r++) {
+      const col = C[r % C.length];
+      (perColorRows[col] || (perColorRows[col] = [])).push(r);
+    }
+    for (const col of C) {
+      const rows = perColorRows[col] || [];
+      let placed = 0;
+      const cand = [2, 11, 5, 13, 1];
+      for (let i = 0; i < cand.length && placed < 3; i++) {
+        const r = rows[i % Math.max(1, rows.length)];
+        if (r == null) break;
+        STAR_SET.add(r + "," + cand[i]);
+        placed++;
+      }
+    }
+  })();
+  var grid = [];
+  for (let r = 0; r < H; r++) {
+    const color = C[r % C.length];
+    const row = [];
+    for (let c = 0; c < W; c++) {
+      row.push({ c: color, ...STAR_SET.has(r + "," + c) ? { star: true } : {} });
+    }
+    grid.push(row);
+  }
+  var colPts = Array.from({ length: W }, (_, c) => {
+    const dist = Math.abs(c - 7);
+    const high = 1 + dist;
+    return [high, Math.max(0, high - 1)];
+  });
+  var colorPts = [[5, 3], [5, 3], [5, 3], [5, 3], [5, 3]];
+  var Encore = {
+    kind: "rollAndWrite",
+    meta: {
+      id: "encore",
+      name: "Encore!",
+      description: "Roll colour & number dice, cross connected boxes \u2014 race to finish columns and colours.",
+      emoji: "\u{1F58D}\uFE0F",
+      icon: "grid",
+      minPlayers: 2,
+      maxPlayers: 6
+    },
+    colors: COLORS3,
+    grid,
+    startCol: 7,
+    dice: { colorCount: 3, numberCount: 3, numberFaces: [1, 2, 3, 4, 5], wildColor: true, wildNumber: true },
+    wilds: 8,
+    scoring: { columns: colPts, colorBonus: colorPts, starPenalty: 2 },
+    endColorsToFinish: 2
+  };
+
   // src/games/registry.ts
   var SeptetGame = makeSchemaGame(Septet);
+  var EncoreGame = makeSchemaGame(Encore);
   var GAMES = {
     [Skyjo.meta.id]: Skyjo,
     [Flip7.meta.id]: Flip7,
     [Qwixx.meta.id]: Qwixx,
     [Schotten.meta.id]: Schotten,
-    [SeptetGame.meta.id]: SeptetGame
+    [SeptetGame.meta.id]: SeptetGame,
+    [EncoreGame.meta.id]: EncoreGame
   };
   var GAME_CATALOGUE = Object.values(GAMES).map((g) => ({
     id: g.meta.id,
@@ -2052,7 +2498,7 @@
     features: g.meta.features,
     // Schema-defined games carry this so the bundled client attaches the generic
     // renderer (no hand-written client module). Hand-written games omit it.
-    ...g.meta.__schema ? { __schema: true } : {}
+    ...g.meta.__schema ? { __schema: true, __schemaKind: g.meta.__schemaKind } : {}
   }));
 
   // src/client-games.ts
