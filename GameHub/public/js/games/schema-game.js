@@ -229,12 +229,24 @@
       .concat(sc.roll.numbers.map((nf) => ({ color: 'white', symbol: nf === 0 ? '?' : String(nf) })));
     const sig = sc.round + ':' + sc.roll.colors.join('') + '|' + sc.roll.numbers.join('');
     const dsize = (typeof innerWidth !== 'undefined' && innerWidth < 760) ? 38 : 52;
+    // Whose hand is on the lever? The ROLLER pulls it — but only when the device
+    // is actually focused on (controls) the roller's seat and they're a human.
+    // Everyone else (opponents, bots, remote) sees the reels auto-pull so they
+    // watch the same spin without a lever to click. Matches Qwixx.
+    const controlled = (typeof window !== 'undefined' && Array.isArray(window._controlledSeats)) ? window._controlledSeats
+      : (Array.isArray(view.controlledSeats) ? view.controlledSeats : []);
+    const rollerIsBot = (typeof isLocalBotSeat === 'function') ? isLocalBotSeat(sc.active) : false;
+    const rollerIsMine = controlled.includes(sc.active) && !rollerIsBot;
+    const focusedOnRoller = seat === sc.active;
+    const useLever = rollerIsMine && focusedOnRoller && !view.over;
     // Animate the roll only when the roll signature changes; otherwise show static.
     if (tray.dataset.sig !== sig) {
       tray.dataset.sig = sig;
       try {
-        Kit.Roller.roll(tray, reels, { size: dsize, marquee: 'ENCORE', autoPull: true, autoPullDelay: 0 })
-          .then(() => { decorateReels(); });
+        Kit.Roller.roll(tray, reels, {
+          size: dsize, marquee: 'ENCORE',
+          lever: useLever, autoPull: !useLever, autoPullDelay: 0,
+        }).then(() => { decorateReels(); });
       } catch (e) { Kit.Roller.showStatic(tray, reels, { size: dsize }); decorateReels(); }
     } else {
       Kit.Roller.showStatic(tray, reels, { size: dsize });
@@ -389,6 +401,29 @@
       }
       side.appendChild(row);
     });
+
+    // ── joker / wild tracker ── (8 wilds total; each UNUSED scores +1 at game end).
+    // Mirrors the printed "!" row on the real sheet: filled pip = still available,
+    // crossed pip = spent. A wild is spent on a "*" colour die or "?"/0 number die.
+    const totalWilds = sc.wilds | 0;
+    if (totalWilds > 0) {
+      const used = Math.min(totalWilds, p.wildsUsed | 0);
+      const jbox = node('div', 'rw-jokers');
+      const jhead = node('div', 'rw-jokers-head');
+      jhead.appendChild(node('span', 'rw-jokers-title', 'WILDS'));
+      jhead.appendChild(node('span', 'rw-jokers-count', `${totalWilds - used}/${totalWilds}`));
+      jbox.appendChild(jhead);
+      const pips = node('div', 'rw-jokers-pips');
+      for (let i = 0; i < totalWilds; i++) {
+        const pip = node('div', 'rw-joker-pip' + (i < used ? ' spent' : ''));
+        pip.textContent = '!';
+        pip.title = i < used ? 'wild used' : 'wild available (+1 if unused)';
+        pips.appendChild(pip);
+      }
+      jbox.appendChild(pips);
+      side.appendChild(jbox);
+    }
+
     sheet.appendChild(side);
     return sheet;
   }
@@ -500,9 +535,40 @@
   }
   function clientAct(action, extra = {}) { GameActions.send(action, extra, window._renderView?.yourSeat ?? 0); }
 
+  // localFocusSeat — pass-and-play focus policy for the rollAndWrite kind (Encore).
+  // Encore has a roller (who drafts the dice) and then EVERYONE marks. On a shared
+  // device we must rotate through the local human seats one at a time, otherwise the
+  // screen stays stuck on whoever acted first. Order of focus each round:
+  //   DRAFT  → the roller (if a local human) makes the draft decision first.
+  //   MARK   → the roller marks first (they're in `pending`), then the device hands
+  //            to the next local human still in `pending`, in seat order.
+  // When nobody local is pending (bots/remote owe the marks) we keep the device on
+  // a board we control so the screen never sits on a board we can't touch.
+  function localFocusSeat(state, humanSeats) {
+    if (!state) return (humanSeats && humanSeats[0]) || 0;
+    const isHuman = (seat) => Array.isArray(humanSeats) && humanSeats.includes(seat);
+    const phase = state.phase;                 // "DRAFT" | "MARK" | "GAME_OVER"
+    const active = state.active;               // the roller
+    const pending = Array.isArray(state.pending) ? state.pending : [];
+    // DRAFT: the roller decides alone — focus them if they're ours.
+    if (phase === 'DRAFT') {
+      if (isHuman(active)) return active;
+      return (humanSeats && humanSeats[0]) ?? active;
+    }
+    // MARK: roller marks first (while still pending), then next local pending human.
+    if (phase === 'MARK') {
+      if (isHuman(active) && pending.includes(active)) return active;
+      const nextLocal = (humanSeats || []).filter((s) => pending.includes(s)).sort((a, b) => a - b)[0];
+      if (nextLocal != null) return nextLocal;
+    }
+    // Nothing pending locally (or game over) → stay on a controlled board.
+    if (isHuman(active)) return active;
+    return (humanSeats && humanSeats[0]) ?? active;
+  }
+
   // Register the generic renderer for every SCHEMA-defined game in the bundled
   // catalogue (tagged __schema by the engine). One renderer, any schema game.
-  const client = { render, unmount, act: clientAct };
+  const client = { render, unmount, act: clientAct, localFocusSeat };
   (window.GameCatalogue || []).forEach((g) => {
     if (!g.__schema) return;
     window.GameClients[g.id] = client;

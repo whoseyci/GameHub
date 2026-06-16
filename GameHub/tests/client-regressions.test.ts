@@ -13,6 +13,7 @@ const botFlip7 = readFileSync(new URL("../public/js/bots/flip7.js", import.meta.
 const botQwixx = readFileSync(new URL("../public/js/bots/qwixx.js", import.meta.url), "utf8");
 const botSkyjo = readFileSync(new URL("../public/js/bots/skyjo.js", import.meta.url), "utf8");
 const templateClient = readFileSync(new URL("../public/js/games/_template-game-client.js", import.meta.url), "utf8");
+const schemaClient = readFileSync(new URL("../public/js/games/schema-game.js", import.meta.url), "utf8");
 const scaffold = readFileSync(new URL("../scripts/scaffold-game.mjs", import.meta.url), "utf8");
 
 describe("client module split", () => {
@@ -195,6 +196,36 @@ describe("client cross-game cleanup regressions", () => {
   });
 });
 
+
+describe("schema game client (Encore) regressions", () => {
+  it("rotates pass-and-play focus via localFocusSeat (roller, then next pending human)", () => {
+    // Encore is a roller-then-everyone-marks game; without localFocusSeat the
+    // shared-device view sticks on whoever acted first and never passes.
+    expect(schemaClient).toContain("function localFocusSeat");
+    expect(schemaClient).toMatch(/const client = \{[^}]*localFocusSeat[^}]*\}/);
+    // it reads the engine's raw rollAndWrite state fields
+    expect(schemaClient).toContain("state.pending");
+    expect(schemaClient).toContain("state.active");
+  });
+
+  it("gives the active roller a pullable lever (others auto-pull) like Qwixx", () => {
+    expect(schemaClient).toContain("rollerIsMine");
+    expect(schemaClient).toMatch(/lever:\s*useLever/);
+    expect(schemaClient).toMatch(/autoPull:\s*!useLever/);
+  });
+
+  it("renders a joker/wild tracker (8 pips, used vs available)", () => {
+    expect(schemaClient).toContain("rw-jokers");
+    expect(schemaClient).toContain("rw-joker-pip");
+    expect(schemaClient).toContain("wildsUsed");
+  });
+
+  it("highlights cells the player can legally mark right now (smart hint)", () => {
+    expect(schemaClient).toContain("function rwHintSet");
+    expect(schemaClient).toContain("rw-markable");
+    expect(schemaClient).toContain("rwUsableColor");
+  });
+});
 
 describe("client HTML injection regressions", () => {
   it("defines and uses an HTML escaping helper for server-sourced labels", () => {
