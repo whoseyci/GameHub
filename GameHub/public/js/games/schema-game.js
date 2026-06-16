@@ -161,6 +161,39 @@
     return false;
   }
 
+  // Can this player currently MARK a cell of `color`, given the dice they may use?
+  // True if a concrete colour die matches, OR they hold a wild colour die ("*")
+  // and still have wild budget left.
+  function rwUsableColor(sc, p, faces, color) {
+    if (!faces) return false;
+    if (faces.colors && faces.colors.includes(color)) return true;      // concrete colour die
+    const wildLeft = (sc.wilds || 0) - ((p && p.wildsUsed) || 0);
+    return !!(faces.colors && faces.colors.includes('*') && wildLeft > 0);
+  }
+
+  // "Smart hint" — the set of cells the player could legally start (or extend the
+  // current run onto) RIGHT NOW. Highlighted on the board so players see exactly
+  // what they can mark with the dice available to them this turn.
+  function rwHintSet(sc, p, faces, interactive) {
+    const hint = new Set();
+    if (!interactive || !faces) return hint;
+    const mset = new Set(p.marked || []);
+    const chosen = new Set(rwSel.map(([r, c]) => rwKey(r, c)));
+    // If a run is already in progress it's locked to one colour; only show cells
+    // that extend THAT colour. Otherwise show every usable colour's reachable cells.
+    for (let r = 0; r < sc.grid.length; r++) {
+      for (let c = 0; c < sc.grid[r].length; c++) {
+        const cell = sc.grid[r][c];
+        if (!cell) continue;
+        if (rwSelColor && cell.c !== rwSelColor) continue;        // run is one colour
+        if (!rwSelColor && !rwUsableColor(sc, p, faces, cell.c)) continue;
+        if (rwSelColor && !rwUsableColor(sc, p, faces, cell.c)) continue;
+        if (rwReachable(sc, mset, chosen, r, c, cell.c)) hint.add(rwKey(r, c));
+      }
+    }
+    return hint;
+  }
+
   function renderRollAndWrite(view, sc, ctx) {
     ctx = ctx || {};
     const seat = view.yourSeat;
@@ -241,7 +274,7 @@
     const wildsLeft = Math.max(0, (sc.wilds | 0) - (me.wildsUsed | 0));
     header.appendChild(node('span', 'score-badge', `Score ${me.score | 0} \u00b7 ${wildsLeft} wilds`));
     focus.appendChild(header);
-    focus.appendChild(rwSheet(view, sc, me, seat, amPending));
+    focus.appendChild(rwSheet(view, sc, me, seat, amPending, faces));
     focus.appendChild(rwSelectionBar(view, sc, me, seat, amPending, faces));
 
     const status = view.over ? 'Game Over'
@@ -278,7 +311,8 @@
 
   // The full sheet: a column header (letters + point values), the colour grid,
   // and a colour-bonus sidebar — all the real Encore indicators.
-  function rwSheet(view, sc, p, seat, interactive) {
+  function rwSheet(view, sc, p, seat, interactive, faces) {
+    faces = faces || sc.myFaces || sc.roll;
     const W = sc.grid[0].length;
     const sheet = node('div', 'rw-sheet');
     const left = node('div', 'rw-sheet-left');
@@ -307,6 +341,7 @@
     const wrap = node('div', 'rw-grid');
     const mset = new Set(p.marked || []);
     const chosen = new Set(rwSel.map(([r, c]) => rwKey(r, c)));
+    const hintable = rwHintSet(sc, p, faces, interactive);   // cells legal to mark NOW
     for (let r = 0; r < sc.grid.length; r++) {
       const rowEl = node('div', 'rw-row');
       for (let c = 0; c < sc.grid[r].length; c++) {
@@ -322,6 +357,7 @@
         if (sel) el.classList.add('rw-sel');
         if (interactive && !marked) {
           el.classList.add('rw-click');
+          if (!sel && hintable.has(rwKey(r, c))) el.classList.add('rw-markable');
           el.onclick = () => rwToggle(view, sc, p, r, c, cell.c);
         }
         rowEl.appendChild(el);

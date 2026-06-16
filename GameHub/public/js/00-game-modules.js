@@ -2513,13 +2513,13 @@
   // src/games/schema/specs/encore.ts
   var COLORS3 = { B: "#2f6df0", O: "#f97316", Y: "#eab308", G: "#22c55e", R: "#ef4444" };
   var ROWS = [
-    "B  B  B*  O  O  O  Y  Y  Y  Y  G  G  G*  R  R",
-    "B  B  O*  O  Y*  Y  Y  G  G  G  G  R  R*  R  R",
-    "O  O  O  O  Y  Y  G  G  B  B  G  R  R  B  B",
-    "O  Y  Y  Y*  Y  G*  G  B  B*  B  O*  O  R  B  B",
-    "O  O  Y  G  G  G  R  R  B  O  O  O*  R  R*  B",
-    "R  O  O  G  G*  R  R  R  B*  B  O  Y  Y  R  R",
-    "R  R  R*  R  G  G  R  B  B  Y  Y*  Y  Y  Y  R"
+    "G   G   G   Y   Y   Y   Y   G*  B   B   B   O*  Y   Y   Y",
+    "O   G   Y*  G   Y*  Y   O   O   R   B*  B   O   O   G   G",
+    "B*  G   R   G   G   G   G*  R   R   R   Y   Y   O   G   G",
+    "B   R   R   G   O   O*  B   B   G   G   Y   Y   O   R*  B",
+    "R   O   O   O   O   R   B   B   O   O   O   R   R   R   R",
+    "R   B*  B   R*  R   R   R   Y   Y*  O   R*  B   B   B   O*",
+    "Y   Y   B   B   B   B   R   Y   Y   Y   G   G   G*  O   O"
   ];
   function parse(rows) {
     return rows.map(
@@ -2532,11 +2532,24 @@
   }
   var grid = parse(ROWS);
   var W = grid[0].length;
-  var colPts = Array.from({ length: W }, (_, c) => {
-    const dist = Math.abs(c - 7);
-    const high = 1 + dist;
-    return [high, Math.max(1, high - 1)];
-  });
+  var colPts = [
+    [5, 3],
+    [3, 2],
+    [3, 2],
+    [3, 2],
+    [2, 1],
+    [2, 1],
+    [2, 1],
+    [1, 0],
+    [2, 1],
+    [2, 1],
+    [2, 1],
+    [3, 2],
+    [3, 2],
+    [3, 2],
+    [5, 3]
+  ];
+  if (colPts.length !== W) throw new Error("encore: colPts length must equal grid width");
   var colorPts = [[5, 3], [5, 3], [5, 3], [5, 3], [5, 3]];
   var Encore = {
     kind: "rollAndWrite",

@@ -233,4 +233,25 @@ describe("Encore gameplay (engine interprets the grid data)", () => {
     let cells = 0; for (const row of Encore.grid) for (const c of row) if (c) cells++;
     expect(seen.size).toBe(cells);   // 100% reachable
   });
+
+  it("matches the official base-game sheet: 21 cells per colour (105 total)", () => {
+    const counts: Record<string, number> = {};
+    for (const row of Encore.grid) for (const cell of row) if (cell) counts[cell.c] = (counts[cell.c] || 0) + 1;
+    for (const cid of Object.keys(Encore.colors)) expect(counts[cid]).toBe(21);
+    expect(Object.values(counts).reduce((a, b) => a + b, 0)).toBe(105);
+    expect(Encore.grid.length).toBe(7);
+    expect(Encore.grid[0].length).toBe(15);
+  });
+
+  it("uses the exact official column + colour-bonus point values", () => {
+    // A 5/3, B-D 3/2, E-G 2/1, H 1/0, I-K 2/1, L-N 3/2, O 5/3 (symmetric).
+    expect(Encore.scoring.columns).toEqual([
+      [5, 3], [3, 2], [3, 2], [3, 2], [2, 1], [2, 1], [2, 1], [1, 0],
+      [2, 1], [2, 1], [2, 1], [3, 2], [3, 2], [3, 2], [5, 3],
+    ]);
+    // every colour bonus is 5 (first) / 3 (later)
+    for (const b of Encore.scoring.colorBonus) expect(b).toEqual([5, 3]);
+    expect(Encore.scoring.starPenalty).toBe(2);   // each uncrossed star = -2
+    expect(Encore.wilds).toBe(8);                 // 8 wilds, +1 each unused
+  });
 });
