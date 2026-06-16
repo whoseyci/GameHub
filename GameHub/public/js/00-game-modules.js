@@ -2435,6 +2435,11 @@
             kind: "rollAndWrite",
             colors: spec.colors,
             grid: spec.grid,
+            columns: spec.scoring.columns,
+            // [high,low] per column (indicators)
+            colorBonus: spec.scoring.colorBonus,
+            // [high,low] per colour (sidebar)
+            starPenalty: spec.scoring.starPenalty,
             startCol: spec.startCol,
             round: state.round,
             active: state.active,
@@ -2506,42 +2511,31 @@
   };
 
   // src/games/schema/specs/encore.ts
-  var COLORS3 = { B: "#3b82f6", O: "#f97316", Y: "#eab308", G: "#22c55e", R: "#ef4444" };
-  var W = 15;
-  var H = 7;
-  var C = ["B", "O", "Y", "G", "R"];
-  var STAR_SET = /* @__PURE__ */ new Set();
-  (function placeStars() {
-    const perColorRows = {};
-    for (let r = 0; r < H; r++) {
-      const col = C[r % C.length];
-      (perColorRows[col] || (perColorRows[col] = [])).push(r);
-    }
-    for (const col of C) {
-      const rows = perColorRows[col] || [];
-      let placed = 0;
-      const cand = [2, 11, 5, 13, 1];
-      for (let i = 0; i < cand.length && placed < 3; i++) {
-        const r = rows[i % Math.max(1, rows.length)];
-        if (r == null) break;
-        STAR_SET.add(r + "," + cand[i]);
-        placed++;
-      }
-    }
-  })();
-  var grid = [];
-  for (let r = 0; r < H; r++) {
-    const color = C[r % C.length];
-    const row = [];
-    for (let c = 0; c < W; c++) {
-      row.push({ c: color, ...STAR_SET.has(r + "," + c) ? { star: true } : {} });
-    }
-    grid.push(row);
+  var COLORS3 = { B: "#2f6df0", O: "#f97316", Y: "#eab308", G: "#22c55e", R: "#ef4444" };
+  var ROWS = [
+    "B  B  B*  O  O  O  Y  Y  Y  Y  G  G  G*  R  R",
+    "B  B  O*  O  Y*  Y  Y  G  G  G  G  R  R*  R  R",
+    "O  O  O  O  Y  Y  G  G  B  B  G  R  R  B  B",
+    "O  Y  Y  Y*  Y  G*  G  B  B*  B  O*  O  R  B  B",
+    "O  O  Y  G  G  G  R  R  B  O  O  O*  R  R*  B",
+    "R  O  O  G  G*  R  R  R  B*  B  O  Y  Y  R  R",
+    "R  R  R*  R  G  G  R  B  B  Y  Y*  Y  Y  Y  R"
+  ];
+  function parse(rows) {
+    return rows.map(
+      (line) => line.trim().split(/\s+/).map((tok) => {
+        const star = tok.endsWith("*");
+        const c = star ? tok.slice(0, -1) : tok;
+        return { c, ...star ? { star: true } : {} };
+      })
+    );
   }
+  var grid = parse(ROWS);
+  var W = grid[0].length;
   var colPts = Array.from({ length: W }, (_, c) => {
     const dist = Math.abs(c - 7);
     const high = 1 + dist;
-    return [high, Math.max(0, high - 1)];
+    return [high, Math.max(1, high - 1)];
   });
   var colorPts = [[5, 3], [5, 3], [5, 3], [5, 3], [5, 3]];
   var Encore = {

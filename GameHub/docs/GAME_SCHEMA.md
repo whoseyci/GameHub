@@ -77,11 +77,17 @@ style demo proving the pipeline end-to-end.
   - The generic client renders the grid with click-to-select connected runs
     (live-validated against the seat's allowed dice), a draft UI (pick 2 dice),
     dimmed non-usable dice, and Mark/Skip.
-  - **Grid honesty:** the spec GENERATES a guaranteed-connected colour grid rather
-    than transcribing the exact official irregular blocks (a hand-drawn layout
-    stranded two colours as unreachable). Because adjacency is cross-colour, a
-    generated layout plays correctly; a future pass could ship the pixel-exact
-    official sheet as data.
+  - **Board:** a hand-authored IRREGULAR jigsaw layout (validated: every row is
+    multi-colour — not coloured lines; balanced colour counts; 3 stars per colour;
+    100% reachable cross-colour from column H). It's a faithful Encore-style sheet,
+    not the pixel-exact copyrighted board (which I couldn't reliably transcribe).
+  - **Full indicators** (all rendered by the generic client): column header A–O
+    with the high/low point ladder (edge = high, centre = low) + claim state;
+    colour-bonus sidebar with per-colour progress + high/low bonus + claim; wild
+    (!) tracker; live score.
+  - **Dice = the Kit.Roller SLOT MACHINE** (the same one Qwixx uses): the 3 colour
+    + 3 number dice animate through the reels (persisted tray, animates once per
+    fresh roll); during DRAFT the reels themselves become the click targets.
   - Schema games reuse the hub's verbs; the self-play fuzzer tries each game's own
     `legalActions` first (so bespoke shapes like `{action:"mark",color,cells}` and
     `{action:"draft",colorIdx,numberIdx}` are exercised).

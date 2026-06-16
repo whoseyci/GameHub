@@ -461,6 +461,9 @@ export function makeRollAndWriteGame(spec: RollAndWriteSpec): GameModule {
           kind: "rollAndWrite",
           colors: spec.colors,
           grid: spec.grid,
+          columns: spec.scoring.columns,        // [high,low] per column (indicators)
+          colorBonus: spec.scoring.colorBonus,  // [high,low] per colour (sidebar)
+          starPenalty: spec.scoring.starPenalty,
           startCol: spec.startCol,
           round: state.round,
           active: state.active,

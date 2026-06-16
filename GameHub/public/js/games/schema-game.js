@@ -59,10 +59,10 @@
   function escText(s) { const d = document.createElement('div'); d.textContent = String(s == null ? '' : s); return d.innerHTML; }
 
   // Dispatch by schema kind — one client serves every schema game.
-  function render(view) {
+  function render(view, ctx) {
     const sc = view[view.game];
     if (!sc || sc.kind == null) return;
-    if (sc.kind === 'rollAndWrite') return renderRollAndWrite(view, sc);
+    if (sc.kind === 'rollAndWrite') return renderRollAndWrite(view, sc, ctx || {});
     return renderPressYourLuck(view, sc);
   }
 
@@ -149,18 +149,20 @@
   function rwKey(r, c) { return r + ',' + c; }
   function rwReachable(sc, mset, chosen, r, c, color) {
     const cell = sc.grid[r] && sc.grid[r][c];
-    if (!cell || cell.c !== color) return false;
+    if (!cell || cell.c !== color) return false;             // run is one colour
     if (mset.has(rwKey(r, c)) || chosen.has(rwKey(r, c))) return false;
-    if (c === sc.startCol) return true;
+    if (c === sc.startCol) return true;                      // start column
+    // CROSS-COLOUR adjacency: connect to any crossed/chosen box, any colour.
     const nb = [[r - 1, c], [r + 1, c], [r, c - 1], [r, c + 1]];
     for (const [nr, ncx] of nb) {
       const k = rwKey(nr, ncx);
-      if (mset.has(k) || chosen.has(k)) { const adj = sc.grid[nr] && sc.grid[nr][ncx]; if (adj && adj.c === color) return true; }
+      if (mset.has(k) || chosen.has(k)) return true;
     }
     return false;
   }
 
-  function renderRollAndWrite(view, sc) {
+  function renderRollAndWrite(view, sc, ctx) {
+    ctx = ctx || {};
     const seat = view.yourSeat;
     const me = sc.players[seat] || sc.players[0];
     const isDraft = sc.phase === 'DRAFT';
@@ -173,28 +175,12 @@
     const opponents = node('div', 'rw-mini-strip');
     sc.players.filter((p) => p.seat !== me.seat).forEach((p) => opponents.appendChild(rwMini(sc, p)));
 
-    // Center: dice. In DRAFT the roller clicks 1 colour + 1 number die to reserve;
-    // otherwise dice the viewer can't use are dimmed.
+    // Center: the SLOT-MACHINE roller animates the 3 colour + 3 number dice
+    // (like Qwixx). The tray is persisted so it survives re-renders and animates
+    // once per fresh roll. After it settles, reels become draft targets.
     const center = node('div', 'rw-center');
-    const dice = node('div', 'rw-dice');
-    const dimmable = sc.draft && !sc.draft.noDraft && !isDraft;
-    sc.roll.colors.forEach((cf, i) => {
-      const d = node('div', 'rw-die rw-die-color');
-      if (cf === '*') { d.classList.add('wild'); d.textContent = '\u2605'; } else { d.style.background = sc.colors[cf] || '#64748b'; }
-      if (sc.draft && sc.draft.colorIdx === i) d.classList.add('drafted');
-      if (amDrafting) { d.classList.add('rw-die-pick'); if (rwDraft.colorIdx === i) d.classList.add('rw-die-chosen'); d.onclick = () => rwDraftPick('color', i); }
-      else if (dimmable && !faces.colors.includes(cf)) d.classList.add('rw-die-dim');
-      dice.appendChild(d);
-    });
-    sc.roll.numbers.forEach((nf, i) => {
-      const d = node('div', 'rw-die rw-die-num', nf === 0 ? '?' : String(nf));
-      if (nf === 0) d.classList.add('wild');
-      if (sc.draft && sc.draft.numberIdx === i) d.classList.add('drafted');
-      if (amDrafting) { d.classList.add('rw-die-pick'); if (rwDraft.numberIdx === i) d.classList.add('rw-die-chosen'); d.onclick = () => rwDraftPick('number', i); }
-      else if (dimmable && !faces.numbers.includes(nf)) d.classList.add('rw-die-dim');
-      dice.appendChild(d);
-    });
-    center.appendChild(dice);
+    const tray = ctx.persist ? ctx.persist('encore:dice', () => node('div', 'rw-slot-tray')) : node('div', 'rw-slot-tray');
+    center.appendChild(tray);
     const info = node('div', 'rw-roll-info');
     info.appendChild(node('span', 'rw-round', `Round ${sc.round | 0}`));
     const rollerName = (sc.players[sc.active] && sc.players[sc.active].name) || '';
@@ -203,13 +189,59 @@
     info.appendChild(node('span', 'rw-roller', sub));
     center.appendChild(info);
 
+    // Build the reels: colour dice (coloured faces / ★ wild) + number dice.
+    const COLMAP = { B: 'blue', O: 'orange', Y: 'yellow', G: 'green', R: 'red' };
+    const reels = []
+      .concat(sc.roll.colors.map((cf) => cf === '*' ? { color: 'purple', symbol: '\u2605' } : { color: COLMAP[cf] || 'white', symbol: '' }))
+      .concat(sc.roll.numbers.map((nf) => ({ color: 'white', symbol: nf === 0 ? '?' : String(nf) })));
+    const sig = sc.round + ':' + sc.roll.colors.join('') + '|' + sc.roll.numbers.join('');
+    const dsize = (typeof innerWidth !== 'undefined' && innerWidth < 760) ? 38 : 52;
+    // Animate the roll only when the roll signature changes; otherwise show static.
+    if (tray.dataset.sig !== sig) {
+      tray.dataset.sig = sig;
+      try {
+        Kit.Roller.roll(tray, reels, { size: dsize, marquee: 'ENCORE', autoPull: true, autoPullDelay: 0 })
+          .then(() => { decorateReels(); });
+      } catch (e) { Kit.Roller.showStatic(tray, reels, { size: dsize }); decorateReels(); }
+    } else {
+      Kit.Roller.showStatic(tray, reels, { size: dsize });
+      decorateReels();
+    }
+
+    // After settle, mark each reel: dim non-usable (post-draft), highlight drafted,
+    // and make them clickable for the active roller during DRAFT.
+    function decorateReels() {
+      const els = [...tray.querySelectorAll('.kit-reel')];
+      const nC = sc.roll.colors.length;
+      els.forEach((el, i) => {
+        el.classList.remove('rw-die-dim', 'drafted', 'rw-die-pick', 'rw-die-chosen');
+        const isColor = i < nC;
+        const idx = isColor ? i : i - nC;
+        const draftedIdx = isColor ? (sc.draft && sc.draft.colorIdx) : (sc.draft && sc.draft.numberIdx);
+        if (draftedIdx === idx) el.classList.add('drafted');
+        if (amDrafting) {
+          el.classList.add('rw-die-pick');
+          const chosen = isColor ? rwDraft.colorIdx === idx : rwDraft.numberIdx === idx;
+          if (chosen) el.classList.add('rw-die-chosen');
+          el.onclick = () => rwDraftPick(isColor ? 'color' : 'number', idx);
+        } else {
+          el.onclick = null;
+          const dimmable = sc.draft && !sc.draft.noDraft && !isDraft;
+          const face = isColor ? sc.roll.colors[idx] : sc.roll.numbers[idx];
+          if (dimmable && !(isColor ? faces.colors : faces.numbers).includes(face)) el.classList.add('rw-die-dim');
+        }
+      });
+    }
+    // run decoration next frame too (covers the persisted-static path)
+    if (typeof requestAnimationFrame !== 'undefined') requestAnimationFrame(decorateReels);
+
     const focus = node('div', 'rw-board player-board' + (amPending || amDrafting ? ' active' : ''));
     const header = node('div', 'board-header');
     header.appendChild(node('span', '', escText(me.name) + (me.seat === seat ? ' (you)' : '')));
     const wildsLeft = Math.max(0, (sc.wilds | 0) - (me.wildsUsed | 0));
     header.appendChild(node('span', 'score-badge', `Score ${me.score | 0} \u00b7 ${wildsLeft} wilds`));
     focus.appendChild(header);
-    focus.appendChild(rwGrid(view, sc, me, seat, amPending));
+    focus.appendChild(rwSheet(view, sc, me, seat, amPending));
     focus.appendChild(rwSelectionBar(view, sc, me, seat, amPending, faces));
 
     const status = view.over ? 'Game Over'
@@ -244,7 +276,34 @@
     dispatchView(window._renderView);
   }
 
-  function rwGrid(view, sc, p, seat, interactive) {
+  // The full sheet: a column header (letters + point values), the colour grid,
+  // and a colour-bonus sidebar — all the real Encore indicators.
+  function rwSheet(view, sc, p, seat, interactive) {
+    const W = sc.grid[0].length;
+    const sheet = node('div', 'rw-sheet');
+    const left = node('div', 'rw-sheet-left');
+
+    // ── column header: letter + [high/low] points, claim state ──
+    const head = node('div', 'rw-colhead');
+    for (let c = 0; c < W; c++) {
+      const h = node('div', 'rw-colhead-cell');
+      h.appendChild(node('span', 'rw-colletter' + (c === sc.startCol ? ' start' : ''), 'ABCDEFGHIJKLMNO'[c] || String(c + 1)));
+      const pts = (sc.columns && sc.columns[c]) || null; // [high,low] passed in payload
+      if (pts) {
+        const claimedBy = sc.colClaimed && sc.colClaimed[c];
+        const meDone = (p.colsDone || []).includes(c);
+        const box = node('div', 'rw-colpts');
+        const hi = node('span', 'rw-pt hi' + (claimedBy != null ? ' claimed' : ''), String(pts[0]));
+        const lo = node('span', 'rw-pt lo', String(pts[1]));
+        box.appendChild(hi); box.appendChild(lo);
+        if (meDone) h.classList.add('rw-col-mine');
+        h.appendChild(box);
+      }
+      head.appendChild(h);
+    }
+    left.appendChild(head);
+
+    // ── the grid ──
     const wrap = node('div', 'rw-grid');
     const mset = new Set(p.marked || []);
     const chosen = new Set(rwSel.map(([r, c]) => rwKey(r, c)));
@@ -269,7 +328,40 @@
       }
       wrap.appendChild(rowEl);
     }
-    return wrap;
+    left.appendChild(wrap);
+    sheet.appendChild(left);
+
+    // ── colour-bonus sidebar ──
+    const side = node('div', 'rw-colorbar');
+    side.appendChild(node('div', 'rw-colorbar-title', 'COLOUR'));
+    const colorIds = Object.keys(sc.colors);
+    colorIds.forEach((cid, ci) => {
+      const row = node('div', 'rw-colorbar-row');
+      const sw = node('div', 'rw-colorbar-sw');
+      sw.style.background = sc.colors[cid];
+      const total = countColor(sc, cid), have = countMarkedColor(sc, p, cid);
+      const prog = node('span', 'rw-colorbar-prog', `${have}/${total}`);
+      const bonus = (sc.colorBonus && sc.colorBonus[ci]) || null;
+      row.appendChild(sw); row.appendChild(prog);
+      if (bonus) {
+        const claimedBy = sc.colorClaimed && sc.colorClaimed[ci];
+        const meDone = (p.colorsDone || []).includes(ci);
+        const b = node('div', 'rw-colorbar-pts');
+        b.appendChild(node('span', 'rw-pt hi' + (claimedBy != null ? ' claimed' : '') + (meDone ? ' mine' : ''), String(bonus[0])));
+        b.appendChild(node('span', 'rw-pt lo', String(bonus[1])));
+        row.appendChild(b);
+      }
+      side.appendChild(row);
+    });
+    sheet.appendChild(side);
+    return sheet;
+  }
+
+  function countColor(sc, cid) { let n = 0; for (const row of sc.grid) for (const cell of row) if (cell && cell.c === cid) n++; return n; }
+  function countMarkedColor(sc, p, cid) {
+    const mset = new Set(p.marked || []); let n = 0;
+    for (let r = 0; r < sc.grid.length; r++) for (let c = 0; c < sc.grid[r].length; c++) { const cell = sc.grid[r][c]; if (cell && cell.c === cid && mset.has(rwKey(r, c))) n++; }
+    return n;
   }
 
   function rwToggle(view, sc, p, r, c, color) {

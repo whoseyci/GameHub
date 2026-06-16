@@ -1,70 +1,58 @@
 // games/schema/specs/encore.ts — Encore! (Noch mal!) as DATA.
 //
-// A roll-and-write: a 15-column × 7-row grid of coloured cells laid out in
-// connected blocks. On a turn the roller rolls 3 colour dice + 3 number dice,
-// keeps a colour+number pair, and crosses that many CONNECTED same-colour cells
-// (starting in the centre column H, or adjacent to a crossed cell). Everyone
-// else then uses the remaining dice. Race to finish columns + whole colours;
-// uncrossed stars cost points; leftover wilds score 1 each.
+// A spatial roll-and-write: a 15-column × 7-row grid of coloured cells laid out
+// in IRREGULAR connected jigsaw blocks (5 colours). On a turn the roller rolls 3
+// colour dice + 3 number dice, drafts a colour+number pair (exclusive), and
+// crosses exactly that many CONNECTED same-colour cells — starting in the centre
+// column H (index 7) or orthogonally adjacent to a crossed cell of ANY colour.
+// Everyone else uses the remaining dice. Race to finish columns + whole colours;
+// uncrossed stars cost points; leftover wilds (!) score 1 each. Ends when a
+// player completes their 2nd whole colour.
 //
-// No engine code lives here — only data. The grid below is a faithful, fully
-// connected colour layout (5 colours, ~7 cells each colour per column band) with
-// 3 stars per colour, matching the published sheet's structure. Centre = col 7.
-import type { RollAndWriteSpec, RWGridRow } from "../spec";
+// No engine code lives here — only data. The grid is a hand-authored irregular
+// layout (validated: balanced colour counts, few connected blocks per colour,
+// fully reachable cross-colour from the centre) — a faithful Encore-style sheet,
+// not coloured lines.
+import type { RollAndWriteSpec, RWGridRow, RWCell } from "../spec";
 
-const COLORS = { B: "#3b82f6", O: "#f97316", Y: "#eab308", G: "#22c55e", R: "#ef4444" };
+const COLORS = { B: "#2f6df0", O: "#f97316", Y: "#eab308", G: "#22c55e", R: "#ef4444" };
 
-// Build a 7×15 board where EVERY colour region is a single connected block that
-// crosses the centre column (index 7). This is the key invariant the engine
-// needs: from the centre column you can reach (and eventually fill) every cell of
-// every colour. We lay each ROW as one horizontal colour band that always spans
-// the centre column, so the whole row is reachable from its centre cell, and we
-// rotate the colour per row so the five colours tile the 7 rows. (Faithful to
-// Encore's spirit — connected colour blocks, centre-seeded — and provably
-// completable, unlike a hand-drawn layout that can strand colours.)
-const W = 15;
-const H = 7;
-const C = ["B", "O", "Y", "G", "R"];   // colour order
+// 7 rows × 15 columns. Centre column is index 7 ("H"). Letters = colour ids;
+// a trailing "*" marks a star (penalty if left uncrossed). Stars: 3 per colour,
+// spread out, never in the centre column.
+const ROWS: string[] = [
+  "B  B  B*  O  O  O  Y  Y  Y  Y  G  G  G*  R  R",
+  "B  B  O*  O  Y*  Y  Y  G  G  G  G  R  R*  R  R",
+  "O  O  O  O  Y  Y  G  G  B  B  G  R  R  B  B",
+  "O  Y  Y  Y*  Y  G*  G  B  B*  B  O*  O  R  B  B",
+  "O  O  Y  G  G  G  R  R  B  O  O  O*  R  R*  B",
+  "R  O  O  G  G*  R  R  R  B*  B  O  Y  Y  R  R",
+  "R  R  R*  R  G  G  R  B  B  Y  Y*  Y  Y  Y  R",
+];
 
-// Star positions: 3 per colour, scattered but never in the centre column (so the
-// engine can always start a colour without being forced onto a star). Deterministic.
-const STAR_SET = new Set<string>();
-(function placeStars() {
-  // For each colour's rows, drop 3 stars at spread-out columns.
-  const perColorRows: Record<string, number[]> = {};
-  for (let r = 0; r < H; r++) { const col = C[r % C.length]; (perColorRows[col] ||= []).push(r); }
-  for (const col of C) {
-    const rows = perColorRows[col] || [];
-    let placed = 0;
-    const cand = [2, 11, 5, 13, 1]; // spread columns (avoid centre 7)
-    for (let i = 0; i < cand.length && placed < 3; i++) {
-      const r = rows[(i) % Math.max(1, rows.length)];
-      if (r == null) break;
-      STAR_SET.add(r + "," + cand[i]);
-      placed++;
-    }
-  }
-})();
-
-const grid: RWGridRow[] = [];
-for (let r = 0; r < H; r++) {
-  const color = C[r % C.length];
-  const row: RWGridRow = [];
-  for (let c = 0; c < W; c++) {
-    row.push({ c: color, ...(STAR_SET.has(r + "," + c) ? { star: true } : {}) });
-  }
-  grid.push(row);
+function parse(rows: string[]): RWGridRow[] {
+  return rows.map((line) =>
+    line.trim().split(/\s+/).map((tok): RWCell | null => {
+      const star = tok.endsWith("*");
+      const c = star ? tok.slice(0, -1) : tok;
+      return { c, ...(star ? { star: true } : {}) };
+    })
+  );
 }
 
-// Column points beneath each column (Encore: edge columns worth more, centre
-// worth least). [firstToFinish, others]. Centre (index 7) is cheapest.
+const grid = parse(ROWS);
+const W = grid[0].length; // 15
+
+// Column point ladder: edge columns are worth the most, the centre (H) the least
+// — [firstToFinish, others]. Mirrors the real sheet's "outer = harder = more".
 const colPts: Array<[number, number]> = Array.from({ length: W }, (_, c) => {
-  const dist = Math.abs(c - 7);                 // 0..7
+  const dist = Math.abs(c - 7);                 // 0 (centre) .. 7 (edge)
   const high = 1 + dist;                        // 1..8
-  return [high, Math.max(0, high - 1)] as [number, number];
+  return [high, Math.max(1, high - 1)] as [number, number];
 });
 
-// Colour bonus per colour (B,O,Y,G,R order), [first, others].
+// Colour bonus per colour (B,O,Y,G,R order), [first, others]. Real sheet uses a
+// 5/3-style spread; first-to-finish a colour is a big swing.
 const colorPts: Array<[number, number]> = [[5, 3], [5, 3], [5, 3], [5, 3], [5, 3]];
 
 export const Encore: RollAndWriteSpec = {

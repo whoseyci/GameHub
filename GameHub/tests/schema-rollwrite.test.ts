@@ -200,4 +200,37 @@ describe("Encore gameplay (engine interprets the grid data)", () => {
     expect(v.encore.colors).toBeTruthy();
     expect(v.encore.roll.colors.length).toBe(Encore.dice.colorCount);
   });
+
+  it("viewFor exposes ALL board indicators (column pts, colour bonus, claim state)", () => {
+    const s: any = g.create(["Ada", "Bo"]);
+    const v: any = g.viewFor(s, 0);
+    expect(v.encore.columns.length).toBe(Encore.grid[0].length);  // per-column [hi,lo]
+    expect(v.encore.colorBonus.length).toBe(Object.keys(Encore.colors).length);
+    expect(v.encore.colClaimed).toBeTruthy();
+    expect(v.encore.colorClaimed).toBeTruthy();
+  });
+
+  it("the Encore board is IRREGULAR (not coloured lines): rows are not single-colour bands", () => {
+    // A degenerate "lines" layout has every row one colour. The real board mixes
+    // colours within rows. Assert most rows contain 2+ colours.
+    let mixedRows = 0;
+    for (const row of Encore.grid) {
+      const colours = new Set(row.filter(Boolean).map((c: any) => c.c));
+      if (colours.size >= 2) mixedRows++;
+    }
+    expect(mixedRows).toBe(Encore.grid.length);   // every row is multi-colour
+  });
+
+  it("the board has exactly 3 stars per colour and every cell is reachable from H", () => {
+    const stars: Record<string, number> = {};
+    for (const row of Encore.grid) for (const cell of row) if (cell && cell.star) stars[cell.c] = (stars[cell.c] || 0) + 1;
+    for (const cid of Object.keys(Encore.colors)) expect(stars[cid]).toBe(3);
+    // cross-colour flood from the start column must reach every cell
+    const H = Encore.grid.length, W = Encore.grid[0].length;
+    const seen = new Set<string>(); const st: Array<[number, number]> = [];
+    for (let r = 0; r < H; r++) { seen.add(r + "," + Encore.startCol); st.push([r, Encore.startCol]); }
+    while (st.length) { const [y, x] = st.pop()!; for (const [dy, dx] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) { const ny = y + dy, nx = x + dx; const k = ny + "," + nx; if (ny >= 0 && nx >= 0 && ny < H && nx < W && Encore.grid[ny][nx] && !seen.has(k)) { seen.add(k); st.push([ny, nx]); } } }
+    let cells = 0; for (const row of Encore.grid) for (const c of row) if (c) cells++;
+    expect(seen.size).toBe(cells);   // 100% reachable
+  });
 });
