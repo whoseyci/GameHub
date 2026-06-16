@@ -13,7 +13,7 @@ import { validateRollAndWrite } from "./spec";
 //            roller uses a colour+number PAIR (one of each), others use any of
 //            the REMAINING dice. A player leaves the pending set when they mark
 //            OR pass. When empty → next roll (advance the roller).
-type Phase = "MARK" | "GAME_OVER";
+type Phase = "DRAFT" | "MARK" | "GAME_OVER";
 
 interface RWPlayer {
   name: string;
@@ -34,9 +34,17 @@ interface RWState extends RngStateHolder {
   active: number;            // the roller this turn
   phase: Phase;
   round: number;
+  turnNo: number;            // 1-based turns played (for the "first 3 turns" rule)
   // current roll: arrays of colour-die faces (colour id or "*") and number faces
   rollColors: string[];
   rollNumbers: number[];
+  // ── dice DRAFT (Encore's core mechanic) ──
+  //  The active roller reserves ONE colour die + ONE number die for their own
+  //  exclusive use; everyone else may use any combo of the REMAINING dice. For
+  //  the first 3 turns there is no draft — all 6 dice are shared by everyone.
+  draftColorIdx: number;     // index into rollColors the roller took (-1 = none yet)
+  draftNumberIdx: number;    // index into rollNumbers the roller took (-1 = none yet)
+  noDraft: boolean;          // true during the first 3 turns (everyone uses all 6)
   // first-to-complete claims (shared race): col index → seat that claimed high
   colClaimed: Record<number, number>;
   colorClaimed: Record<number, number>;
@@ -81,19 +89,15 @@ function markedSet(p: RWPlayer) { return new Set(p.marked); }
 // chosen this action. And it must be the right colour.
 function reachable(spec: RollAndWriteSpec, mset: Set<string>, chosen: Set<string>, r: number, c: number, color: string): boolean {
   const cell = cellAt(spec, r, c);
-  if (!cell || cell.c !== color) return false;
-  if (mset.has(key(r, c)) || chosen.has(key(r, c))) return false; // already marked
-  if (c === spec.startCol) return true;
+  if (!cell || cell.c !== color) return false;            // run must be ONE colour
+  if (mset.has(key(r, c)) || chosen.has(key(r, c))) return false; // already crossed
+  if (c === spec.startCol) return true;                   // start column always reachable
+  // Encore connectivity: a new box must be orthogonally adjacent to ANY already
+  // crossed box (any colour) OR a box chosen earlier in THIS clump. The chosen
+  // colour only constrains the cell itself — not the neighbour's colour.
   for (const [nr, nc] of neighbors(r, c)) {
     const k = key(nr, nc);
-    if (mset.has(k) || chosen.has(k)) {
-      // the adjacent marked cell must be same colour group OR the start column —
-      // Encore requires staying within one colour group per run; we approximate
-      // "same colour" adjacency, which is correct for the official board.
-      const adj = cellAt(spec, nr, nc);
-      if (adj && adj.c === color) return true;
-      if (nc === spec.startCol && adj && adj.c === color) return true;
-    }
+    if (mset.has(k) || chosen.has(k)) return true;
   }
   return false;
 }
@@ -101,14 +105,40 @@ function reachable(spec: RollAndWriteSpec, mset: Set<string>, chosen: Set<string
 // Validate that `cells` form a legal connected run of `color`, length matches,
 // each reachable in sequence. Returns true/false (pure).
 function validRun(spec: RollAndWriteSpec, p: RWPlayer, color: string, cells: Array<[number, number]>): boolean {
+  // Order-INDEPENDENT validation of an Encore clump:
+  //  1) at least 1 cell, no duplicates, none already crossed;
+  //  2) every cell is the chosen colour;
+  //  3) the cells form ONE orthogonally-connected clump;
+  //  4) the clump connects to the rest of the board: at least one cell is in the
+  //     start column OR orthogonally adjacent to an already-crossed box (any
+  //     colour). [exact count vs the die is checked by the caller.]
   if (!cells.length) return false;
   const mset = markedSet(p);
-  const chosen = new Set<string>();
+  const want = new Set<string>();
   for (const [r, c] of cells) {
-    if (!reachable(spec, mset, chosen, r, c, color)) return false;
-    chosen.add(key(r, c));
+    const k = key(r, c);
+    if (want.has(k) || mset.has(k)) return false;          // dup / already crossed
+    const cell = cellAt(spec, r, c);
+    if (!cell || cell.c !== color) return false;           // one colour only
+    want.add(k);
   }
-  return true;
+  // (3) internal connectivity — flood within the chosen set from cells[0].
+  const seen = new Set<string>([key(cells[0][0], cells[0][1])]);
+  const stack = [cells[0]];
+  while (stack.length) {
+    const [r, c] = stack.pop()!;
+    for (const [nr, nc] of neighbors(r, c)) {
+      const k = key(nr, nc);
+      if (want.has(k) && !seen.has(k)) { seen.add(k); stack.push([nr, nc]); }
+    }
+  }
+  if (seen.size !== want.size) return false;
+  // (4) anchored to the board.
+  for (const [r, c] of cells) {
+    if (c === spec.startCol) return true;
+    for (const [nr, nc] of neighbors(r, c)) if (mset.has(key(nr, nc))) return true;
+  }
+  return false;
 }
 
 // Recompute completed columns / colours for a player and award race points.
@@ -184,9 +214,36 @@ export function makeRollAndWriteGame(spec: RollAndWriteSpec): GameModule {
 
   function beginRoll(s: RWState) {
     roll(spec, s);
-    // everyone who hasn't finished the game owes a mark/pass this roll.
-    s.pending = s.players.map((_, i) => i).filter((i) => !s.players[i].done);
-    s.phase = s.pending.length ? "MARK" : "GAME_OVER";
+    s.draftColorIdx = -1; s.draftNumberIdx = -1;
+    // For the first 3 turns of the game everyone uses all 6 dice (no draft).
+    s.noDraft = s.turnNo <= 3;
+    if (s.noDraft) {
+      s.pending = s.players.map((_, i) => i).filter((i) => !s.players[i].done);
+      s.phase = s.pending.length ? "MARK" : "GAME_OVER";
+    } else {
+      // The active roller drafts first; if they can't act they may pass the draft.
+      s.phase = s.players[s.active] && !s.players[s.active].done ? "DRAFT" : "MARK";
+      if (s.phase === "MARK") { s.pending = s.players.map((_, i) => i).filter((i) => !s.players[i].done); }
+      else { s.pending = []; }
+    }
+    if (!s.players.some((p, i) => !p.done)) s.phase = "GAME_OVER";
+  }
+
+  // The colour + number die faces a seat may use right now, given the draft.
+  function allowedFaces(s: RWState, seat: number): { colors: string[]; numbers: number[] } {
+    if (s.noDraft) return { colors: s.rollColors.slice(), numbers: s.rollNumbers.slice() };
+    if (seat === s.active) {
+      // exactly the two dice the roller drafted
+      return {
+        colors: s.draftColorIdx >= 0 ? [s.rollColors[s.draftColorIdx]] : [],
+        numbers: s.draftNumberIdx >= 0 ? [s.rollNumbers[s.draftNumberIdx]] : [],
+      };
+    }
+    // everyone else: the REMAINING dice (all except the roller's drafted pair)
+    return {
+      colors: s.rollColors.filter((_, i) => i !== s.draftColorIdx),
+      numbers: s.rollNumbers.filter((_, i) => i !== s.draftNumberIdx),
+    };
   }
 
   function endIfOver(s: RWState) {
@@ -204,15 +261,21 @@ export function makeRollAndWriteGame(spec: RollAndWriteSpec): GameModule {
       const idx = (s.active + step) % n;
       if (!s.players[idx].done) { s.active = idx; break; }
     }
-    s.round += 1;
+    s.round += 1; s.turnNo += 1;
     beginRoll(s);
+  }
+
+  // After the roller drafts (or passes), open the MARK phase for everyone.
+  function openMark(s: RWState) {
+    s.pending = s.players.map((_, i) => i).filter((i) => !s.players[i].done);
+    s.phase = s.pending.length ? "MARK" : "GAME_OVER";
   }
 
   const mod: GameModule = {
     meta: {
       id: spec.meta.id, name: spec.meta.name, minPlayers: spec.meta.minPlayers, maxPlayers: spec.meta.maxPlayers,
       description: spec.meta.description, emoji: spec.meta.emoji, icon: spec.meta.icon,
-      actionTypes: ["mark", "skip", "next_round"] as const,
+      actionTypes: ["draft", "mark", "skip", "next_round"] as const,
       features: { hasBots: true, simultaneousTurns: true, usesTick: false, hasMultiRound: false, canSpectate: true, minDurationSec: 300, maxDurationSec: 1200 },
     },
 
@@ -222,7 +285,9 @@ export function makeRollAndWriteGame(spec: RollAndWriteSpec): GameModule {
         players: playerNames.slice(0, spec.meta.maxPlayers).map((name) => ({
           name: (name || "Player").slice(0, 20), marked: [], wildsUsed: 0, colsDone: [], colorsDone: [], colScore: 0, colorScore: 0, passed: false, done: false,
         })),
-        active: 0, phase: "MARK", round: 1, rollColors: [], rollNumbers: [], colClaimed: {}, colorClaimed: {}, pending: [],
+        active: 0, phase: "MARK", round: 1, turnNo: 1, rollColors: [], rollNumbers: [],
+        draftColorIdx: -1, draftNumberIdx: -1, noDraft: true,
+        colClaimed: {}, colorClaimed: {}, pending: [],
         rngState: makeSeed(`${spec.meta.id}:${playerNames.join("|")}`),
       };
       ensureRngState(s);
@@ -231,10 +296,30 @@ export function makeRollAndWriteGame(spec: RollAndWriteSpec): GameModule {
     },
 
     applyAction(state: RWState, seat: number, msg: GameAction) {
+      // ── DRAFT phase: only the active roller acts, reserving 1 colour + 1
+      //    number die (by index) for their exclusive use, then everyone marks. ──
+      if (state.phase === "DRAFT") {
+        if (seat !== state.active) return;
+        if (msg.action === "draft") {
+          const ci = (msg as any).colorIdx | 0;
+          const ni = (msg as any).numberIdx | 0;
+          if (ci < 0 || ci >= state.rollColors.length || ni < 0 || ni >= state.rollNumbers.length) return;
+          state.draftColorIdx = ci; state.draftNumberIdx = ni;
+          openMark(state);
+          return;
+        }
+        if (msg.action === "skip") {
+          // Roller declines to draft → they take nothing; others use all 6 dice.
+          state.draftColorIdx = -1; state.draftNumberIdx = -1;
+          openMark(state);
+          return;
+        }
+        return;
+      }
+
       if (state.phase !== "MARK") return;
       if (!state.pending.includes(seat)) return;             // already acted / not allowed
       const p = state.players[seat];
-      const isActive = seat === state.active;
 
       if (msg.action === "skip") {
         state.pending = state.pending.filter((x) => x !== seat);
@@ -245,41 +330,31 @@ export function makeRollAndWriteGame(spec: RollAndWriteSpec): GameModule {
       if (msg.action === "mark") {
         const color = String((msg as any).color ?? "");
         const cells: Array<[number, number]> = Array.isArray((msg as any).cells) ? (msg as any).cells.map((x: any) => [x[0] | 0, x[1] | 0]) : [];
-        const useWildColor = !!(msg as any).wildColor;       // spent a wild for the colour
-        const useWildNumber = !!(msg as any).wildNumber;     // spent a wild for the number
+        const useWildColor = !!(msg as any).wildColor;
+        const useWildNumber = !!(msg as any).wildNumber;
 
         if (!cols.includes(color)) return;
-        if (!cells.length || cells.length > 9) return;
+        if (!cells.length || cells.length > 5) return;        // Encore: never more than 5
 
-        // ── validate the dice the player claims to use ──
-        // Colour: the chosen colour must match an available colour die face (or a
-        // wild). Active uses any die from the full roll; others use the dice the
-        // active roller did NOT keep. We simplify the "remaining dice" rule: the
-        // active player keeps one colour + one number die for their own mark; the
-        // others may use ANY of the rolled faces (a faithful-enough approximation
-        // that preserves the core decision). Wild faces ("*"/0) always qualify.
-        // Encore's wild model: the dice have wild faces ("*" colour / 0 number).
-        // Using a wild face costs ONE of your limited wilds. A CONCRETE rolled
-        // face is free.
-        //   colour is OK if: a concrete `color` face was rolled (free), OR the
-        //   player flags useWildColor AND a "*" face is available (costs a wild).
-        const concreteColor = state.rollColors.includes(color);
-        const concreteNumber = state.rollNumbers.includes(cells.length);
-        const colorOk = concreteColor || (useWildColor && state.rollColors.includes("*"));
-        const numberOk = concreteNumber || (useWildNumber && state.rollNumbers.includes(0));
+        // The faces THIS seat may use depend on the draft (active uses the drafted
+        // pair; others use the remaining dice; first 3 turns: all 6).
+        const faces = allowedFaces(state, seat);
+        // Encore wild model: a CONCRETE rolled face is free; using a wild face
+        // ("*" colour / 0 number) costs one of your limited wilds.
+        const concreteColor = faces.colors.includes(color);
+        const concreteNumber = faces.numbers.includes(cells.length);
+        const colorOk = concreteColor || (useWildColor && faces.colors.includes("*"));
+        const numberOk = concreteNumber || (useWildNumber && faces.numbers.includes(0));
         if (!colorOk || !numberOk) return;
-        // You can't claim a wild you didn't need (and a wild must back a non-concrete pick).
         if (useWildColor && concreteColor) return;
         if (useWildNumber && concreteNumber) return;
 
-        // wild budget
         const wildCost = (useWildColor ? 1 : 0) + (useWildNumber ? 1 : 0);
         if (wildCost && p.wildsUsed + wildCost > spec.wilds) return;
 
-        // validate the run is a legal connected colour run
+        // legal connected one-colour clump of EXACTLY this many cells
         if (!validRun(spec, p, color, cells)) return;
 
-        // commit
         for (const [r, c] of cells) p.marked.push(key(r, c));
         p.wildsUsed += wildCost;
         settleCompletions(spec, state, seat);
@@ -293,20 +368,33 @@ export function makeRollAndWriteGame(spec: RollAndWriteSpec): GameModule {
     isOver(state: RWState) { return state.phase === "GAME_OVER"; },
 
     legalActions(state: RWState, seat: number): GameAction[] {
+      // DRAFT: the active roller picks a colour-die index + a number-die index
+      // (or skips). Offer a bounded set of index pairs.
+      if (state.phase === "DRAFT") {
+        if (seat !== state.active) return [];
+        const out: GameAction[] = [];
+        for (let ci = 0; ci < state.rollColors.length; ci++)
+          for (let ni = 0; ni < state.rollNumbers.length; ni++) {
+            out.push({ action: "draft", colorIdx: ci, numberIdx: ni } as any);
+            if (out.length >= 9) break;
+          }
+        out.push({ action: "skip" });
+        return out;
+      }
       if (state.phase !== "MARK" || !state.pending.includes(seat)) return [];
       const p = state.players[seat];
       const acts: GameAction[] = [];
       // Build a handful of concrete, legal MULTI-cell runs (so bots make real
-      // progress and the game actually completes — single-cell-only crawls). For
-      // each available colour we greedily grow a connected run of a length the
-      // dice allow, anchored at any reachable seed cell.
-      const concreteColors = state.rollColors.filter((c) => c !== "*");
-      const hasWildColor = state.rollColors.includes("*");
+      // progress and the game actually completes). Uses only the faces THIS seat
+      // may use (drafted pair / remaining dice / all-6 in the first 3 turns).
+      const faces = allowedFaces(state, seat);
+      const concreteColors = faces.colors.filter((c) => c !== "*");
+      const hasWildColor = faces.colors.includes("*");
       const colorFaces = new Set<string>(concreteColors);
       // a "*" face lets us pick any colour (costs a wild) — include all if budget allows
       if (hasWildColor && p.wildsUsed < spec.wilds) cols.forEach((c) => colorFaces.add(c));
-      const numberFaces = state.rollNumbers.filter((n) => n > 0);   // concrete lengths
-      const hasWildNumber = state.rollNumbers.includes(0) && p.wildsUsed < spec.wilds;
+      const numberFaces = faces.numbers.filter((n) => n > 0);   // concrete lengths
+      const hasWildNumber = faces.numbers.includes(0) && p.wildsUsed < spec.wilds;
       const lengths = Array.from(new Set([...numberFaces, ...(hasWildNumber ? [1, 2, 3] : [])])).sort((a, b) => b - a); // prefer longer
       const mset = markedSet(p);
 
@@ -352,17 +440,20 @@ export function makeRollAndWriteGame(spec: RollAndWriteSpec): GameModule {
     },
 
     viewFor(state: RWState, seat: number): GameView {
+      const inDraft = state.phase === "DRAFT";
       const vstate: GameViewState = {
-        currentSeat: -1, // simultaneous within a roll
-        pendingAction: state.phase === "MARK" ? "mark_or_skip" : null,
+        currentSeat: inDraft ? state.active : -1, // draft is the roller's solo decision
+        pendingAction: inDraft ? "draft" : (state.phase === "MARK" ? "mark_or_skip" : null),
         players: state.players.map((p, i) => ({
           seat: i, name: p.name,
-          status: p.done ? "stayed" : (state.pending.includes(i) ? "active" : "waiting"),
+          status: p.done ? "stayed" : (inDraft ? (i === state.active ? "active" : "waiting") : (state.pending.includes(i) ? "active" : "waiting")),
           score: finalScore(spec, p), banked: finalScore(spec, p),
         })),
-        actingCount: state.pending.length,
+        actingCount: inDraft ? 1 : state.pending.length,
         focusSeat: seat >= 0 ? seat : state.active,
       };
+      // the faces THIS viewer may use right now (post-draft); drives the client.
+      const myFaces = seat >= 0 ? allowedFaces(state, seat) : { colors: state.rollColors.slice(), numbers: state.rollNumbers.slice() };
       const over = state.phase === "GAME_OVER";
       const view: GameView = {
         game: spec.meta.id, phase: mapPhase(state.phase), over, yourSeat: seat, state: vstate,
@@ -373,7 +464,10 @@ export function makeRollAndWriteGame(spec: RollAndWriteSpec): GameModule {
           startCol: spec.startCol,
           round: state.round,
           active: state.active,
+          phase: state.phase,                 // "DRAFT" | "MARK" | "GAME_OVER"
           roll: { colors: state.rollColors, numbers: state.rollNumbers },
+          draft: { colorIdx: state.draftColorIdx, numberIdx: state.draftNumberIdx, noDraft: state.noDraft },
+          myFaces,                            // the colours/numbers the viewer may use now
           pending: state.pending.slice(),
           wilds: spec.wilds,
           endColorsToFinish: spec.endColorsToFinish,

@@ -2092,23 +2092,39 @@
     if (c === spec.startCol) return true;
     for (const [nr, nc] of neighbors(r, c)) {
       const k = key(nr, nc);
-      if (mset.has(k) || chosen.has(k)) {
-        const adj = cellAt(spec, nr, nc);
-        if (adj && adj.c === color) return true;
-        if (nc === spec.startCol && adj && adj.c === color) return true;
-      }
+      if (mset.has(k) || chosen.has(k)) return true;
     }
     return false;
   }
   function validRun(spec, p, color, cells) {
     if (!cells.length) return false;
     const mset = markedSet(p);
-    const chosen = /* @__PURE__ */ new Set();
+    const want = /* @__PURE__ */ new Set();
     for (const [r, c] of cells) {
-      if (!reachable(spec, mset, chosen, r, c, color)) return false;
-      chosen.add(key(r, c));
+      const k = key(r, c);
+      if (want.has(k) || mset.has(k)) return false;
+      const cell = cellAt(spec, r, c);
+      if (!cell || cell.c !== color) return false;
+      want.add(k);
     }
-    return true;
+    const seen = /* @__PURE__ */ new Set([key(cells[0][0], cells[0][1])]);
+    const stack = [cells[0]];
+    while (stack.length) {
+      const [r, c] = stack.pop();
+      for (const [nr, nc] of neighbors(r, c)) {
+        const k = key(nr, nc);
+        if (want.has(k) && !seen.has(k)) {
+          seen.add(k);
+          stack.push([nr, nc]);
+        }
+      }
+    }
+    if (seen.size !== want.size) return false;
+    for (const [r, c] of cells) {
+      if (c === spec.startCol) return true;
+      for (const [nr, nc] of neighbors(r, c)) if (mset.has(key(nr, nc))) return true;
+    }
+    return false;
   }
   function settleCompletions(spec, s, seat) {
     const p = s.players[seat];
@@ -2171,8 +2187,34 @@
     const cols = colorIds(spec);
     function beginRoll(s) {
       roll(spec, s);
-      s.pending = s.players.map((_, i) => i).filter((i) => !s.players[i].done);
-      s.phase = s.pending.length ? "MARK" : "GAME_OVER";
+      s.draftColorIdx = -1;
+      s.draftNumberIdx = -1;
+      s.noDraft = s.turnNo <= 3;
+      if (s.noDraft) {
+        s.pending = s.players.map((_, i) => i).filter((i) => !s.players[i].done);
+        s.phase = s.pending.length ? "MARK" : "GAME_OVER";
+      } else {
+        s.phase = s.players[s.active] && !s.players[s.active].done ? "DRAFT" : "MARK";
+        if (s.phase === "MARK") {
+          s.pending = s.players.map((_, i) => i).filter((i) => !s.players[i].done);
+        } else {
+          s.pending = [];
+        }
+      }
+      if (!s.players.some((p, i) => !p.done)) s.phase = "GAME_OVER";
+    }
+    function allowedFaces(s, seat) {
+      if (s.noDraft) return { colors: s.rollColors.slice(), numbers: s.rollNumbers.slice() };
+      if (seat === s.active) {
+        return {
+          colors: s.draftColorIdx >= 0 ? [s.rollColors[s.draftColorIdx]] : [],
+          numbers: s.draftNumberIdx >= 0 ? [s.rollNumbers[s.draftNumberIdx]] : []
+        };
+      }
+      return {
+        colors: s.rollColors.filter((_, i) => i !== s.draftColorIdx),
+        numbers: s.rollNumbers.filter((_, i) => i !== s.draftNumberIdx)
+      };
     }
     function endIfOver(s) {
       if (s.players.some((p) => p.done)) {
@@ -2192,7 +2234,12 @@
         }
       }
       s.round += 1;
+      s.turnNo += 1;
       beginRoll(s);
+    }
+    function openMark(s) {
+      s.pending = s.players.map((_, i) => i).filter((i) => !s.players[i].done);
+      s.phase = s.pending.length ? "MARK" : "GAME_OVER";
     }
     const mod = {
       meta: {
@@ -2203,7 +2250,7 @@
         description: spec.meta.description,
         emoji: spec.meta.emoji,
         icon: spec.meta.icon,
-        actionTypes: ["mark", "skip", "next_round"],
+        actionTypes: ["draft", "mark", "skip", "next_round"],
         features: { hasBots: true, simultaneousTurns: true, usesTick: false, hasMultiRound: false, canSpectate: true, minDurationSec: 300, maxDurationSec: 1200 }
       },
       create(playerNames) {
@@ -2224,8 +2271,12 @@
           active: 0,
           phase: "MARK",
           round: 1,
+          turnNo: 1,
           rollColors: [],
           rollNumbers: [],
+          draftColorIdx: -1,
+          draftNumberIdx: -1,
+          noDraft: true,
           colClaimed: {},
           colorClaimed: {},
           pending: [],
@@ -2236,10 +2287,28 @@
         return s;
       },
       applyAction(state, seat, msg) {
+        if (state.phase === "DRAFT") {
+          if (seat !== state.active) return;
+          if (msg.action === "draft") {
+            const ci = msg.colorIdx | 0;
+            const ni = msg.numberIdx | 0;
+            if (ci < 0 || ci >= state.rollColors.length || ni < 0 || ni >= state.rollNumbers.length) return;
+            state.draftColorIdx = ci;
+            state.draftNumberIdx = ni;
+            openMark(state);
+            return;
+          }
+          if (msg.action === "skip") {
+            state.draftColorIdx = -1;
+            state.draftNumberIdx = -1;
+            openMark(state);
+            return;
+          }
+          return;
+        }
         if (state.phase !== "MARK") return;
         if (!state.pending.includes(seat)) return;
         const p = state.players[seat];
-        const isActive = seat === state.active;
         if (msg.action === "skip") {
           state.pending = state.pending.filter((x) => x !== seat);
           if (!state.pending.length) advanceRoll(state);
@@ -2251,11 +2320,12 @@
           const useWildColor = !!msg.wildColor;
           const useWildNumber = !!msg.wildNumber;
           if (!cols.includes(color)) return;
-          if (!cells.length || cells.length > 9) return;
-          const concreteColor = state.rollColors.includes(color);
-          const concreteNumber = state.rollNumbers.includes(cells.length);
-          const colorOk = concreteColor || useWildColor && state.rollColors.includes("*");
-          const numberOk = concreteNumber || useWildNumber && state.rollNumbers.includes(0);
+          if (!cells.length || cells.length > 5) return;
+          const faces = allowedFaces(state, seat);
+          const concreteColor = faces.colors.includes(color);
+          const concreteNumber = faces.numbers.includes(cells.length);
+          const colorOk = concreteColor || useWildColor && faces.colors.includes("*");
+          const numberOk = concreteNumber || useWildNumber && faces.numbers.includes(0);
           if (!colorOk || !numberOk) return;
           if (useWildColor && concreteColor) return;
           if (useWildNumber && concreteNumber) return;
@@ -2274,15 +2344,27 @@
         return state.phase === "GAME_OVER";
       },
       legalActions(state, seat) {
+        if (state.phase === "DRAFT") {
+          if (seat !== state.active) return [];
+          const out = [];
+          for (let ci = 0; ci < state.rollColors.length; ci++)
+            for (let ni = 0; ni < state.rollNumbers.length; ni++) {
+              out.push({ action: "draft", colorIdx: ci, numberIdx: ni });
+              if (out.length >= 9) break;
+            }
+          out.push({ action: "skip" });
+          return out;
+        }
         if (state.phase !== "MARK" || !state.pending.includes(seat)) return [];
         const p = state.players[seat];
         const acts = [];
-        const concreteColors = state.rollColors.filter((c) => c !== "*");
-        const hasWildColor = state.rollColors.includes("*");
+        const faces = allowedFaces(state, seat);
+        const concreteColors = faces.colors.filter((c) => c !== "*");
+        const hasWildColor = faces.colors.includes("*");
         const colorFaces = new Set(concreteColors);
         if (hasWildColor && p.wildsUsed < spec.wilds) cols.forEach((c) => colorFaces.add(c));
-        const numberFaces = state.rollNumbers.filter((n) => n > 0);
-        const hasWildNumber = state.rollNumbers.includes(0) && p.wildsUsed < spec.wilds;
+        const numberFaces = faces.numbers.filter((n) => n > 0);
+        const hasWildNumber = faces.numbers.includes(0) && p.wildsUsed < spec.wilds;
         const lengths = Array.from(/* @__PURE__ */ new Set([...numberFaces, ...hasWildNumber ? [1, 2, 3] : []])).sort((a, b) => b - a);
         const mset = markedSet(p);
         const growRun = (color, len) => {
@@ -2326,20 +2408,22 @@
         return acts;
       },
       viewFor(state, seat) {
+        const inDraft = state.phase === "DRAFT";
         const vstate = {
-          currentSeat: -1,
-          // simultaneous within a roll
-          pendingAction: state.phase === "MARK" ? "mark_or_skip" : null,
+          currentSeat: inDraft ? state.active : -1,
+          // draft is the roller's solo decision
+          pendingAction: inDraft ? "draft" : state.phase === "MARK" ? "mark_or_skip" : null,
           players: state.players.map((p, i) => ({
             seat: i,
             name: p.name,
-            status: p.done ? "stayed" : state.pending.includes(i) ? "active" : "waiting",
+            status: p.done ? "stayed" : inDraft ? i === state.active ? "active" : "waiting" : state.pending.includes(i) ? "active" : "waiting",
             score: finalScore(spec, p),
             banked: finalScore(spec, p)
           })),
-          actingCount: state.pending.length,
+          actingCount: inDraft ? 1 : state.pending.length,
           focusSeat: seat >= 0 ? seat : state.active
         };
+        const myFaces = seat >= 0 ? allowedFaces(state, seat) : { colors: state.rollColors.slice(), numbers: state.rollNumbers.slice() };
         const over = state.phase === "GAME_OVER";
         const view = {
           game: spec.meta.id,
@@ -2354,7 +2438,12 @@
             startCol: spec.startCol,
             round: state.round,
             active: state.active,
+            phase: state.phase,
+            // "DRAFT" | "MARK" | "GAME_OVER"
             roll: { colors: state.rollColors, numbers: state.rollNumbers },
+            draft: { colorIdx: state.draftColorIdx, numberIdx: state.draftNumberIdx, noDraft: state.noDraft },
+            myFaces,
+            // the colours/numbers the viewer may use now
             pending: state.pending.slice(),
             wilds: spec.wilds,
             endColorsToFinish: spec.endColorsToFinish,

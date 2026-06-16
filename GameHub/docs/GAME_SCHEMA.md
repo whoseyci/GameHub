@@ -60,19 +60,31 @@ style demo proving the pipeline end-to-end.
 ## Kinds shipped
 - **`pressYourLuck`** (`engine-pyl.ts`) — Flip-7 / can't-stop family. Sample:
   **Septet** (`septet`).
-- **`rollAndWrite`** (`engine-raw.ts`) — Encore!/Noch mal! spatial roll-and-write:
-  a colour grid laid out as DATA (`grid` rows of `{c,star?}`), colour+number
-  dice, cross CONNECTED same-colour runs from the centre column outward, race to
-  finish columns + whole colours, stars = penalties, limited wilds. Sample:
-  **Encore!** (`encore`). The generic client (`schema-game.js`) renders the grid
-  with click-to-select connected runs (live-validated) + Mark/Skip.
-  - **Grid invariant:** every colour region MUST be connected to the centre
-    column via same-colour adjacency, or cells get stranded (unreachable →
-    unwinnable). The Encore spec GENERATES a guaranteed-reachable grid rather
-    than hand-drawing one (a hand-drawn layout stranded Orange+Red at 0% reach).
-  - Schema games reuse the hub's verbs; the self-play fuzzer now tries each
-    game's own `legalActions` first (so bespoke action shapes like
-    `{action:"mark",color,cells}` are exercised).
+- **`rollAndWrite`** (`engine-raw.ts`) — Encore!/Noch mal! spatial roll-and-write.
+  Sample: **Encore!** (`encore`). Faithfully implements the real rules:
+  - 3 colour dice + 3 number dice; **dice DRAFT**: the active roller reserves ONE
+    colour + ONE number die for their exclusive use, everyone else uses the
+    remaining 4 (the core strategic mechanic). The **first 3 turns** have no draft
+    (all 6 dice shared).
+  - A mark crosses **exactly** the die's number of boxes, all **one colour**, in
+    **one connected clump**; the clump must touch the start column (H) OR be
+    orthogonally adjacent to an already-crossed box of **ANY colour** (cross-colour
+    adjacency — this was the rule I first got wrong).
+  - **Wilds** (`!`, 8 total): a wild colour/number face costs one wild; concrete
+    faces are free; leftover wilds score +1. **Stars** uncrossed = −2. Race to
+    finish columns (edge = more points, first-to-finish bonus) + whole colours.
+    Game ends when a player completes their **2nd** whole colour.
+  - The generic client renders the grid with click-to-select connected runs
+    (live-validated against the seat's allowed dice), a draft UI (pick 2 dice),
+    dimmed non-usable dice, and Mark/Skip.
+  - **Grid honesty:** the spec GENERATES a guaranteed-connected colour grid rather
+    than transcribing the exact official irregular blocks (a hand-drawn layout
+    stranded two colours as unreachable). Because adjacency is cross-colour, a
+    generated layout plays correctly; a future pass could ship the pixel-exact
+    official sheet as data.
+  - Schema games reuse the hub's verbs; the self-play fuzzer tries each game's own
+    `legalActions` first (so bespoke shapes like `{action:"mark",color,cells}` and
+    `{action:"draft",colorIdx,numberIdx}` are exercised).
 
 ## Roadmap
 1. ✅ `pressYourLuck` kind + Septet + tests.

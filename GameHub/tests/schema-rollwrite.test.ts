@@ -96,19 +96,91 @@ describe("Encore gameplay (engine interprets the grid data)", () => {
     expect(s.players[0].marked.length).toBeGreaterThan(0);
   });
 
+  it("adjacency is CROSS-COLOUR: a run extends next to a crossed box of ANY colour", () => {
+    const s: any = g.create(["Ada", "Bo"]);
+    // cross a centre cell in some row, then mark an adjacent cell of a DIFFERENT
+    // colour in the next row (must be allowed — Encore connects to any colour).
+    const col = Encore.startCol;
+    // find two vertically-adjacent centre cells of DIFFERENT colours
+    let r0 = -1;
+    for (let r = 0; r + 1 < Encore.grid.length; r++) {
+      const a = Encore.grid[r][col], b = Encore.grid[r + 1][col];
+      if (a && b && a.c !== b.c) { r0 = r; break; }
+    }
+    expect(r0).toBeGreaterThanOrEqual(0);
+    const topColor = Encore.grid[r0][col].c, botColor = Encore.grid[r0 + 1][col].c;
+    s.rollColors = [topColor, botColor]; s.rollNumbers = [1, 1]; s.pending = [0, 1]; s.noDraft = true;
+    g.applyAction(s, 0, { action: "mark", color: topColor, cells: [[r0, col]] } as any);
+    expect(s.players[0].marked).toContain(r0 + "," + col);
+    // now mark the DIFFERENT-colour neighbour below — legal because it's adjacent
+    // to the crossed box (different colour) and in the start column.
+    s.pending = [0, 1];
+    g.applyAction(s, 0, { action: "mark", color: botColor, cells: [[r0 + 1, col]] } as any);
+    expect(s.players[0].marked).toContain((r0 + 1) + "," + col);
+  });
+
+  it("you must check EXACTLY the die number (a wrong-length run is rejected)", () => {
+    const s: any = g.create(["Ada", "Bo"]);
+    const col = Encore.startCol;
+    const color = Encore.grid[0][col].c;
+    // roll a 2 but try to mark 1 → rejected; a connected run of 2 (down the start
+    // column) of the SAME colour... start column may be multi-colour, so build a
+    // 2-run within one colour that includes a centre cell.
+    s.rollColors = [color]; s.rollNumbers = [2]; s.pending = [0, 1]; s.noDraft = true;
+    const before = s.players[0].marked.length;
+    g.applyAction(s, 0, { action: "mark", color, cells: [[0, col]] } as any); // length 1, die=2
+    expect(s.players[0].marked.length).toBe(before);   // rejected — wrong count
+  });
+
+  it("dice DRAFT: after the first 3 turns the roller reserves a pair; others use the rest", () => {
+    const s: any = g.create(["Ada", "Bo"]);
+    // fast-forward 3 turns by skipping everyone (turns 1-3 are no-draft)
+    let guard = 0;
+    while (s.turnNo <= 3 && guard++ < 50) {
+      if (s.phase === "DRAFT") { g.applyAction(s, s.active, { action: "skip" }); continue; }
+      for (const seat of s.pending.slice()) g.applyAction(s, seat, { action: "skip" });
+    }
+    // now we should be in a DRAFT phase for the active roller
+    expect(s.phase).toBe("DRAFT");
+    expect(s.noDraft).toBe(false);
+    const roller = s.active;
+    // only the roller may act during DRAFT
+    expect(g.legalActions!(s, (roller + 1) % 2)).toEqual([]);
+    expect(g.legalActions!(s, roller).some((a: any) => a.action === "draft")).toBe(true);
+    // roller drafts colour die 0 + number die 0
+    g.applyAction(s, roller, { action: "draft", colorIdx: 0, numberIdx: 0 } as any);
+    expect(s.phase).toBe("MARK");
+    // the roller may now ONLY use the drafted colour + number
+    const v: any = g.viewFor(s, roller);
+    expect(v.encore.myFaces.colors).toEqual([s.rollColors[0]]);
+    expect(v.encore.myFaces.numbers).toEqual([s.rollNumbers[0]]);
+    // the other player gets the REMAINING dice (not the drafted indices)
+    const other = (roller + 1) % 2;
+    const vo: any = g.viewFor(s, other);
+    expect(vo.encore.myFaces.colors.length).toBe(s.rollColors.length - 1);
+    expect(vo.encore.myFaces.numbers.length).toBe(s.rollNumbers.length - 1);
+  });
+
   it("plays a FULL game to game-over under random-legal self-play (no deadlock)", () => {
     const s: any = g.create(["Ada", "Bo", "Cy"]);
     let guard = 0;
+    const NP = 3;
     while (!g.isOver(s) && guard++ < 20000) {
+      // DRAFT phase: only the active roller acts (use its legalActions).
+      if (s.phase === "DRAFT") {
+        const la = g.legalActions!(s, s.active);
+        const mk = la.find((a) => a.action === "draft") || { action: "skip" };
+        g.applyAction(s, s.active, mk as any);
+        continue;
+      }
       const pending = s.pending.slice();
       if (!pending.length) break;
       for (const seat of pending) {
         const legal = g.legalActions!(s, seat);
         if (!legal.length) { g.applyAction(s, seat, { action: "skip" }); continue; }
-        // 70% mark, 30% skip to keep games moving toward completion
-        const choice = (Math.random() < 0.7 && legal[0].action === "mark") ? legal[0] : { action: "skip" };
+        const choice = (Math.random() < 0.8 && legal[0].action === "mark") ? legal[0] : { action: "skip" };
         g.applyAction(s, seat, choice as any);
-        if (!s.pending.length) break;
+        if (s.phase === "DRAFT" || !s.pending.length) break;
       }
     }
     // It may not reach GAME_OVER if random play never fills 2 colours within the

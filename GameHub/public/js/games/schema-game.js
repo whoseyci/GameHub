@@ -163,60 +163,85 @@
   function renderRollAndWrite(view, sc) {
     const seat = view.yourSeat;
     const me = sc.players[seat] || sc.players[0];
+    const isDraft = sc.phase === 'DRAFT';
+    const amRoller = seat === sc.active;
+    const amDrafting = isDraft && amRoller && !view.over;
     const amPending = (sc.pending || []).includes(seat) && !view.over;
-    // reset selection when it's no longer my turn / new roll
+    const faces = sc.myFaces || sc.roll;   // faces I may use right now
     if (!amPending) { rwSel = []; rwSelColor = null; }
 
-    // Opponents strip — compact grids.
     const opponents = node('div', 'rw-mini-strip');
     sc.players.filter((p) => p.seat !== me.seat).forEach((p) => opponents.appendChild(rwMini(sc, p)));
 
-    // Center: the dice roll + round + who's the roller.
+    // Center: dice. In DRAFT the roller clicks 1 colour + 1 number die to reserve;
+    // otherwise dice the viewer can't use are dimmed.
     const center = node('div', 'rw-center');
     const dice = node('div', 'rw-dice');
-    sc.roll.colors.forEach((cf) => {
+    const dimmable = sc.draft && !sc.draft.noDraft && !isDraft;
+    sc.roll.colors.forEach((cf, i) => {
       const d = node('div', 'rw-die rw-die-color');
-      if (cf === '*') { d.classList.add('wild'); d.textContent = '★'; }
-      else { d.style.background = sc.colors[cf] || '#64748b'; }
+      if (cf === '*') { d.classList.add('wild'); d.textContent = '\u2605'; } else { d.style.background = sc.colors[cf] || '#64748b'; }
+      if (sc.draft && sc.draft.colorIdx === i) d.classList.add('drafted');
+      if (amDrafting) { d.classList.add('rw-die-pick'); if (rwDraft.colorIdx === i) d.classList.add('rw-die-chosen'); d.onclick = () => rwDraftPick('color', i); }
+      else if (dimmable && !faces.colors.includes(cf)) d.classList.add('rw-die-dim');
       dice.appendChild(d);
     });
-    sc.roll.numbers.forEach((nf) => {
+    sc.roll.numbers.forEach((nf, i) => {
       const d = node('div', 'rw-die rw-die-num', nf === 0 ? '?' : String(nf));
       if (nf === 0) d.classList.add('wild');
+      if (sc.draft && sc.draft.numberIdx === i) d.classList.add('drafted');
+      if (amDrafting) { d.classList.add('rw-die-pick'); if (rwDraft.numberIdx === i) d.classList.add('rw-die-chosen'); d.onclick = () => rwDraftPick('number', i); }
+      else if (dimmable && !faces.numbers.includes(nf)) d.classList.add('rw-die-dim');
       dice.appendChild(d);
     });
     center.appendChild(dice);
     const info = node('div', 'rw-roll-info');
     info.appendChild(node('span', 'rw-round', `Round ${sc.round | 0}`));
     const rollerName = (sc.players[sc.active] && sc.players[sc.active].name) || '';
-    info.appendChild(node('span', 'rw-roller', `${escText(rollerName)} rolled \u00b7 finish ${sc.endColorsToFinish} colours to end`));
+    const sub = isDraft ? (amDrafting ? 'Pick 1 colour + 1 number die to keep' : `${escText(rollerName)} is drafting dice\u2026`)
+      : `${escText(rollerName)} rolled \u00b7 finish ${sc.endColorsToFinish} colours to end`;
+    info.appendChild(node('span', 'rw-roller', sub));
     center.appendChild(info);
 
-    // Focus: my full grid (clickable).
-    const focus = node('div', 'rw-board player-board' + (amPending ? ' active' : ''));
+    const focus = node('div', 'rw-board player-board' + (amPending || amDrafting ? ' active' : ''));
     const header = node('div', 'board-header');
     header.appendChild(node('span', '', escText(me.name) + (me.seat === seat ? ' (you)' : '')));
     const wildsLeft = Math.max(0, (sc.wilds | 0) - (me.wildsUsed | 0));
     header.appendChild(node('span', 'score-badge', `Score ${me.score | 0} \u00b7 ${wildsLeft} wilds`));
     focus.appendChild(header);
     focus.appendChild(rwGrid(view, sc, me, seat, amPending));
-    focus.appendChild(rwSelectionBar(view, sc, me, seat, amPending));
+    focus.appendChild(rwSelectionBar(view, sc, me, seat, amPending, faces));
 
     const status = view.over ? 'Game Over'
+      : amDrafting ? 'Draft your dice (the rest go to everyone else)'
+      : isDraft ? `Waiting for ${escText(rollerName)} to draft\u2026`
       : amPending ? 'Cross connected boxes, then Mark \u2014 or Skip'
       : 'Waiting for other players\u2026';
     GameShell.renderTable({ game: view.game, opponents, center, focus, status, topMode: 'custom', opponentClass: 'rw-top-strip' });
 
-    // Controls: Mark (enabled when a valid run is selected) + Skip.
     Kit.Controls.clear('schemaControls');
     if (view.over) { /* play-again handled elsewhere */ }
-    else if (amPending) {
-      const valid = rwSelValid(sc, me);
+    else if (amDrafting) {
+      const ready = rwDraft.colorIdx >= 0 && rwDraft.numberIdx >= 0;
       Kit.Controls.set([
-        { label: rwSel.length ? `Mark ${rwSel.length}` : 'Mark', kind: 'green', disabled: !valid, onClick: () => rwSubmit(view, sc, seat) },
+        { label: 'Keep dice', kind: 'green', disabled: !ready, onClick: () => { const d = rwDraft; rwDraft = { colorIdx: -1, numberIdx: -1 }; GameActions.send('draft', { colorIdx: d.colorIdx, numberIdx: d.numberIdx }, seat); } },
+        { label: 'Take none', kind: 'secondary', onClick: () => { rwDraft = { colorIdx: -1, numberIdx: -1 }; GameActions.send('skip', {}, seat); } },
+      ], { id: 'schemaControls' });
+    }
+    else if (amPending) {
+      const valid = rwSelValid(sc, me, faces);
+      Kit.Controls.set([
+        { label: rwSel.length ? `Mark ${rwSel.length}` : 'Mark', kind: 'green', disabled: !valid, onClick: () => rwSubmit(view, sc, seat, faces) },
         { label: 'Skip', kind: 'secondary', onClick: () => { rwSel = []; rwSelColor = null; GameActions.send('skip', {}, seat); } },
       ], { id: 'schemaControls' });
     }
+  }
+
+  let rwDraft = { colorIdx: -1, numberIdx: -1 };
+  function rwDraftPick(kind, i) {
+    if (kind === 'color') rwDraft.colorIdx = (rwDraft.colorIdx === i ? -1 : i);
+    else rwDraft.numberIdx = (rwDraft.numberIdx === i ? -1 : i);
+    dispatchView(window._renderView);
   }
 
   function rwGrid(view, sc, p, seat, interactive) {
@@ -267,14 +292,15 @@
     dispatchView(window._renderView);
   }
 
-  function rwSelValid(sc, p) {
+  function rwSelValid(sc, p, faces) {
+    faces = faces || sc.myFaces || sc.roll;
     if (!rwSel.length || !rwSelColor) return false;
-    // length must match an available number die (concrete) or a wild number with budget
     const len = rwSel.length;
-    const concreteNum = sc.roll.numbers.includes(len);
-    const wildNum = sc.roll.numbers.includes(0);
-    const concreteColor = sc.roll.colors.includes(rwSelColor);
-    const wildColor = sc.roll.colors.includes('*');
+    if (len > 5) return false;
+    const concreteNum = faces.numbers.includes(len);
+    const wildNum = faces.numbers.includes(0);
+    const concreteColor = faces.colors.includes(rwSelColor);
+    const wildColor = faces.colors.includes('*');
     if (!concreteNum && !wildNum) return false;
     if (!concreteColor && !wildColor) return false;
     const cost = (concreteColor ? 0 : 1) + (concreteNum ? 0 : 1);
@@ -282,15 +308,16 @@
     return true;
   }
 
-  function rwSelectionBar(view, sc, p, seat, interactive) {
+  function rwSelectionBar(view, sc, p, seat, interactive, faces) {
+    faces = faces || sc.myFaces || sc.roll;
     const bar = node('div', 'rw-selbar');
     if (!interactive) return bar;
     const len = rwSel.length;
     if (!len) { bar.appendChild(node('span', 'rw-hint', 'Tap connected boxes of one colour (from centre or next to a crossed box).')); return bar; }
-    const concreteNum = sc.roll.numbers.includes(len), wildNum = sc.roll.numbers.includes(0);
-    const concreteColor = sc.roll.colors.includes(rwSelColor), wildColor = sc.roll.colors.includes('*');
+    const concreteNum = faces.numbers.includes(len);
+    const concreteColor = faces.colors.includes(rwSelColor);
     const wildCost = (concreteColor ? 0 : 1) + (concreteNum ? 0 : 1);
-    const ok = rwSelValid(sc, p);
+    const ok = rwSelValid(sc, p, faces);
     const chip = node('span', 'rw-selchip' + (ok ? ' ok' : ' bad'),
       `${len} ${rwSelColor}` + (wildCost ? ` \u00b7 ${wildCost} wild${wildCost > 1 ? 's' : ''}` : '') + (ok ? '' : ' \u2014 no matching die'));
     chip.style.setProperty('--c', sc.colors[rwSelColor] || '#64748b');
@@ -301,12 +328,13 @@
     return bar;
   }
 
-  function rwSubmit(view, sc, seat) {
+  function rwSubmit(view, sc, seat, faces) {
+    faces = faces || sc.myFaces || sc.roll;
     const me = sc.players[seat];
-    if (!rwSelValid(sc, me)) return;
+    if (!rwSelValid(sc, me, faces)) return;
     const len = rwSel.length;
-    const concreteNum = sc.roll.numbers.includes(len);
-    const concreteColor = sc.roll.colors.includes(rwSelColor);
+    const concreteNum = faces.numbers.includes(len);
+    const concreteColor = faces.colors.includes(rwSelColor);
     const msg = { color: rwSelColor, cells: rwSel.map(([r, c]) => [r, c]) };
     if (!concreteColor) msg.wildColor = true;
     if (!concreteNum) msg.wildNumber = true;
