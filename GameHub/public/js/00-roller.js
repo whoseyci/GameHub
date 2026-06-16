@@ -104,8 +104,23 @@
     // animator (in spin()) translates the strip upward by N full strip-heights
     // for the "streaming" effect, then settles on this last cell. Cell 0 (shown
     // at rest) is a random face so the result isn't visible before the pull.
-    const faces = spec.symbols || opts.symbols || DEFAULT_SYMBOLS;
     const landed = spec.icon ? { icon: spec.icon } : (spec.symbol != null ? spec.symbol : spec.value);
+    // Pick the spinning-strip faces. Priority: explicit per-reel symbols, then
+    // global opts.symbols. If neither is given, INFER from what this reel lands
+    // on so a COLOUR reel (a plain coloured swatch, or one that lands on an icon/
+    // single glyph like ★) streams that SAME kind of face — never the default
+    // 1-6 number strip. (Bug fix: colour dice were leaking numbers while spinning
+    // because they fell through to DEFAULT_SYMBOLS.)
+    let faces = spec.symbols || opts.symbols;
+    if (!faces) {
+      const s = typeof landed === 'string' ? landed : null;
+      if (spec.icon) faces = [{ icon: spec.icon }];          // icon reel → stream that icon
+      else if (s === '') faces = [''];                       // pure colour swatch → stream blanks
+      else if (s != null && /^[0-9]$/.test(s)) faces = DEFAULT_SYMBOLS;       // number reel → 1-6 strip
+      else if (s === '?') faces = DEFAULT_SYMBOLS.concat('?');                // wild number → numbers + ?
+      else if (s != null) faces = [s];                       // single glyph reel (e.g. ★) → stream that glyph
+      else faces = DEFAULT_SYMBOLS;
+    }
     const runLen = REDUCE ? 0 : 16;                        // streaming faces before the result
     const cells = [];
     for (let i = 0; i < runLen; i++) {
@@ -184,6 +199,17 @@
         `<span class="kit-lever-track"><span class="kit-lever-arm"></span><span class="kit-lever-knob"></span></span>` +
         `<span class="kit-lever-base" aria-hidden="true"></span>`;
       body.appendChild(lever);
+
+      // "Your turn — pull it!" cue: a bobbing arrow + label pointing at the lever
+      // so the active player knows the roll is theirs to start. opts.leverHint sets
+      // the label (default "PULL!"); hidden once the lever is pulled.
+      const cue = document.createElement('div');
+      cue.className = 'kit-lever-cue';
+      cue.setAttribute('aria-hidden', 'true');
+      const hint = (opts.leverHint != null) ? opts.leverHint : 'PULL!';
+      cue.innerHTML = `<span class="kit-lever-cue-label">${hint}</span><span class="kit-lever-cue-arrow">\u2192</span>`;
+      body.appendChild(cue);
+      lever._cue = cue;
     }
 
     machine.appendChild(body);
@@ -337,7 +363,7 @@
 
       function lockAll() {
         if (started) return; started = true;
-        if (lever) lever.classList.add('pulled');
+        if (lever) { lever.classList.add('pulled'); if (lever._cue) lever._cue.classList.add('gone'); }
         machine.classList.add('spinning');
         if (typeof opts.onPull === 'function') opts.onPull();
         if (typeof SFX !== 'undefined' && SFX.draw) SFX.draw();
@@ -444,12 +470,17 @@
     return spin(container, {
       reels: dice.map(toReel),
       size: opts.size || 56,
-      symbols: opts.symbols || DEFAULT_SYMBOLS,
+      // Only forward a GLOBAL spinning-strip override if the caller explicitly
+      // gave one. Otherwise leave it undefined so each reel INFERS its own strip
+      // (colour reels stream colours/blanks, number reels stream digits) — a
+      // global default of DEFAULT_SYMBOLS here is what made colour reels show
+      // numbers while spinning.
+      ...(opts.symbols ? { symbols: opts.symbols } : {}),
       lever: opts.lever !== false && opts.autoPull !== true,
       autoPull: opts.autoPull === true,
       autoPullDelay: opts.autoPullDelay,
-      // Forward the per-game customizations: themed crown + jackpot rule.
-      marquee: opts.marquee, title: opts.title,
+      // Forward the per-game customizations: themed crown + jackpot rule + lever cue.
+      marquee: opts.marquee, title: opts.title, leverHint: opts.leverHint,
       jackpot: opts.jackpot, jackpotColor: opts.jackpotColor,
       onPull: opts.onPull, onLock: opts.onLock, onClack: opts.onClack,
     });

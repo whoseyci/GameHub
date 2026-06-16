@@ -1497,6 +1497,19 @@ html, body, #app { height: 100dvh !important; min-height: 100dvh !important; max
   box-shadow:inset 0 1px 0 rgba(255,255,255,.12), 0 2px 4px rgba(0,0,0,.5)}
 .kit-slot.await-pull .kit-lever-knob{animation:kitLeverHint 1.6s ease-in-out infinite}
 @keyframes kitLeverHint{0%,100%{top:2%}55%{top:12%}}
+/* "your turn — pull it!" cue: a bobbing label + arrow pointing at the lever */
+.kit-lever-cue{display:flex;align-items:center;gap:calc(var(--reel-size,56px)*.06);align-self:center;
+  margin-left:calc(var(--reel-size,56px)*-.02);pointer-events:none;
+  transition:opacity .25s ease, transform .25s ease}
+.kit-lever-cue.gone{opacity:0;transform:translateX(8px) scale(.8)}
+.kit-lever-cue-label{font-size:calc(var(--reel-size,56px)*.2);font-weight:900;letter-spacing:.5px;
+  color:#0b1220;background:linear-gradient(180deg,#fde68a,#f59e0b);
+  padding:calc(var(--reel-size,56px)*.05) calc(var(--reel-size,56px)*.12);border-radius:999px;
+  box-shadow:0 2px 6px rgba(0,0,0,.45),inset 0 0 0 1px rgba(255,255,255,.4);white-space:nowrap}
+.kit-lever-cue-arrow{font-size:calc(var(--reel-size,56px)*.34);font-weight:900;color:#fcd34d;
+  text-shadow:0 1px 2px rgba(0,0,0,.5);animation:kitCueBob 1s ease-in-out infinite}
+@keyframes kitCueBob{0%,100%{transform:translateX(0)}50%{transform:translateX(5px)}}
+@media (prefers-reduced-motion: reduce){.kit-lever-cue-arrow{animation:none}}
 .kit-slot-lever.pulled .kit-lever-knob,.kit-slot.spinning .kit-lever-knob{top:50%;animation:none}
 .kit-slot-lever.pulled .kit-lever-arm,.kit-slot.spinning .kit-lever-arm{top:46%;height:30%}
 .kit-slot-lever:hover .kit-lever-knob{filter:brightness(1.12)}
@@ -1793,7 +1806,23 @@ html, body, #app { height: 100dvh !important; min-height: 100dvh !important; max
 @keyframes rw-pulse{0%,100%{box-shadow:inset 0 0 0 2px rgba(255,255,255,.92), 0 0 5px 0 rgba(255,255,255,.4)}
   50%{box-shadow:inset 0 0 0 2px rgba(255,255,255,1), 0 0 10px 2px rgba(255,255,255,.7)}}
 @media(prefers-reduced-motion:reduce){.rw-cell.rw-markable{animation:none}}
-.rw-cell.rw-sel{box-shadow:inset 0 0 0 2px #fff, 0 0 6px rgba(255,255,255,.7);filter:brightness(1.1);animation:none}
+/* selected THIS turn (not yet submitted): a slightly dimmed cell carrying a bold
+   white cross so it reads as "pending mark". Distinct from the final marked look. */
+.rw-cell.rw-sel{box-shadow:inset 0 0 0 2px #fff, 0 0 6px rgba(255,255,255,.75);filter:brightness(.82);animation:none}
+.rw-selcross{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  font-size:1.05em;font-weight:900;line-height:1;color:#fff;
+  text-shadow:0 1px 2px rgba(0,0,0,.65);pointer-events:none}
+/* PERFECT-MATCH block — an exact-fit clump you can fill in ONE tap. Golden glow. */
+.rw-cell.rw-perfect{box-shadow:inset 0 0 0 2px #fde68a, 0 0 9px 2px rgba(251,191,36,.75);
+  filter:brightness(1.16) saturate(1.16);animation:rw-perfect-pulse 1.1s ease-in-out infinite;cursor:pointer}
+.rw-cell.rw-perfect:hover{transform:scale(1.12);filter:brightness(1.3) saturate(1.25)}
+@keyframes rw-perfect-pulse{0%,100%{box-shadow:inset 0 0 0 2px #fde68a, 0 0 6px 1px rgba(251,191,36,.55)}
+  50%{box-shadow:inset 0 0 0 2px #fff7d6, 0 0 13px 3px rgba(251,191,36,.95)}}
+@media(prefers-reduced-motion:reduce){.rw-cell.rw-perfect{animation:none}}
+/* locked OUT: while a run is in progress, other-colour cells grey down so the
+   colour-lock is obvious (the run must stay one colour). */
+.rw-cell.rw-locked-out{filter:grayscale(.72) brightness(.6);cursor:default}
+.rw-cell.rw-locked-out:hover{transform:none;filter:grayscale(.72) brightness(.6)}
 .rw-cell.rw-marked{filter:brightness(.45) saturate(.5)}
 .rw-cell.rw-marked::after{content:'';position:absolute;inset:2px;border-radius:2px;
   background:linear-gradient(45deg,transparent 43%,#fff 45%,#fff 55%,transparent 57%),linear-gradient(-45deg,transparent 43%,#fff 45%,#fff 55%,transparent 57%);opacity:.85}

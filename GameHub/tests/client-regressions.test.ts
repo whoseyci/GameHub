@@ -225,6 +225,25 @@ describe("schema game client (Encore) regressions", () => {
     expect(schemaClient).toContain("rw-markable");
     expect(schemaClient).toContain("rwUsableColor");
   });
+
+  it("detects perfect-match blocks and fills them in one tap", () => {
+    expect(schemaClient).toContain("function rwPerfectBlocks");
+    expect(schemaClient).toContain("function rwFillBlock");
+    expect(schemaClient).toContain("rw-perfect");
+    // a perfect block must size-match a usable die exactly
+    expect(schemaClient).toContain("usableNums.has(clump.length)");
+  });
+
+  it("shows a coloured cross on selected cells and locks the colour", () => {
+    expect(schemaClient).toContain("rw-selcross");
+    expect(schemaClient).toContain("rw-locked-out");
+    // colour-lock greys out other-colour cells while a run is in progress
+    expect(schemaClient).toMatch(/runActive && cell\.c !== rwSelColor/);
+  });
+
+  it("passes a leverHint so the roller's slot machine shows a 'your roll' cue", () => {
+    expect(schemaClient).toContain("leverHint");
+  });
 });
 
 describe("client HTML injection regressions", () => {

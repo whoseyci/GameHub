@@ -131,6 +131,33 @@ describe("Kit.Roller — slot-machine structure + landing", () => {
     expect(resolved).toBe(true);
     expect(q(c, ".kit-reel.locked").length).toBe(1);   // landed + locked
   });
+
+  it("COLOUR reels never stream digits while spinning (bug fix: colour dice showed numbers)", () => {
+    // A colour reel lands on a plain swatch (symbol:"") or a glyph (★). Its
+    // SPINNING strip must infer the same kind of face — NOT the default 1-6 strip.
+    const c = win.document.createElement("div");
+    win.Kit.Roller.roll(c, [
+      { color: "blue", symbol: "" },     // colour swatch
+      { color: "purple", symbol: "★" }, // wild colour glyph
+      { color: "white", symbol: "3" },   // number reel (digits OK here)
+    ], { autoPull: false });
+    const reels = [...q(c, ".kit-reel")];
+    const blueCells = [...reels[0].querySelectorAll(".kit-reel-cell")].map((x: any) => x.textContent);
+    const wildCells = [...reels[1].querySelectorAll(".kit-reel-cell")].map((x: any) => x.textContent);
+    const numCells = [...reels[2].querySelectorAll(".kit-reel-cell")].map((x: any) => x.textContent);
+    expect(blueCells.some((t: string) => /[0-9]/.test(t))).toBe(false);  // no digits on colour reel
+    expect(wildCells.every((t: string) => t.trim() === "★" || t.trim() === "")).toBe(true);
+    expect(numCells.some((t: string) => /[0-9]/.test(t))).toBe(true);    // number reel still streams digits
+  });
+
+  it("shows a lever cue (arrow + label) for the active player, themed via opts.leverHint", () => {
+    const c = win.document.createElement("div");
+    win.Kit.Roller.roll(c, [{ color: "white", value: 4 }], { autoPull: false, leverHint: "YOUR ROLL" });
+    const cue = q(c, ".kit-lever-cue")[0];
+    expect(cue).toBeTruthy();
+    expect(q(c, ".kit-lever-cue-arrow").length).toBe(1);
+    expect(q(c, ".kit-lever-cue-label")[0].textContent).toBe("YOUR ROLL");
+  });
 });
 
 describe("Kit.Roller — per-game FX (marquee / jackpot / coin-drop)", () => {

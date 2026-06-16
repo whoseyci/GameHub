@@ -171,6 +171,72 @@
     return !!(faces.colors && faces.colors.includes('*') && wildLeft > 0);
   }
 
+  // Which NUMBER values can this player play right now? Concrete number dice +
+  // (if they hold a "?"/wild number and have budget) any value 1..maxRun.
+  function rwUsableNumbers(sc, p, faces, maxRun) {
+    const set = new Set();
+    if (!faces) return set;
+    (faces.numbers || []).forEach((n) => { if (n >= 1 && n <= 5) set.add(n); });
+    const wildLeft = (sc.wilds || 0) - ((p && p.wildsUsed) || 0);
+    if ((faces.numbers || []).includes(0) && wildLeft > 0) {
+      for (let n = 1; n <= Math.min(5, maxRun || 5); n++) set.add(n);
+    }
+    return set;
+  }
+
+  // PERFECT-MATCH blocks: a connected same-colour clump of UNMARKED cells that
+  // can be crossed off entirely in ONE mark right now — i.e. the clump is fully
+  // reachable (seeded from the centre column or next to a crossed box, then grown
+  // by same-colour adjacency), its colour is usable, and its size EXACTLY equals
+  // a number die you can play. Tapping any cell of such a block fills the WHOLE
+  // block in one click. Returns Map(cellKey -> {id, color, size}).
+  function rwPerfectBlocks(sc, p, faces, interactive) {
+    const blocks = new Map();
+    if (!interactive || !faces) return blocks;
+    if (rwSel.length) return blocks;                       // only when no run in progress
+    const mset = new Set(p.marked || []);
+    const seen = new Set();
+    let id = 0;
+    for (let r = 0; r < sc.grid.length; r++) {
+      for (let c = 0; c < sc.grid[r].length; c++) {
+        const cell = sc.grid[r][c];
+        if (!cell) continue;
+        const k = rwKey(r, c);
+        if (seen.has(k) || mset.has(k)) continue;
+        const color = cell.c;
+        if (!rwUsableColor(sc, p, faces, color)) { seen.add(k); continue; }
+        // flood the connected same-colour unmarked clump
+        const clump = []; const stack = [[r, c]]; const local = new Set([k]);
+        while (stack.length) {
+          const [cr, cc] = stack.pop();
+          clump.push([cr, cc]);
+          for (const [nr, nc] of [[cr - 1, cc], [cr + 1, cc], [cr, cc - 1], [cr, cc + 1]]) {
+            const cel = sc.grid[nr] && sc.grid[nr][nc];
+            const nk = rwKey(nr, nc);
+            if (cel && cel.c === color && !mset.has(nk) && !local.has(nk)) { local.add(nk); stack.push([nr, nc]); }
+          }
+        }
+        clump.forEach(([cr, cc]) => seen.add(rwKey(cr, cc)));
+        if (clump.length < 1 || clump.length > 5) continue;
+        // the clump must be reachable as one mark: at least one cell touches the
+        // centre column or a crossed box (cross-colour), then the rest connect.
+        const reachableSeed = clump.some(([cr, cc]) => {
+          if (cc === sc.startCol) return true;
+          for (const [nr, nc] of [[cr - 1, cc], [cr + 1, cc], [cr, cc - 1], [cr, cc + 1]]) {
+            if (mset.has(rwKey(nr, nc))) return true;
+          }
+          return false;
+        });
+        if (!reachableSeed) continue;
+        const usableNums = rwUsableNumbers(sc, p, faces, clump.length);
+        if (!usableNums.has(clump.length)) continue;       // size must match a die EXACTLY
+        const meta = { id: ++id, color, size: clump.length, cells: clump.map(([cr, cc]) => [cr, cc]) };
+        clump.forEach(([cr, cc]) => blocks.set(rwKey(cr, cc), meta));
+      }
+    }
+    return blocks;
+  }
+
   // "Smart hint" — the set of cells the player could legally start (or extend the
   // current run onto) RIGHT NOW. Highlighted on the board so players see exactly
   // what they can mark with the dice available to them this turn.
@@ -246,6 +312,7 @@
         Kit.Roller.roll(tray, reels, {
           size: dsize, marquee: 'ENCORE',
           lever: useLever, autoPull: !useLever, autoPullDelay: 0,
+          leverHint: 'YOUR ROLL',
         }).then(() => { decorateReels(); });
       } catch (e) { Kit.Roller.showStatic(tray, reels, { size: dsize }); decorateReels(); }
     } else {
@@ -353,24 +420,38 @@
     const wrap = node('div', 'rw-grid');
     const mset = new Set(p.marked || []);
     const chosen = new Set(rwSel.map(([r, c]) => rwKey(r, c)));
-    const hintable = rwHintSet(sc, p, faces, interactive);   // cells legal to mark NOW
+    const hintable = rwHintSet(sc, p, faces, interactive);     // cells legal to mark NOW
+    const perfect = rwPerfectBlocks(sc, p, faces, interactive); // whole-block one-tap fills
+    const runActive = rwSel.length > 0;                         // locked into rwSelColor
     for (let r = 0; r < sc.grid.length; r++) {
       const rowEl = node('div', 'rw-row');
       for (let c = 0; c < sc.grid[r].length; c++) {
         const cell = sc.grid[r][c];
         if (!cell) { rowEl.appendChild(node('div', 'rw-cell rw-gap')); continue; }
+        const k = rwKey(r, c);
         const el = node('div', 'rw-cell');
         el.style.background = sc.colors[cell.c] || '#64748b';
         if (c === sc.startCol) el.classList.add('rw-start');
         if (cell.star) el.appendChild(node('span', 'rw-star', '\u2605'));
-        const marked = mset.has(rwKey(r, c));
-        const sel = chosen.has(rwKey(r, c));
+        const marked = mset.has(k);
+        const sel = chosen.has(k);
+        const block = perfect.get(k);
         if (marked) el.classList.add('rw-marked');
-        if (sel) el.classList.add('rw-sel');
+        if (sel) {
+          // Selected this turn → coloured cross + drop the "available" glow.
+          el.classList.add('rw-sel');
+          el.appendChild(node('span', 'rw-selcross', '\u2715'));
+        }
         if (interactive && !marked) {
           el.classList.add('rw-click');
-          if (!sel && hintable.has(rwKey(r, c))) el.classList.add('rw-markable');
-          el.onclick = () => rwToggle(view, sc, p, r, c, cell.c);
+          // While a run is active the player is LOCKED to that colour: grey out
+          // every other-colour cell so the lock reads at a glance.
+          if (runActive && cell.c !== rwSelColor && !sel) el.classList.add('rw-locked-out');
+          if (!sel && block) el.classList.add('rw-perfect');     // exact one-tap fill
+          else if (!sel && hintable.has(k)) el.classList.add('rw-markable');
+          el.onclick = block
+            ? () => rwFillBlock(view, sc, p, block)
+            : () => rwToggle(view, sc, p, r, c, cell.c);
         }
         rowEl.appendChild(el);
       }
@@ -476,7 +557,13 @@
     const bar = node('div', 'rw-selbar');
     if (!interactive) return bar;
     const len = rwSel.length;
-    if (!len) { bar.appendChild(node('span', 'rw-hint', 'Tap connected boxes of one colour (from centre or next to a crossed box).')); return bar; }
+    if (!len) {
+      const anyPerfect = rwPerfectBlocks(sc, p, faces, interactive).size > 0;
+      bar.appendChild(node('span', 'rw-hint', anyPerfect
+        ? 'Tap a glowing block to fill it in one move \u2014 or tap connected boxes of one colour.'
+        : 'Tap connected boxes of one colour (from centre or next to a crossed box).'));
+      return bar;
+    }
     const concreteNum = faces.numbers.includes(len);
     const concreteColor = faces.colors.includes(rwSelColor);
     const wildCost = (concreteColor ? 0 : 1) + (concreteNum ? 0 : 1);
@@ -489,6 +576,21 @@
     clear.onclick = () => { rwSel = []; rwSelColor = null; dispatchView(window._renderView); };
     bar.appendChild(clear);
     return bar;
+  }
+
+  // ONE-CLICK FILL: a perfect-match block is, by construction, a fully-legal
+  // mark (exact size for a usable die, one usable colour, fully reachable). Tap
+  // it → select the whole block and submit immediately. The QoL win: no tedious
+  // cell-by-cell tapping for the common "fill this block" play.
+  function rwFillBlock(view, sc, p, block) {
+    if (!block || !block.cells || !block.cells.length) return;
+    const seat = view.yourSeat;
+    const faces = sc.myFaces || sc.roll;
+    rwSel = block.cells.map(([r, c]) => [r, c]);
+    rwSelColor = block.color;
+    if (rwSelValid(sc, p, faces)) { rwSubmit(view, sc, seat, faces); return; }
+    // Fallback (shouldn't happen): leave it selected for manual confirm.
+    dispatchView(window._renderView);
   }
 
   function rwSubmit(view, sc, seat, faces) {
