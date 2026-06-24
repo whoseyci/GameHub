@@ -88,6 +88,8 @@ export interface GameMeta {
    *  no-emoji-in-UI principle while preserving back-compat. */
   icon?: string;
   features?: GameFeatures; // optional capability manifest
+  /** U-1: Universal Schema paradigm header descriptor */
+  schemaSpec?: unknown;
   /** The action strings this game's applyAction() recognises. Used by the
    *  replay-determinism test (and useful as living documentation). Optional. */
   actionTypes?: readonly string[];
@@ -176,6 +178,8 @@ export interface SummaryRow { seat: number; name: string; score: number; delta?:
 
 export interface GameModule {
   meta: GameMeta;
+  /** S-2: Authoritative action schema guard. Parse and validate an unvalidated client action payload. Return a safe GameAction or null if invalid. */
+  parseAction?(raw: unknown): GameAction | null;
   create(playerNames: string[]): any;
   applyAction(state: any, seat: number, msg: GameAction): void;
   viewFor(state: any, seat: number): GameView;

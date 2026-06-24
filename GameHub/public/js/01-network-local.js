@@ -433,6 +433,7 @@ function maybeContextualEmotes(view){
   _emoteSeqSeen[g] = maxSeq;
 }
 function dispatchView(view){
+  if(typeof window.assertViewParity === 'function') window.assertViewParity(view);
   const client=window.GameClients[view.game];
   if(!client){toast('Unknown game: '+view.game);return;}
   window._renderView=view;

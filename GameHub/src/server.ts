@@ -61,11 +61,9 @@ type ConnState = { pid?: string; pids?: string[] };
 interface Member {
   id: string; name: string;
   bot?: boolean; difficulty?: string;
-  // W6: per-member ready flag for quick-play / group lobbies. Defaults to
-  // false; cleared back to false whenever a game ends. Auto-true for bots
-  // (they're always ready). When ALL non-bot members are ready AND the
-  // count is in the game's [min..max] range, maybeQuickStart() launches.
   ready?: boolean;
+  /** S-1: Cryptographic seat binding HMAC session token */
+  token?: string;
 }
 interface Pending { id: string; name: string; }
 
@@ -253,6 +251,12 @@ export class Room extends Server<Env> {
     this.ctx.storage.setAlarm(next);
   }
   private touch() { this.lastActivity = Date.now(); this.armAlarm(); }
+  private async issueSeatToken(seat: number, pid: string): Promise<string> {
+    const enc = new TextEncoder();
+    const key = await crypto.subtle.importKey("raw", enc.encode(this.name + "_secret_gh_seat_v1"), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+    const sig = await crypto.subtle.sign("HMAC", key, enc.encode(`${seat}:${pid}`));
+    return Array.from(new Uint8Array(sig)).map((b) => b.toString(16).padStart(2, "0")).join("");
+  }
   private log(entry: Omit<ReplayEntry, "seq" | "t">) { this.actionLog = appendReplay(this.actionLog, entry); }
 
   // ─── Crash isolation for game-module calls (S5) ──────────────────────────
@@ -451,16 +455,20 @@ export class Room extends Server<Env> {
       }
       return viewCache.get(s);
     };
-    // The bot manifest is identical for every connection; build it once.
+    // The bot manifest and seat roster are identical for every connection; build them once.
     const bots = g
       ? this.members.map((m, i) => (m.bot ? { seat: i, difficulty: m.difficulty } : null)).filter(Boolean)
       : null;
-    for (const conn of this.getConnections<ConnState>()) this.sendTo(conn, viewOf, bots);
+    const roster = g
+      ? this.members.map((m, i) => ({ seat: i, pid: m.id, name: m.name, bot: !!m.bot }))
+      : null;
+    for (const conn of this.getConnections<ConnState>()) this.sendTo(conn, viewOf, bots, roster);
   }
   private sendTo(
     conn: Connection<ConnState>,
     viewOf?: (s: number) => unknown,
     bots?: unknown,
+    roster?: unknown,
   ) {
     const pids = this.controlledPids(conn);
     const seat = this.primarySeatFor(conn);
@@ -470,6 +478,7 @@ export class Room extends Server<Env> {
       // Allow direct calls (e.g. onConnect) without a prebuilt cache.
       const view = viewOf ?? ((s: number) => g.viewFor(this.gameState, s));
       const botList = bots ?? this.members.map((m, i) => (m.bot ? { seat: i, difficulty: m.difficulty } : null)).filter(Boolean);
+      const seatRoster = roster ?? this.members.map((m, i) => ({ seat: i, pid: m.id, name: m.name, bot: !!m.bot }));
       const seats = this.controlledSeats(conn);
       conn.send(JSON.stringify({
         type: "game",
@@ -488,7 +497,7 @@ export class Room extends Server<Env> {
         // recent-players social graph: when a game ends, the client records
         // every non-bot opponent so it can suggest them next time. Only
         // public fields, identical to what's already in the 'room' broadcast.
-        seats: this.members.map((m, i) => ({ seat: i, pid: m.id, name: m.name, bot: !!m.bot })),
+        seats: seatRoster,
       }));
     } else {
       conn.send(JSON.stringify({
@@ -527,7 +536,7 @@ export class Room extends Server<Env> {
     // Drop floods before doing any parsing/work (S3). Auto-response ping/pong
     // frames never reach here, so this only bounds real client messages.
     if (!this.allowMessage(conn)) return;
-    const msg = parseClientMessage(raw as string);
+    const msg = parseClientMessage(raw as string, this.gameId ? getGame(this.gameId) : null);
     if (!msg) return;
 
     /* ---- join / reconnect ---- */
@@ -543,7 +552,14 @@ export class Room extends Server<Env> {
         const name: string = (seatInfo.name || "Player").slice(0, 20);
         const mi = this.memberIdx(pid);
         if (mi >= 0) {
+          const expectedToken = await this.issueSeatToken(mi, pid);
+          if (this.members[mi].token && msg.token && msg.token !== this.members[mi].token) {
+            try { conn.close(1008, "Seat token mismatch."); } catch {}
+            return;
+          }
+          this.members[mi].token = expectedToken;
           this.members[mi].name = name;
+          conn.send(JSON.stringify({ type: "seat_token", pid, seat: mi, token: expectedToken }));
         } else if (this.gameId) {
           if (this.pendingIdx(pid) < 0 && this.members.length + this.pending.length < this.maxPlayers) {
             this.pending.push({ id: pid, name });
@@ -561,11 +577,11 @@ export class Room extends Server<Env> {
             this.maxPlayers = Math.max(2, Math.min(8, msg.maxPlayers || 8));
           }
           if (this.members.length >= this.maxPlayers) { conn.send(JSON.stringify({ type: "room_full", message: "Room is full." })); return; }
-          // W6: in quick-play rooms, the host is auto-ready (they joined
-          // explicitly with intent to play). In persistent groups + custom
-          // rooms, ready stays false so all members opt in deliberately.
           const autoReady = !!this.quickGame && pid === this.hostId;
-          this.members.push({ id: pid, name, ready: autoReady });
+          const newIdx = this.members.length;
+          const expectedToken = await this.issueSeatToken(newIdx, pid);
+          this.members.push({ id: pid, name, ready: autoReady, token: expectedToken });
+          conn.send(JSON.stringify({ type: "seat_token", pid, seat: newIdx, token: expectedToken }));
         }
         this.log({ kind: "join", actor: pid, gameId: this.gameId, detail: { name, seat: this.memberIdx(pid), pending: this.pendingIdx(pid) >= 0 } });
       }
@@ -724,7 +740,7 @@ export class Room extends Server<Env> {
       if (this.currentReplay) pushAction(this.currentReplay, seat, { action: "next_round" }, this.actionSeq);
       this.log({ kind: "next_round", actor: pid, seat, gameId: this.gameId });
       this.scheduleTick();
-      await this.persistRoom(); await this.lobbyUpdate();
+      void this.persistRoom(); void this.lobbyUpdate();
       this.broadcastState();
       return;
     }
@@ -768,6 +784,10 @@ export class Room extends Server<Env> {
       if (actSeat < 0) { conn.send(JSON.stringify(actionRejected("You are spectating.", String(msg.action ?? "")))); return; }
       this.touch();
       const g = getGame(this.gameId)!;
+      if (g.parseAction && !g.parseAction(msg)) {
+        conn.send(JSON.stringify(actionRejected("Action schema verification failed.", String(msg.action ?? ""))));
+        return;
+      }
       // Crash-isolated + atomic: a throwing/buggy action rolls back cleanly and
       // surfaces an error instead of corrupting state or killing the room.
       const ok = this.safeMutate("applyAction", () => g.applyAction(this.gameState, actSeat, msg));
@@ -781,7 +801,7 @@ export class Room extends Server<Env> {
         this.finalizeCurrentReplay();
       }
       this.scheduleTick();
-      await this.persistRoom();
+      void this.persistRoom();
       this.broadcastState();
       return;
     }

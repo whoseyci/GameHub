@@ -175,6 +175,12 @@ function redactLastAction(la: any, seat: number): any {
 export const Schotten: GameModule = {
   meta: SchottenMeta,
 
+  parseAction(raw: any) {
+    if (!raw || typeof raw !== "object" || typeof raw.action !== "string") return null;
+    if (SchottenMeta.actionTypes && !(SchottenMeta.actionTypes as readonly string[]).includes(raw.action)) return null;
+    return raw;
+  },
+
   create(names: string[]): SchottenState {
     const rng = { rngState: makeSeed() };
     const deck = buildDeck(rng);

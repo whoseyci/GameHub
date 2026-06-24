@@ -61,6 +61,13 @@ export const TemplateGame: GameModule = {
       minDurationSec: 60,
       maxDurationSec: 300,
     },
+    schemaSpec: { kind: "template", version: 1 },
+  },
+
+  parseAction(raw: any) {
+    if (!raw || typeof raw !== "object" || typeof raw.action !== "string") return null;
+    if (raw.action === "example") return { action: "example" };
+    return null;
   },
 
   create(names: string[]): TemplateState {

@@ -101,12 +101,19 @@ export function makePressYourLuckGame(spec: PressYourLuckSpec): GameModule {
         usesTick: false,
         hasMultiRound: true,
         canSpectate: true,
-        minDurationSec: 120,
-        maxDurationSec: 900,
-      },
+      minDurationSec: 120,
+      maxDurationSec: 900,
     },
+    schemaSpec: spec,
+  },
 
-    create(playerNames: string[]) {
+  parseAction(raw: any) {
+    if (!raw || typeof raw !== "object" || typeof raw.action !== "string") return null;
+    if (["hit", "stay", "next_round"].includes(raw.action)) return raw;
+    return null;
+  },
+
+  create(playerNames: string[]) {
       const s: SState = {
         schemaVersion: 1,
         specId: spec.meta.id,

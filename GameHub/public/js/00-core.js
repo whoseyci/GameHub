@@ -30,10 +30,14 @@ const GameActions={
     if(mode==='local'){ if(typeof localAct==='function') localAct(resolvedSeat,msg); }
     else if(typeof net!=='undefined'){ net.send({type:'action',seat:resolvedSeat,...msg}); }
   },
-  // Convenience used by game clients' internal animation code, which carries a
-  // whole {action,...} message + an explicit seat. Was reimplemented per-game
-  // (split out the action key, re-send) — now shared (L4 de-dup).
   act(seat,msg={}){ const {action,...extra}=msg; this.send(action,extra,seat); }
+};
+window.assertViewParity = function(view) {
+  if(!view || typeof view !== 'object') return console.warn('Runtime View Guard: Invalid view envelope');
+  if(typeof view.game !== 'string') console.warn('Runtime View Guard: Missing view.game');
+  if(typeof view.phase !== 'string') console.warn('Runtime View Guard: Missing view.phase');
+  if(typeof view.over !== 'boolean') console.warn('Runtime View Guard: Missing view.over');
+  if(typeof view.yourSeat !== 'number') console.warn('Runtime View Guard: Missing view.yourSeat');
 };
 
 /* ====================== CARD KIT (shared) ====================== */

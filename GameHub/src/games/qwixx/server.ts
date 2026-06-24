@@ -162,6 +162,13 @@ export const Qwixx: GameModule = {
       maxDurationSec: 300,
     },
     actionTypes: ["mark","skip","finishTurn","next_round"] as const,
+    schemaSpec: { kind: "imperative", paradigm: "reducers", version: 1 },
+  },
+
+  parseAction(raw: any) {
+    if (!raw || typeof raw !== "object" || typeof raw.action !== "string") return null;
+    if (Qwixx.meta.actionTypes && !(Qwixx.meta.actionTypes as readonly string[]).includes(raw.action)) return null;
+    return raw;
   },
 
   create(names: string[]) {

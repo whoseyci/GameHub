@@ -277,6 +277,13 @@ export function makeRollAndWriteGame(spec: RollAndWriteSpec): GameModule {
       description: spec.meta.description, emoji: spec.meta.emoji, icon: spec.meta.icon,
       actionTypes: ["draft", "mark", "skip", "next_round"] as const,
       features: { hasBots: true, simultaneousTurns: true, usesTick: false, hasMultiRound: false, canSpectate: true, minDurationSec: 300, maxDurationSec: 1200 },
+      schemaSpec: spec,
+    },
+
+    parseAction(raw: any) {
+      if (!raw || typeof raw !== "object" || typeof raw.action !== "string") return null;
+      if (["draft", "mark", "skip", "next_round"].includes(raw.action)) return raw;
+      return null;
     },
 
     create(playerNames: string[]) {

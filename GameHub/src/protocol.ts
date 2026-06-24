@@ -1,5 +1,6 @@
 // protocol.ts — small runtime guard for untrusted websocket messages.
 // TypeScript types do not protect the server from malformed browser payloads.
+import type { GameModule } from "./games/types";
 
 export const MAX_WS_MESSAGE_BYTES = 16 * 1024;
 export const MAX_NAME_LENGTH = 20;
@@ -87,7 +88,7 @@ export function cleanSeats(value: unknown, fallbackPid: string, fallbackName: st
   return out.length ? out : [{ pid: fallbackPid, name: fallbackName }];
 }
 
-export function parseClientMessage(raw: string): any | null {
+export function parseClientMessage(raw: string, gameModule?: GameModule | null): any | null {
   if (typeof raw !== "string" || raw.length > MAX_WS_MESSAGE_BYTES) return null;
   let msg: any;
   try { msg = JSON.parse(raw); } catch { return null; }
@@ -99,10 +100,12 @@ export function parseClientMessage(raw: string): any | null {
       if (!pid) return null;
       const name = cleanName(msg.name);
       const seats = cleanSeats(msg.seats, pid, name);
+      const token = typeof msg.token === "string" ? cleanId(msg.token) || undefined : undefined;
       return {
         type: "join",
         pid,
         name,
+        token,
         seats,
         isPublic: cleanBool(msg.isPublic),
         // W6 part 2: group flag travels with the very first join (creates the
@@ -169,11 +172,17 @@ export function parseClientMessage(raw: string): any | null {
     }
     case "action": {
       if (typeof msg.action !== "string" || msg.action.length > 40) return null;
-      // Generic, bounded payload first — a new game can add fields without touching
-      // this parser (API-1). Then layer the hub-interpreted meta fields (seat/
-      // botSeat) on top so they always have the precise integer validation the
-      // server relies on for seat-control / bot-driving authorization.
-      const out: any = { type: "action", action: msg.action, ...cleanPayload(msg) };
+      const cleanedPayload = cleanPayload(msg);
+      const baseAction = { action: msg.action, ...cleanedPayload };
+      if (gameModule?.parseAction) {
+        const parsed = gameModule.parseAction(baseAction);
+        if (!parsed) return null;
+        const out: any = { type: "action", ...parsed };
+        if (Number.isInteger(msg.botSeat)) out.botSeat = msg.botSeat;
+        if (Number.isInteger(msg.seat)) out.seat = msg.seat;
+        return out;
+      }
+      const out: any = { type: "action", ...baseAction };
       if (Number.isInteger(msg.botSeat)) out.botSeat = msg.botSeat; else delete out.botSeat;
       if (Number.isInteger(msg.seat)) out.seat = msg.seat; else delete out.seat;
       return out;

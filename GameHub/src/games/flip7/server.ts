@@ -357,6 +357,13 @@ export const Flip7: GameModule = {
       maxDurationSec: 900,
     },
     actionTypes: ["hit","stay","target","give_second","next_round"] as const,
+    schemaSpec: { kind: "imperative", paradigm: "reducers", version: 1 },
+  },
+
+  parseAction(raw: any) {
+    if (!raw || typeof raw !== "object" || typeof raw.action !== "string") return null;
+    if (Flip7.meta.actionTypes && !(Flip7.meta.actionTypes as readonly string[]).includes(raw.action)) return null;
+    return raw;
   },
 
   create(names) { return fresh(names, names.map(() => 0)); },

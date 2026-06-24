@@ -455,7 +455,13 @@
       emoji: "\u{1F0CF}",
       icon: "cards",
       features: SkyjoFeatures,
-      actionTypes: ["draw_deck", "take_discard", "discard_drawn", "swap", "reveal", "reveal_after_discard", "tiebreaker", "next_round"]
+      actionTypes: ["draw_deck", "take_discard", "discard_drawn", "swap", "reveal", "reveal_after_discard", "tiebreaker", "next_round"],
+      schemaSpec: { kind: "imperative", paradigm: "reducers", version: 1 }
+    },
+    parseAction(raw) {
+      if (!raw || typeof raw !== "object" || typeof raw.action !== "string") return null;
+      if (Skyjo.meta.actionTypes && !Skyjo.meta.actionTypes.includes(raw.action)) return null;
+      return raw;
     },
     create(names) {
       const g = new GameEngine(names);
@@ -992,7 +998,13 @@
         minDurationSec: 180,
         maxDurationSec: 900
       },
-      actionTypes: ["hit", "stay", "target", "give_second", "next_round"]
+      actionTypes: ["hit", "stay", "target", "give_second", "next_round"],
+      schemaSpec: { kind: "imperative", paradigm: "reducers", version: 1 }
+    },
+    parseAction(raw) {
+      if (!raw || typeof raw !== "object" || typeof raw.action !== "string") return null;
+      if (Flip7.meta.actionTypes && !Flip7.meta.actionTypes.includes(raw.action)) return null;
+      return raw;
     },
     create(names) {
       return fresh(names, names.map(() => 0));
@@ -1257,7 +1269,13 @@
         minDurationSec: 90,
         maxDurationSec: 300
       },
-      actionTypes: ["mark", "skip", "finishTurn", "next_round"]
+      actionTypes: ["mark", "skip", "finishTurn", "next_round"],
+      schemaSpec: { kind: "imperative", paradigm: "reducers", version: 1 }
+    },
+    parseAction(raw) {
+      if (!raw || typeof raw !== "object" || typeof raw.action !== "string") return null;
+      if (Qwixx.meta.actionTypes && !Qwixx.meta.actionTypes.includes(raw.action)) return null;
+      return raw;
     },
     create(names) {
       const rng = { rngState: makeSeed() };
@@ -1475,7 +1493,8 @@
       minDurationSec: 300,
       maxDurationSec: 900
     },
-    actionTypes: ["place", "claim", "end", "next_round"]
+    actionTypes: ["place", "claim", "end", "next_round"],
+    schemaSpec: { kind: "imperative", paradigm: "reducers", version: 1 }
   };
 
   // src/games/schotten/server.ts
@@ -1591,6 +1610,11 @@
   }
   var Schotten = {
     meta: SchottenMeta,
+    parseAction(raw) {
+      if (!raw || typeof raw !== "object" || typeof raw.action !== "string") return null;
+      if (SchottenMeta.actionTypes && !SchottenMeta.actionTypes.includes(raw.action)) return null;
+      return raw;
+    },
     create(names) {
       const rng = { rngState: makeSeed() };
       const deck = buildDeck2(rng);
@@ -1910,7 +1934,13 @@
           canSpectate: true,
           minDurationSec: 120,
           maxDurationSec: 900
-        }
+        },
+        schemaSpec: spec
+      },
+      parseAction(raw) {
+        if (!raw || typeof raw !== "object" || typeof raw.action !== "string") return null;
+        if (["hit", "stay", "next_round"].includes(raw.action)) return raw;
+        return null;
       },
       create(playerNames) {
         const s = {
@@ -2251,7 +2281,13 @@
         emoji: spec.meta.emoji,
         icon: spec.meta.icon,
         actionTypes: ["draft", "mark", "skip", "next_round"],
-        features: { hasBots: true, simultaneousTurns: true, usesTick: false, hasMultiRound: false, canSpectate: true, minDurationSec: 300, maxDurationSec: 1200 }
+        features: { hasBots: true, simultaneousTurns: true, usesTick: false, hasMultiRound: false, canSpectate: true, minDurationSec: 300, maxDurationSec: 1200 },
+        schemaSpec: spec
+      },
+      parseAction(raw) {
+        if (!raw || typeof raw !== "object" || typeof raw.action !== "string") return null;
+        if (["draft", "mark", "skip", "next_round"].includes(raw.action)) return raw;
+        return null;
       },
       create(playerNames) {
         const s = {
@@ -2592,6 +2628,7 @@
     icon: g.meta.icon,
     // Phosphor icon name; the hub UI prefers it over emoji.
     features: g.meta.features,
+    schemaSpec: g.meta.schemaSpec,
     // Schema-defined games carry this so the bundled client attaches the generic
     // renderer (no hand-written client module). Hand-written games omit it.
     ...g.meta.__schema ? { __schema: true, __schemaKind: g.meta.__schemaKind } : {}

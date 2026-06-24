@@ -81,6 +81,13 @@ export const Skyjo: GameModule = {
     icon: "cards",
     features: SkyjoFeatures,
     actionTypes: ["draw_deck","take_discard","discard_drawn","swap","reveal","reveal_after_discard","tiebreaker","next_round"] as const,
+    schemaSpec: { kind: "imperative", paradigm: "reducers", version: 1 },
+  },
+
+  parseAction(raw: any) {
+    if (!raw || typeof raw !== "object" || typeof raw.action !== "string") return null;
+    if (Skyjo.meta.actionTypes && !(Skyjo.meta.actionTypes as readonly string[]).includes(raw.action)) return null;
+    return raw;
   },
 
   create(names) {
