@@ -247,8 +247,8 @@ export class GameEngine {
         this.lastAction = { type: "starter", player: tied[0], t: ++this.actionSeq };
         this.tiebreakerPlayers = [];
       } else {
-        this.tiebreakerPlayers = tied;
-        for (const i of tied) this.players[i].revealCount = 1;
+        this.tiebreakerPlayers = this.players.map((_, i) => i);
+        for (const p of this.players) p.revealCount = 1;
       }
       this.pendingTransition = null;
       return;

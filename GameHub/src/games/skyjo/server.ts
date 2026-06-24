@@ -23,11 +23,9 @@ function load(state: any): GameEngine {
 /** Build a standardized GameViewState so the hub stays game-agnostic. */
 function buildViewState(g: GameEngine, seat: number): GameViewState {
   const isReveal = g.phase === "REVEAL";
+  const isTb = isReveal && g.tiebreakerPlayers.length > 0;
   return {
-    currentSeat:
-      isReveal && g.tiebreakerPlayers.length
-        ? g.tiebreakerPlayers[0]
-        : g.currentPlayer,
+    currentSeat: isTb ? -1 : g.currentPlayer,
     pendingAction: g.turnAction,
     players: g.players.map((p, i) => ({
       seat: i,
@@ -169,10 +167,11 @@ export const Skyjo: GameModule = {
       // parallel until they've each revealed 2. Returning hints only for
       // unrevealed cells lets the client paint them as drop targets.
       const p = state.players?.[seat]; if (!p) return out;
-      const revealed = (p.board || []).filter((c: any) => c.revealed).length;
-      if (revealed >= 2) return out;
+      if ((p.revealCount ?? 0) >= 2) return out;
+      const isTb = Array.isArray(state.tiebreakerPlayers) && state.tiebreakerPlayers.length > 0;
+      const actionName = isTb ? "tiebreaker" : "reveal";
       (p.board || []).forEach((c: any, idx: number) => {
-        if (!c.revealed) out.push({ action: "reveal", index: idx });
+        if (!c.revealed) out.push({ action: actionName, index: idx });
       });
       return out;
     }

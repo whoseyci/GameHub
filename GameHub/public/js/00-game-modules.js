@@ -312,8 +312,8 @@
           this.lastAction = { type: "starter", player: tied[0], t: ++this.actionSeq };
           this.tiebreakerPlayers = [];
         } else {
-          this.tiebreakerPlayers = tied;
-          for (const i of tied) this.players[i].revealCount = 1;
+          this.tiebreakerPlayers = this.players.map((_, i) => i);
+          for (const p2 of this.players) p2.revealCount = 1;
         }
         this.pendingTransition = null;
         return;
@@ -412,8 +412,9 @@
   }
   function buildViewState(g, seat) {
     const isReveal = g.phase === "REVEAL";
+    const isTb = isReveal && g.tiebreakerPlayers.length > 0;
     return {
-      currentSeat: isReveal && g.tiebreakerPlayers.length ? g.tiebreakerPlayers[0] : g.currentPlayer,
+      currentSeat: isTb ? -1 : g.currentPlayer,
       pendingAction: g.turnAction,
       players: g.players.map((p, i) => ({
         seat: i,
@@ -527,10 +528,11 @@
       if (state.phase === "REVEAL") {
         const p = state.players?.[seat];
         if (!p) return out;
-        const revealed = (p.board || []).filter((c) => c.revealed).length;
-        if (revealed >= 2) return out;
+        if ((p.revealCount ?? 0) >= 2) return out;
+        const isTb = Array.isArray(state.tiebreakerPlayers) && state.tiebreakerPlayers.length > 0;
+        const actionName = isTb ? "tiebreaker" : "reveal";
         (p.board || []).forEach((c, idx) => {
-          if (!c.revealed) out.push({ action: "reveal", index: idx });
+          if (!c.revealed) out.push({ action: actionName, index: idx });
         });
         return out;
       }
