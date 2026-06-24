@@ -165,6 +165,7 @@
     }
     st.lastScale = s;            // remember the CORRECTED scale for hysteresis
     content.dataset.kitFitScale = s.toFixed(3);
+    if (typeof Kit !== 'undefined' && Kit.CardManager) Kit.CardManager.sync();
 
     // ── Deferred overflow correction ─────────────────────────────────────
     // Measurement can under-report height (a fixed-size hand/row that doesn't
@@ -205,6 +206,7 @@
         st.wrapper.style.width = Math.round(res.nat.w * corrected) + 'px';
       }
       content.dataset.kitFitScale = corrected.toFixed(3);
+      if (typeof Kit !== 'undefined' && Kit.CardManager) Kit.CardManager.sync();
       st._correcting = false;
     });
   }

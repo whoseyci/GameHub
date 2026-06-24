@@ -177,22 +177,7 @@ const Kit=(()=>{
 
     function stableRect(anchor){
       if(!anchor)return null;
-      const r=anchor.getBoundingClientRect();
-      let el=anchor.parentElement;
-      while(el&&el!==document.body){
-        const cs=getComputedStyle(el),t=cs.transform;
-        if(t&&t!=='none'){
-          const pr=el.getBoundingClientRect(),pw=el.offsetWidth,ph=el.offsetHeight;
-          if(pw>0&&Math.abs(pr.width/pw-1)>0.01){
-            const sx=pr.width/pw,sy=pr.height/ph;
-            const pcx=pr.left+pr.width/2,pcy=pr.top+pr.height/2;
-            const dx=r.left-pcx,dy=r.top-pcy;
-            return {top:pcy+dy/sy,left:pcx+dx/sx,width:r.width/sx,height:r.height/sy,right:pcx+dx/sx+r.width/sx,bottom:pcy+dy/sy+r.height/sy};
-          }
-        }
-        el=el.parentElement;
-      }
-      return r;
+      return anchor.getBoundingClientRect();
     }
 
     // Card height/width ratio from the canonical --kc-aspect ("W / H"). Returns
