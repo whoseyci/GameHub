@@ -201,8 +201,8 @@
   .held-sub{color:var(--text-dim);font-size:.78rem;font-weight:700}
 
   .boards-container{display:flex;flex-wrap:wrap;gap:clamp(14px,4vw,30px);justify-content:center;align-items:flex-start;width:100%;max-width:1200px;margin:0 auto;padding:6px 12px calc(96px + env(safe-area-inset-bottom,0px))}
-  .player-board{background:var(--surface);border:3px solid var(--border);border-radius:20px;padding:clamp(12px,3.5vw,20px);position:relative;transition:transform .35s var(--spring),border-color .3s,box-shadow .3s;box-shadow:0 10px 20px rgba(0,0,0,.2)}
-  .player-board.active-turn{border-color:var(--accent);transform:translateY(-4px) scale(1.01);animation:activeGlow 2s ease-in-out infinite}
+  .player-board{background:var(--surface);border:3px solid var(--border);border-radius:20px;padding:clamp(12px,3.5vw,20px);position:relative;transition:border-color .3s,box-shadow .3s;box-shadow:0 10px 20px rgba(0,0,0,.2)}
+  .player-board.active-turn{border-color:var(--accent);animation:activeGlow 2s ease-in-out infinite}
   .player-board.me{outline:2px dashed rgba(96,165,250,.5);outline-offset:4px}
   .board-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;font-weight:800;font-size:clamp(.95rem,3vw,1.2rem);gap:8px}
   .score-badge{background:var(--surface-light);padding:4px 9px;border-radius:12px;font-size:clamp(.7rem,2.4vw,.95rem);color:var(--text-dim);white-space:nowrap}

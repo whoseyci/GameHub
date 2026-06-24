@@ -146,9 +146,7 @@
     // Smooth scale changes so a board that re-fits mid-game (e.g. the top area
     // grew/shrank and handed the board more/less room) GLIDES to its new size
     // instead of popping. The very first fit is instant (no intro animation).
-    if (!REDUCE && opts.smooth !== false) {
-      content.style.transition = st.didFirstFit ? 'transform .22s cubic-bezier(.22,.61,.36,1)' : 'none';
-    }
+    content.style.transition = 'none';
     st.didFirstFit = true;
     // Pin the content to its measured NATURAL size so a responsive width:100% /
     // height:100% can't re-expand against the (scaled) wrapper — the transform
