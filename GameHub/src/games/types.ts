@@ -182,7 +182,7 @@ export interface GameModule {
   meta: GameMeta;
   /** S-2: Authoritative action schema guard. Parse and validate an unvalidated client action payload. Return a safe GameAction or null if invalid. */
   parseAction?(raw: unknown): GameAction | null;
-  create(playerNames: string[]): any;
+  create(playerNames: string[], variant?: string): any;
   applyAction(state: any, seat: number, msg: GameAction): void;
   viewFor(state: any, seat: number): GameView;
   isOver(state: any): boolean;

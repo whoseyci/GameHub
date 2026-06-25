@@ -92,8 +92,9 @@ export const Skyjo: GameModule = {
     return raw;
   },
 
-  create(names) {
+  create(names, variant) {
     const g = new GameEngine(names);
+    if (variant) g.variant = variant;
     g.start();
     return g.toState();
   },

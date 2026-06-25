@@ -827,7 +827,7 @@ export class Room extends Server<Env> {
     // gameId set but no state (a permanently broken room). On failure we abort
     // the launch and stay in the lobby.
     let created: any = null;
-    try { created = g.create(this.members.map((m) => m.name)); }
+    try { created = g.create(this.members.map((m) => m.name), variant); }
     catch (e) { console.error(`create() threw for ${gameId}`, e); return `${g.meta.name} failed to start.`; }
     this.gameId = gameId;
     this.gameState = created;

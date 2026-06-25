@@ -87,6 +87,7 @@
       // monotonic action counter (deterministic stand-in for wall-clock; makes each lastAction unique for client change-detection)
       __publicField(this, "lastAction", null);
       __publicField(this, "pendingTransition", null);
+      __publicField(this, "variant", "standard");
       this.players = names.map((n) => ({
         name: n,
         board: Array.from({ length: 12 }, () => ({ value: 0, revealed: false, cleared: false })),
@@ -338,6 +339,10 @@
         for (const c of p.board) if (!c.cleared) c.revealed = true;
         this.checkTriplets(this.players.indexOf(p));
         p.roundScore = p.board.filter((c) => !c.cleared).reduce((s, c) => s + c.value, 0);
+        if (this.variant === "extreme") {
+          const clearedCols = p.board.filter((c) => c.cleared).length / 3;
+          p.roundScore -= clearedCols * 5;
+        }
       }
       const ender = this.players[this.roundEnder];
       const minOther = Math.min(
@@ -345,7 +350,8 @@
       );
       if (ender.roundScore >= minOther && ender.roundScore > 0) ender.roundScore *= 2;
       for (const p of this.players) p.totalScore += p.roundScore;
-      this.phase = this.players.some((p) => p.totalScore >= 100) ? "GAME_OVER" : "ROUND_END";
+      const targetThreshold = this.variant === "sprint" ? 50 : 100;
+      this.phase = this.players.some((p) => p.totalScore >= targetThreshold) ? "GAME_OVER" : "ROUND_END";
       const min = Math.min(...this.players.map((p) => p.totalScore));
       this.lastAction = {
         type: this.phase === "GAME_OVER" ? "game_over" : "round_end",
@@ -402,7 +408,8 @@
     "tiebreakerPlayers",
     "lastAction",
     "pendingTransition",
-    "actionSeq"
+    "actionSeq",
+    "variant"
   ]);
   var GameEngine = _GameEngine;
 
@@ -468,8 +475,9 @@
       if (Skyjo.meta.actionTypes && !Skyjo.meta.actionTypes.includes(raw.action)) return null;
       return raw;
     },
-    create(names) {
+    create(names, variant) {
       const g = new GameEngine(names);
+      if (variant) g.variant = variant;
       g.start();
       return g.toState();
     },
