@@ -24,6 +24,16 @@ describe("Skyjo rule regressions", () => {
 });
 
 describe("Flip7 rule regressions", () => {
+  it("starts every round with empty player lines and requires the first action to be Hit", () => {
+    const standard: any = Flip7.create(["A", "B"]);
+    expect(standard.players.every((p: any) => p.tableau.length === 0 && p.nums.length === 0 && p.mods.length === 0)).toBe(true);
+    expect(Flip7.legalActions!(standard, standard.current)).toEqual([{ action: "hit" }]);
+
+    const vengeance: any = Flip7.create(["A", "B"], "vengeance");
+    expect(vengeance.players.every((p: any) => p.tableau.length === 0 && p.nums.length === 0 && p.mods.length === 0)).toBe(true);
+    expect(Flip7.legalActions!(vengeance, vengeance.current)).toEqual([{ action: "hit" }]);
+  });
+
   it("emits normalized event schema for a normal hit", () => {
     const state: any = Flip7.create(["A", "B"]);
     state.current = 0;
@@ -110,9 +120,19 @@ describe("Flip7 rule regressions", () => {
 
   it("discard pile PERSISTS across rounds and the deck is not rebuilt on next_round", () => {
     const state: any = Flip7.create(["A", "B"]);
-    // End round 1 so boards sweep into discard.
-    Flip7.applyAction(state, state.current, { action: "stay" });
-    Flip7.applyAction(state, state.current, { action: "stay" });
+    // Players no longer start with an opening card; seed a mid-round board so
+    // ending round 1 proves board cards sweep into the persistent discard.
+    state.current = 0;
+    const takeNum = () => {
+      const idx = state.deck.findIndex((c: any) => c.kind === "num");
+      return state.deck.splice(idx, 1)[0];
+    };
+    const c0 = takeNum();
+    const c1 = takeNum();
+    state.players[0].nums = [c0.v]; state.players[0].tableau = [c0];
+    state.players[1].nums = [c1.v]; state.players[1].tableau = [c1];
+    Flip7.applyAction(state, 0, { action: "stay" });
+    Flip7.applyAction(state, 1, { action: "stay" });
     expect(state.phase === "ROUND_END" || state.phase === "GAME_OVER").toBe(true);
     const discardAfterR1 = state.discard.length;
     const deckAfterR1 = state.deck.length;

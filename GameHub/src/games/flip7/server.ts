@@ -135,15 +135,10 @@ function normalizeFlip7Event(e: any): any {
 }
 function emit(s: State, e: any) { const n = normalizeFlip7Event(e); n.seq = ++s.seq; s.events.push(n); s.log = n; }
 
-// Deal the opening hand (one NUMBER/MOD each; action cards reshuffled so nobody
-// starts frozen) from the CURRENT deck/discard. draw() reshuffles the discard
-// back in only when the deck runs dry, so the deck persists across rounds.
+// Flip 7 in this hub starts with an empty line for every player: no one begins
+// a round with a pre-pulled card. The first visible card comes from that
+// player's first Hit. The deck/discard still persist round-to-round.
 function dealOpeningHands(s: State) {
-  for (let i = 0; i < s.players.length; i++) {
-    let c = draw(s); let guard = 0;
-    while (c.kind === "act" && guard++ < 200) { s.deck.unshift(c); shuffleInPlace(s.deck, s); c = draw(s); }
-    placeCard(s, i, c);
-  }
   s.current = firstActive(s, 0);
 }
 
@@ -715,7 +710,7 @@ export const Flip7: GameModule = {
     const p = state.players[seat];
     if (seat !== state.current) return [];
     if (p?.status !== "active") return [];
-    if (p.mustHit) return [{ action: "hit" }];
+    if (p.mustHit || p.tableau.length === 0) return [{ action: "hit" }];
     return [{ action: "hit" }, { action: "stay" }];
   },
   summarize(state: State) { return { round: state.round, current: state.current, pendingAction: state.pendingAction }; },

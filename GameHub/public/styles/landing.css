@@ -596,6 +596,20 @@ body:not(.in-game) .landing-screen{ padding-top:var(--mode-header-h) !important;
   display:flex; flex-direction:column; gap:8px;
   margin-bottom:12px;
 }
+.seat-variant-block{
+  margin:0 0 14px;
+  padding:10px;
+  border:1px solid var(--border);
+  border-radius:12px;
+  background:rgba(255,255,255,.04);
+}
+.seat-variant-label{
+  font-size:.7rem; font-weight:900; letter-spacing:.08em; text-transform:uppercase;
+  color:var(--text-dim); margin-bottom:8px;
+}
+.seat-variant{ width:100%; display:flex; flex-wrap:wrap; gap:6px; }
+.seat-variant button{ flex:1 1 150px; }
+.seat-variant-desc{ font-size:.74rem; line-height:1.35; margin-top:8px; }
 .seat-screen-add-row{
   display:flex; gap:8px; margin-bottom:18px;
 }

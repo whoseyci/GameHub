@@ -712,16 +712,6 @@
     s.log = n;
   }
   function dealOpeningHands(s) {
-    for (let i = 0; i < s.players.length; i++) {
-      let c = draw(s);
-      let guard = 0;
-      while (c.kind === "act" && guard++ < 200) {
-        s.deck.unshift(c);
-        shuffleInPlace(s.deck, s);
-        c = draw(s);
-      }
-      placeCard(s, i, c);
-    }
     s.current = firstActive(s, 0);
   }
   function fresh(names, banked, rngState = makeSeed(), variant = "standard") {
@@ -1398,7 +1388,7 @@
       const p = state.players[seat];
       if (seat !== state.current) return [];
       if (p?.status !== "active") return [];
-      if (p.mustHit) return [{ action: "hit" }];
+      if (p.mustHit || p.tableau.length === 0) return [{ action: "hit" }];
       return [{ action: "hit" }, { action: "stay" }];
     },
     summarize(state) {

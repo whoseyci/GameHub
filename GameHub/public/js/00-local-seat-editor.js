@@ -34,6 +34,38 @@
     return Array.isArray(window.localSeats) ? window.localSeats : [];
   }
 
+  function variantsFor(meta) {
+    return (meta?.variants || meta?.features?.variants || []).filter((v) => v && v.id);
+  }
+  function selectedVariantId(gid, variants) {
+    window._localVariantByGame = window._localVariantByGame || {};
+    const saved = window._localVariantByGame[gid];
+    if (saved && variants.some((v) => v.id === saved)) return saved;
+    try {
+      const live = window.localGameId === gid && window.localEngine?._state ? window.localEngine._state().variant : null;
+      if (live && variants.some((v) => v.id === live)) return live;
+    } catch {}
+    return variants[0]?.id || 'standard';
+  }
+  function setVariant(gid, vid) {
+    if (!gid || !vid) return;
+    window._localVariantByGame = window._localVariantByGame || {};
+    window._localVariantByGame[gid] = vid;
+    renderAll();
+  }
+  function renderVariantPicker(meta) {
+    const variants = variantsFor(meta);
+    if (variants.length <= 1) return '';
+    const selected = selectedVariantId(meta.id, variants);
+    return `<div class="seat-variant-block">
+      <div class="seat-variant-label">Variant</div>
+      <div class="seg seat-variant" data-game="${esc(meta.id)}">
+        ${variants.map((v) => `<button data-vid="${esc(v.id)}" class="${v.id === selected ? 'on' : ''}" title="${esc(v.description || v.name)}">${esc(v.name)}</button>`).join('')}
+      </div>
+      <div class="muted seat-variant-desc">${esc(variants.find((v) => v.id === selected)?.description || '')}</div>
+    </div>`;
+  }
+
   function setSeats(next) {
     if (typeof window.setLocalSeats === 'function') window.setLocalSeats(next);
     else if (Array.isArray(window.localSeats)) { window.localSeats.length = 0; for (const s of next) window.localSeats.push(s); }
@@ -84,18 +116,8 @@
     const isPre = !!window._pendingLocalGame;
     const gid = isPre ? window._pendingLocalGame : (window.localGameId || 'skyjo');
     const g = (window.GameCatalogue||[]).find(x => x.id === gid);
-    const variants = g?.variants || g?.features?.variants;
-    if (variants && variants.length > 0 && !window._localVariantPickSelected) {
-      if (typeof window.openVariantPicker === 'function') {
-        window.openVariantPicker(gid, variants, (vid) => {
-          window._localVariantPick = vid;
-          window._localVariantPickSelected = true;
-          commit();
-        });
-        return;
-      }
-    }
-    window._localVariantPickSelected = false;
+    const variants = variantsFor(g);
+    window._localVariantPick = variants.length ? selectedVariantId(gid, variants) : null;
     if (isPre) {
       // Set the game id the start helper reads. setLocalPick is the
       // public setter exposed by 01-network-local.js.
@@ -150,6 +172,7 @@
           <div class="muted seat-screen-meta">${esc(meta.description || '')}</div>
         </div>
       </div>
+      ${renderVariantPicker(meta)}
       <div class="seat-screen-rows">${renderRowsHtml(list, { canRemove: list.length > 1 })}</div>
       <div class="seat-screen-add-row">
         <button class="btn secondary" ${canAdd ? '' : 'disabled'} onclick="LocalSeatEditor.addHuman()">${Kit.Icon.html('plus', { size: 14, cls: 'kit-icon-inline' })}Player</button>
@@ -203,6 +226,7 @@
         <div class="lse-title">${Kit.Icon.html('users', { size: 16 })}<span>Seats</span> <span class="muted">${list.length}/${max}</span></div>
         <button class="icon-btn" onclick="LocalSeatEditor.closeOverlay()" title="Close — keep current seats">${Kit.Icon.html('x', { size: 16 })}</button>
       </div>
+      ${renderVariantPicker(meta)}
       <div class="lse-seats">${renderRowsHtml(list, { canRemove: list.length > min })}</div>
       <div class="lse-actions">
         <button class="btn secondary" ${canAdd ? '' : 'disabled'} onclick="LocalSeatEditor.addHuman()">${Kit.Icon.html('plus', { size: 13, cls: 'kit-icon-inline' })}Player</button>
@@ -246,6 +270,10 @@
       const seg = btn.parentElement;
       const i = Number(seg.dataset.seat);
       btn.addEventListener('click', () => changeDifficulty(i, btn.dataset.d));
+    });
+    host.querySelectorAll('.seat-variant button').forEach((btn) => {
+      const seg = btn.parentElement;
+      btn.addEventListener('click', () => setVariant(seg.dataset.game, btn.dataset.vid));
     });
   }
 
@@ -299,7 +327,7 @@
     openOverlay, closeOverlay, toggleOverlay,
     toggle: toggleOverlay, // alias used by the topbar #seatsBtn
     commit,
-    addHuman, addBot, removeSeat, changeDifficulty,
+    addHuman, addBot, removeSeat, changeDifficulty, setVariant,
     renderAll, refreshButton,
     // Kept for back-compat with the in-game smoke that called .open()/.close()
     // directly. Both map to the overlay (the only in-game surface now).
