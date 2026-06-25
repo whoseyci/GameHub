@@ -76,6 +76,49 @@ describe("Skyjo rule regressions", () => {
     expect(state.players[0].board.slice(0, 4).every((c: any) => c.cleared)).toBe(true);
     expect(state.discard[state.discard.length - 1]).toBe(99);
   });
+
+  it("Skyjo Action offers a free action card when a star is revealed or placed", () => {
+    const state: any = Skyjo.create(["A", "B"], "action");
+    state.phase = "PLAY"; state.currentPlayer = 0; state.turnAction = "must_reveal";
+    state.players[0].board[0] = { value: 99, revealed: false, cleared: false };
+    const before = state.players[0].actionHand.length;
+    Skyjo.applyAction(state, 0, { action: "reveal_after_discard", index: 0 });
+    expect(state.skyjoAction?.kind).toBe("star_action");
+    expect(Skyjo.legalActions!(state, 0)).toContainEqual({ action: "take_free_action" });
+    Skyjo.applyAction(state, 0, { action: "take_free_action" });
+    expect(state.players[0].actionHand.length).toBe(before + 1);
+  });
+
+  it("Skyjo Action prompts for all-star rows too, allowing players to keep or clear them", () => {
+    const state: any = Skyjo.create(["A", "B"], "action");
+    state.phase = "PLAY"; state.currentPlayer = 0; state.turnAction = null;
+    state.players[0].board = Array.from({ length: 12 }, (_, i) => ({ value: i < 4 ? 99 : 0, revealed: true, cleared: false }));
+    Skyjo.applyAction(state, 0, { action: "draw_deck" });
+    state.drawnCard = 1;
+    Skyjo.applyAction(state, 0, { action: "swap", index: 4 });
+    expect(state.skyjoAction?.kind).toBe("star_clear");
+    expect(Skyjo.legalActions!(state, 0).some((a: any) => a.action === "skip_clear_group")).toBe(true);
+  });
+
+  it("Skyjo Action scores kept star rows and columns as negative points", () => {
+    const state: any = Skyjo.create(["A", "B"], "action");
+    state.phase = "PLAY"; state.currentPlayer = 0; state.turnAction = null;
+    state.players[0].board = Array.from({ length: 12 }, (_, i) => ({ value: i < 4 ? 99 : 0, revealed: true, cleared: false }));
+    state.players[1].board = Array.from({ length: 12 }, () => ({ value: 0, revealed: true, cleared: false }));
+    state.phase = "FINAL_TURNS"; state.roundEnder = 0; state.currentPlayer = 1; state.finalTurnsLeft = 0; state.turnAction = "turn_end_delay";
+    Skyjo.completeTick!(state);
+    expect(state.players[0].roundScore).toBe(-15);
+  });
+
+  it("Skyjo Action blocks action play/discard/take during final turns", () => {
+    const state: any = Skyjo.create(["A", "B"], "action");
+    state.phase = "FINAL_TURNS"; state.currentPlayer = 1; state.turnAction = null;
+    state.players[1].actionHand = [{ kind: "double", fresh: false }];
+    const legal = Skyjo.legalActions!(state, 1).map((a: any) => a.action);
+    expect(legal).not.toContain("play_action");
+    expect(legal).not.toContain("discard_action");
+    expect(legal).not.toContain("take_action");
+  });
 });
 
 describe("Flip7 rule regressions", () => {

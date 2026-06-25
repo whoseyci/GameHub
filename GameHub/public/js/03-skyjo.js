@@ -216,8 +216,14 @@
     if(s.skyjoAction&&s.skyjoAction.kind==='star_clear'){
       const legal=window._renderView?.state?.legal||[];
       const buttons=[];
-      legal.filter(a=>a.action==='clear_group').slice(0,4).forEach((a,idx)=>buttons.push({label:`Clear ${a.group+1}${a.starOnTop?' ★ top':''}`,kind:'secondary',onClick:()=>act(s.currentPlayer,a)}));
-      if(legal.some(a=>a.action==='skip_clear_group'))buttons.push({label:'Keep stars',kind:'green',onClick:()=>act(s.currentPlayer,{action:'skip_clear_group'})});
+      legal.filter(a=>a.action==='clear_group').forEach((a)=>buttons.push({label:`Clear group${a.starOnTop?' ★ top':''}`,kind:'secondary',onClick:()=>act(s.skyjoAction.player,a)}));
+      if(legal.some(a=>a.action==='skip_clear_group'))buttons.push({label:'Keep stars',kind:'green',onClick:()=>act(s.skyjoAction.player,{action:'skip_clear_group'})});
+      if(buttons.length)Kit.Controls.set(buttons,{id:'skyjoActionControls'});
+    } else if(s.skyjoAction&&s.skyjoAction.kind==='star_action'){
+      const legal=window._renderView?.state?.legal||[];
+      const buttons=[];
+      if(legal.some(a=>a.action==='take_free_action'))buttons.push({label:'Free action card',kind:'green',onClick:()=>act(s.skyjoAction.player,{action:'take_free_action'})});
+      if(legal.some(a=>a.action==='skip_free_action'))buttons.push({label:'Skip free card',kind:'secondary',onClick:()=>act(s.skyjoAction.player,{action:'skip_free_action'})});
       if(buttons.length)Kit.Controls.set(buttons,{id:'skyjoActionControls'});
     }
 
@@ -285,6 +291,7 @@
       // shared board loop owns create/pin/reconcile/sync (no bespoke loop).
       const card=Kit.Cards.anchor(skyjoCardId(s,pi,ci), skyjoSpec(c), {placeholder:true});
       card.classList.add('kc-zone-skyjo','board-card','registry-anchor');
+      if(s.skyjoAction&&s.skyjoAction.kind==='star_clear'&&s.skyjoAction.player===pi&&(s.skyjoAction.groups?.[0]?.indices||[]).includes(ci))card.classList.add('skyjo-star-choice');
       if(interactive&&isMain&&!c.cleared&&canClick(s,pi,ci,c,viewer)){card.classList.add('clickable');card.onclick=()=>cardClick(s,pi,ci,c);}
       grid.appendChild(card);});
 

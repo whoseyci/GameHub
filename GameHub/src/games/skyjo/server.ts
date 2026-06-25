@@ -25,7 +25,7 @@ function buildViewState(g: GameEngine, seat: number): GameViewState {
   const isReveal = g.phase === "REVEAL";
   const isTb = isReveal && g.tiebreakerPlayers.length > 0;
   return {
-    currentSeat: isTb ? -1 : g.currentPlayer,
+    currentSeat: g.skyjoAction ? g.skyjoAction.player : (isTb ? -1 : g.currentPlayer),
     pendingAction: g.skyjoAction ? g.skyjoAction.kind : g.turnAction,
     players: g.players.map((p, i) => ({
       seat: i,
@@ -73,7 +73,7 @@ export const Skyjo: GameModule = {
     icon: "cards",
     features: SkyjoFeatures,
     variants: [...(SkyjoFeatures.variants ?? [])],
-    actionTypes: ["draw_deck","take_discard","discard_drawn","swap","reveal","reveal_after_discard","tiebreaker","take_action","play_action","discard_action","action_cell","clear_group","skip_clear_group","next_round"] as const,
+    actionTypes: ["draw_deck","take_discard","discard_drawn","swap","take_free_action","reveal_after_discard","tiebreaker","take_action","play_action","discard_action","action_cell","clear_group","skip_clear_group","reveal","skip_free_action","next_round"] as const,
     schemaSpec: { kind: "imperative", paradigm: "reducers", version: 1 },
   },
 
@@ -132,6 +132,12 @@ export const Skyjo: GameModule = {
       case "skip_clear_group":
         g.skipStarClear(seat);
         break;
+      case "take_free_action":
+        g.takeFreeActionCard(seat);
+        break;
+      case "skip_free_action":
+        g.skipFreeActionCard(seat);
+        break;
       case "next_round": // host-only; hub gates this
         if (g.phase === "GAME_OVER") g.newGame();
         else if (g.phase === "ROUND_END") g.nextRound();
@@ -176,6 +182,24 @@ export const Skyjo: GameModule = {
     // these hints to enable card-click handlers. Result: no card on any
     // human's board was ever clickable. Switched all reads to p.board.
     const out: any[] = [];
+    const meAny: any = state.players?.[seat];
+    if (state.skyjoAction?.player === seat) {
+      if (state.skyjoAction.kind === "star_action") {
+        out.push({ action: "take_free_action" }, { action: "skip_free_action" });
+        return out;
+      }
+      if (state.skyjoAction.kind === "star_clear") {
+        if ((state.skyjoAction.groups || []).length) {
+          out.push({ action: "clear_group", group: 0, starOnTop: false }, { action: "clear_group", group: 0, starOnTop: true });
+        }
+        out.push({ action: "skip_clear_group" });
+        return out;
+      }
+      (meAny?.board || []).forEach((c: any, idx: number) => {
+        if (!c.cleared) out.push({ action: "action_cell", index: idx });
+      });
+      return out;
+    }
     if (state.phase === "REVEAL") {
       // Each player flips 2 face-down cards to start; both seats may act in
       // parallel until they've each revealed 2. Returning hints only for
@@ -192,19 +216,6 @@ export const Skyjo: GameModule = {
     if (state.phase === "PLAY" || state.phase === "FINAL_TURNS") {
       if (state.currentPlayer !== seat) return out;
       const me: any = state.players?.[seat]; if (!me) return out;
-      if (state.skyjoAction?.player === seat) {
-        if (state.skyjoAction.kind === "star_clear") {
-          (state.skyjoAction.groups || []).forEach((_: any, group: number) => {
-            out.push({ action: "clear_group", group, starOnTop: false }, { action: "clear_group", group, starOnTop: true });
-          });
-          out.push({ action: "skip_clear_group" });
-          return out;
-        }
-        (me.board || []).forEach((c: any, idx: number) => {
-          if (!c.cleared) out.push({ action: "action_cell", index: idx });
-        });
-        return out;
-      }
       const ta = state.turnAction;
       if (ta === null) {
         out.push({ action: "draw_deck" });

@@ -62,7 +62,7 @@ export class GameEngine {
   actionDeck: string[] = [];
   actionDiscard: string[] = [];
   actionMarket: string[] = [];
-  skyjoAction: null | { kind: string; player: number; handIndex?: number; first?: number; groups?: Array<{ indices: number[]; value: number }> } = null;
+  skyjoAction: null | { kind: string; player: number; handIndex?: number; first?: number; groups?: Array<{ indices: number[]; value: number }>; resume?: "none" | "endTurn" | "determineStarter" } = null;
   extraTurnSeat = -1;
   actionSeq = 0; // monotonic action counter (deterministic stand-in for wall-clock; makes each lastAction unique for client change-detection)
   lastAction: any = null;
@@ -206,7 +206,7 @@ export class GameEngine {
       if (!cards.every((c) => c.revealed && !c.cleared)) continue;
       if (!cards.some((c) => isStar(c.value))) continue;
       const nonStars = cards.filter((c) => !isStar(c.value));
-      if (!nonStars.length) continue;
+      if (!nonStars.length) { out.push({ indices, value: STAR }); continue; }
       if (nonStars.every((c) => c.value === nonStars[0].value)) out.push({ indices, value: nonStars[0].value });
     }
     return out;
@@ -218,6 +218,21 @@ export class GameEngine {
     this.lastAction = { type: "star_clear_prompt", player: pi, groups, t: ++this.actionSeq };
     return true;
   }
+  private maybeOfferStarAction(pi: number, resume: "none" | "endTurn" | "determineStarter"): boolean {
+    if (this.variant !== "action") return false;
+    this.skyjoAction = { kind: "star_action", player: pi, resume };
+    this.lastAction = { type: "star_action_prompt", player: pi, resume, t: ++this.actionSeq };
+    return true;
+  }
+  private finishStarActionPrompt(pi: number) {
+    const resume = this.skyjoAction?.resume ?? "none";
+    this.skyjoAction = null;
+    if (resume === "determineStarter") {
+      if (this.players.every((pl) => pl.revealCount >= 2)) this.determineStarter();
+    } else if (resume === "endTurn") {
+      this.endTurn();
+    }
+  }
 
   revealInitial(pi: number, ci: number): boolean {
     if (this.phase !== "REVEAL") return false;
@@ -225,7 +240,9 @@ export class GameEngine {
     const c = p.board[ci]; if (!c || c.revealed || c.cleared) return false;
     c.revealed = true; p.revealCount++;
     this.lastAction = { type: "reveal", player: pi, card: ci, value: c.value, t: ++this.actionSeq };
-    if (this.players.every((pl) => pl.revealCount >= 2)) this.determineStarter();
+    const ready = this.players.every((pl) => pl.revealCount >= 2);
+    if (isStar(c.value) && this.maybeOfferStarAction(pi, ready ? "determineStarter" : "none")) return true;
+    if (ready) this.determineStarter();
     return true;
   }
   private determineStarter() {
@@ -283,13 +300,15 @@ export class GameEngine {
     if (!oldCard || oldCard.cleared) return false;
     const wasRevealed = oldCard.revealed; const oldVal = oldCard.value;
     this.discard.push(oldCard.value);
-    p.board[bi] = { value: this.drawnCard!, revealed: true, cleared: false };
-    const diff = wasRevealed ? oldVal - this.drawnCard! : null;
+    const newVal = this.drawnCard!;
+    p.board[bi] = { value: newVal, revealed: true, cleared: false };
+    const diff = wasRevealed ? oldVal - newVal : null;
     this.lastAction = {
       type: "swap", player: pi, index: bi,
       good: wasRevealed ? diff! > 0 : null, diff, oldVal, wasRevealed,
-      newVal: this.drawnCard, t: ++this.actionSeq,
+      newVal, t: ++this.actionSeq,
     };
+    if (isStar(newVal) && this.maybeOfferStarAction(pi, "endTurn")) return true;
     this.endTurn();
     return true;
   }
@@ -310,13 +329,14 @@ export class GameEngine {
     if (!t || t.revealed || t.cleared) return false;
     t.revealed = true;
     this.lastAction = { type: "reveal_after_discard", player: pi, index: bi, value: t.value, t: ++this.actionSeq };
+    if (isStar(t.value) && this.maybeOfferStarAction(pi, "endTurn")) return true;
     this.endTurn();
     return true;
   }
 
   takeActionCard(pi: number, source: "market" | "deck" = "deck", index = -1): boolean {
     if (this.variant !== "action") return false;
-    if (this.phase !== "PLAY" && this.phase !== "FINAL_TURNS") return false;
+    if (this.phase !== "PLAY") return false;
     if (this.currentPlayer !== pi || this.turnAction !== null || this.skyjoAction) return false;
     let kind: string | null = null;
     if (source === "market" && index >= 0 && index < this.actionMarket.length) {
@@ -329,6 +349,23 @@ export class GameEngine {
     this.addActionToHand(pi, kind);
     this.lastAction = { type: "take_action", player: pi, kind, t: ++this.actionSeq };
     this.endTurn();
+    return true;
+  }
+
+  takeFreeActionCard(pi: number): boolean {
+    if (this.variant !== "action") return false;
+    if (!this.skyjoAction || this.skyjoAction.kind !== "star_action" || this.skyjoAction.player !== pi) return false;
+    const kind = this.drawActionCard();
+    if (kind) this.addActionToHand(pi, kind);
+    this.lastAction = { type: "take_free_action", player: pi, kind, t: ++this.actionSeq };
+    this.finishStarActionPrompt(pi);
+    return true;
+  }
+  skipFreeActionCard(pi: number): boolean {
+    if (this.variant !== "action") return false;
+    if (!this.skyjoAction || this.skyjoAction.kind !== "star_action" || this.skyjoAction.player !== pi) return false;
+    this.lastAction = { type: "skip_free_action", player: pi, t: ++this.actionSeq };
+    this.finishStarActionPrompt(pi);
     return true;
   }
 
@@ -447,7 +484,7 @@ export class GameEngine {
   clearStarGroup(pi: number, groupIndex: number, starOnTop = false): boolean {
     const a = this.skyjoAction;
     if (!a || a.kind !== "star_clear" || a.player !== pi) return false;
-    const g = a.groups?.[groupIndex];
+    const g = a.groups?.[groupIndex] ?? a.groups?.[0];
     if (!g) return false;
     const cards = g.indices.map((i) => this.players[pi].board[i]);
     g.indices.forEach((i) => (this.players[pi].board[i].cleared = true));
@@ -462,8 +499,13 @@ export class GameEngine {
   skipStarClear(pi: number): boolean {
     const a = this.skyjoAction;
     if (!a || a.kind !== "star_clear" || a.player !== pi) return false;
-    this.skyjoAction = null;
+    const rest = (a.groups ?? []).slice(1);
     this.lastAction = { type: "star_clear_skip", player: pi, t: ++this.actionSeq };
+    if (rest.length) {
+      this.skyjoAction = { kind: "star_clear", player: pi, groups: rest };
+      return true;
+    }
+    this.skyjoAction = null;
     this.turnAction = "turn_end_delay";
     return true;
   }
@@ -545,7 +587,9 @@ export class GameEngine {
         }
         for (let row = 0; row < 3; row++) {
           const cards = [p.board[row * 4], p.board[row * 4 + 1], p.board[row * 4 + 2], p.board[row * 4 + 3]];
-          if (cards.every((c) => !c.cleared && isStar(c.value))) p.roundScore -= 15;
+          const stars = cards.filter((c) => !c.cleared && isStar(c.value)).length;
+          if (stars === 4) p.roundScore -= 15;
+          else if (stars >= 3) p.roundScore -= 10;
         }
       }
     }

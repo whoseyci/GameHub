@@ -21,7 +21,7 @@ const SkyjoBots = (() => {
     const s = view.skyjo;
     const me = s.currentPlayer;
     const p = s.players[me];
-    const pending = anyLegal(view, ['clear_group','skip_clear_group','action_cell']);
+    const pending = anyLegal(view, ['take_free_action','skip_free_action','clear_group','skip_clear_group','action_cell']);
     if (pending) return pending;
     
     if (s.phase === 'REVEAL') {
@@ -58,7 +58,7 @@ const SkyjoBots = (() => {
     const s = view.skyjo;
     const me = s.currentPlayer;
     const p = s.players[me];
-    const pending = anyLegal(view, ['clear_group','skip_clear_group','action_cell']);
+    const pending = anyLegal(view, ['take_free_action','skip_free_action','clear_group','skip_clear_group','action_cell']);
     if (pending) return pending;
     const P = MED_P;
     
@@ -167,7 +167,7 @@ const SkyjoBots = (() => {
     const s = view.skyjo;
     const me = s.currentPlayer;
     const p = s.players[me];
-    const pending = anyLegal(view, ['clear_group','skip_clear_group','action_cell']);
+    const pending = anyLegal(view, ['take_free_action','skip_free_action','clear_group','skip_clear_group','action_cell']);
     if (pending) return pending;
     const playerCount = s.players.length;
     

@@ -260,7 +260,10 @@
         if (!cards.every((c) => c.revealed && !c.cleared)) continue;
         if (!cards.some((c) => isStar(c.value))) continue;
         const nonStars = cards.filter((c) => !isStar(c.value));
-        if (!nonStars.length) continue;
+        if (!nonStars.length) {
+          out.push({ indices, value: STAR });
+          continue;
+        }
         if (nonStars.every((c) => c.value === nonStars[0].value)) out.push({ indices, value: nonStars[0].value });
       }
       return out;
@@ -272,6 +275,21 @@
       this.lastAction = { type: "star_clear_prompt", player: pi, groups, t: ++this.actionSeq };
       return true;
     }
+    maybeOfferStarAction(pi, resume) {
+      if (this.variant !== "action") return false;
+      this.skyjoAction = { kind: "star_action", player: pi, resume };
+      this.lastAction = { type: "star_action_prompt", player: pi, resume, t: ++this.actionSeq };
+      return true;
+    }
+    finishStarActionPrompt(pi) {
+      const resume = this.skyjoAction?.resume ?? "none";
+      this.skyjoAction = null;
+      if (resume === "determineStarter") {
+        if (this.players.every((pl) => pl.revealCount >= 2)) this.determineStarter();
+      } else if (resume === "endTurn") {
+        this.endTurn();
+      }
+    }
     revealInitial(pi, ci) {
       if (this.phase !== "REVEAL") return false;
       const p = this.players[pi];
@@ -281,7 +299,9 @@
       c.revealed = true;
       p.revealCount++;
       this.lastAction = { type: "reveal", player: pi, card: ci, value: c.value, t: ++this.actionSeq };
-      if (this.players.every((pl) => pl.revealCount >= 2)) this.determineStarter();
+      const ready = this.players.every((pl) => pl.revealCount >= 2);
+      if (isStar(c.value) && this.maybeOfferStarAction(pi, ready ? "determineStarter" : "none")) return true;
+      if (ready) this.determineStarter();
       return true;
     }
     determineStarter() {
@@ -346,8 +366,9 @@
       const wasRevealed = oldCard.revealed;
       const oldVal = oldCard.value;
       this.discard.push(oldCard.value);
-      p.board[bi] = { value: this.drawnCard, revealed: true, cleared: false };
-      const diff = wasRevealed ? oldVal - this.drawnCard : null;
+      const newVal = this.drawnCard;
+      p.board[bi] = { value: newVal, revealed: true, cleared: false };
+      const diff = wasRevealed ? oldVal - newVal : null;
       this.lastAction = {
         type: "swap",
         player: pi,
@@ -356,9 +377,10 @@
         diff,
         oldVal,
         wasRevealed,
-        newVal: this.drawnCard,
+        newVal,
         t: ++this.actionSeq
       };
+      if (isStar(newVal) && this.maybeOfferStarAction(pi, "endTurn")) return true;
       this.endTurn();
       return true;
     }
@@ -380,12 +402,13 @@
       if (!t || t.revealed || t.cleared) return false;
       t.revealed = true;
       this.lastAction = { type: "reveal_after_discard", player: pi, index: bi, value: t.value, t: ++this.actionSeq };
+      if (isStar(t.value) && this.maybeOfferStarAction(pi, "endTurn")) return true;
       this.endTurn();
       return true;
     }
     takeActionCard(pi, source = "deck", index = -1) {
       if (this.variant !== "action") return false;
-      if (this.phase !== "PLAY" && this.phase !== "FINAL_TURNS") return false;
+      if (this.phase !== "PLAY") return false;
       if (this.currentPlayer !== pi || this.turnAction !== null || this.skyjoAction) return false;
       let kind = null;
       if (source === "market" && index >= 0 && index < this.actionMarket.length) {
@@ -398,6 +421,22 @@
       this.addActionToHand(pi, kind);
       this.lastAction = { type: "take_action", player: pi, kind, t: ++this.actionSeq };
       this.endTurn();
+      return true;
+    }
+    takeFreeActionCard(pi) {
+      if (this.variant !== "action") return false;
+      if (!this.skyjoAction || this.skyjoAction.kind !== "star_action" || this.skyjoAction.player !== pi) return false;
+      const kind = this.drawActionCard();
+      if (kind) this.addActionToHand(pi, kind);
+      this.lastAction = { type: "take_free_action", player: pi, kind, t: ++this.actionSeq };
+      this.finishStarActionPrompt(pi);
+      return true;
+    }
+    skipFreeActionCard(pi) {
+      if (this.variant !== "action") return false;
+      if (!this.skyjoAction || this.skyjoAction.kind !== "star_action" || this.skyjoAction.player !== pi) return false;
+      this.lastAction = { type: "skip_free_action", player: pi, t: ++this.actionSeq };
+      this.finishStarActionPrompt(pi);
       return true;
     }
     discardActionCard(pi, handIndex) {
@@ -532,7 +571,7 @@
     clearStarGroup(pi, groupIndex, starOnTop = false) {
       const a = this.skyjoAction;
       if (!a || a.kind !== "star_clear" || a.player !== pi) return false;
-      const g = a.groups?.[groupIndex];
+      const g = a.groups?.[groupIndex] ?? a.groups?.[0];
       if (!g) return false;
       const cards = g.indices.map((i) => this.players[pi].board[i]);
       g.indices.forEach((i) => this.players[pi].board[i].cleared = true);
@@ -547,8 +586,13 @@
     skipStarClear(pi) {
       const a = this.skyjoAction;
       if (!a || a.kind !== "star_clear" || a.player !== pi) return false;
-      this.skyjoAction = null;
+      const rest = (a.groups ?? []).slice(1);
       this.lastAction = { type: "star_clear_skip", player: pi, t: ++this.actionSeq };
+      if (rest.length) {
+        this.skyjoAction = { kind: "star_clear", player: pi, groups: rest };
+        return true;
+      }
+      this.skyjoAction = null;
       this.turnAction = "turn_end_delay";
       return true;
     }
@@ -634,7 +678,9 @@
           }
           for (let row = 0; row < 3; row++) {
             const cards = [p.board[row * 4], p.board[row * 4 + 1], p.board[row * 4 + 2], p.board[row * 4 + 3]];
-            if (cards.every((c) => !c.cleared && isStar(c.value))) p.roundScore -= 15;
+            const stars = cards.filter((c) => !c.cleared && isStar(c.value)).length;
+            if (stars === 4) p.roundScore -= 15;
+            else if (stars >= 3) p.roundScore -= 10;
           }
         }
       }
@@ -725,7 +771,7 @@
     const isReveal = g.phase === "REVEAL";
     const isTb = isReveal && g.tiebreakerPlayers.length > 0;
     return {
-      currentSeat: isTb ? -1 : g.currentPlayer,
+      currentSeat: g.skyjoAction ? g.skyjoAction.player : isTb ? -1 : g.currentPlayer,
       pendingAction: g.skyjoAction ? g.skyjoAction.kind : g.turnAction,
       players: g.players.map((p, i) => ({
         seat: i,
@@ -762,7 +808,7 @@
       icon: "cards",
       features: SkyjoFeatures,
       variants: [...SkyjoFeatures.variants ?? []],
-      actionTypes: ["draw_deck", "take_discard", "discard_drawn", "swap", "reveal", "reveal_after_discard", "tiebreaker", "take_action", "play_action", "discard_action", "action_cell", "clear_group", "skip_clear_group", "next_round"],
+      actionTypes: ["draw_deck", "take_discard", "discard_drawn", "swap", "take_free_action", "reveal_after_discard", "tiebreaker", "take_action", "play_action", "discard_action", "action_cell", "clear_group", "skip_clear_group", "reveal", "skip_free_action", "next_round"],
       schemaSpec: { kind: "imperative", paradigm: "reducers", version: 1 }
     },
     parseAction(raw) {
@@ -818,6 +864,12 @@
         case "skip_clear_group":
           g.skipStarClear(seat);
           break;
+        case "take_free_action":
+          g.takeFreeActionCard(seat);
+          break;
+        case "skip_free_action":
+          g.skipFreeActionCard(seat);
+          break;
         case "next_round":
           if (g.phase === "GAME_OVER") g.newGame();
           else if (g.phase === "ROUND_END") g.nextRound();
@@ -850,6 +902,24 @@
     // and gives the BotDriver a "random legal move" fallback. Pure read.
     legalActions(state, seat) {
       const out = [];
+      const meAny = state.players?.[seat];
+      if (state.skyjoAction?.player === seat) {
+        if (state.skyjoAction.kind === "star_action") {
+          out.push({ action: "take_free_action" }, { action: "skip_free_action" });
+          return out;
+        }
+        if (state.skyjoAction.kind === "star_clear") {
+          if ((state.skyjoAction.groups || []).length) {
+            out.push({ action: "clear_group", group: 0, starOnTop: false }, { action: "clear_group", group: 0, starOnTop: true });
+          }
+          out.push({ action: "skip_clear_group" });
+          return out;
+        }
+        (meAny?.board || []).forEach((c, idx) => {
+          if (!c.cleared) out.push({ action: "action_cell", index: idx });
+        });
+        return out;
+      }
       if (state.phase === "REVEAL") {
         const p = state.players?.[seat];
         if (!p) return out;
@@ -865,19 +935,6 @@
         if (state.currentPlayer !== seat) return out;
         const me = state.players?.[seat];
         if (!me) return out;
-        if (state.skyjoAction?.player === seat) {
-          if (state.skyjoAction.kind === "star_clear") {
-            (state.skyjoAction.groups || []).forEach((_, group) => {
-              out.push({ action: "clear_group", group, starOnTop: false }, { action: "clear_group", group, starOnTop: true });
-            });
-            out.push({ action: "skip_clear_group" });
-            return out;
-          }
-          (me.board || []).forEach((c, idx) => {
-            if (!c.cleared) out.push({ action: "action_cell", index: idx });
-          });
-          return out;
-        }
         const ta = state.turnAction;
         if (ta === null) {
           out.push({ action: "draw_deck" });
