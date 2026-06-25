@@ -22,11 +22,17 @@ describe("Skyjo rule regressions", () => {
     expect(state.phase === "PLAY" || state.tiebreakerPlayers.length > 0).toBe(true);
   });
 
-  it("Skyjo Action adds stars and a four-card action market", () => {
+  it("Skyjo Action uses the requested split deck and a four-card action market", () => {
     const state: any = Skyjo.create(["A", "B"], "action");
     expect(state.variant).toBe("action");
     expect(state.actionMarket).toHaveLength(4);
-    expect(state.deck.some((v: number) => v === 99) || state.players.some((p: any) => p.board.some((c: any) => c.value === 99))).toBe(true);
+    const playing = [...state.deck, ...state.discard, ...state.players.flatMap((p: any) => p.board.map((c: any) => c.value))];
+    expect(playing.filter((v: number) => v === 99)).toHaveLength(15);
+    expect(playing.filter((v: number) => v === -2)).toHaveLength(3);
+    expect(playing.filter((v: number) => v === 0)).toHaveLength(11);
+    for (const v of [-1,1,2,3,4,5,6,7,8,9,10,11,12]) expect(playing.filter((x: number) => x === v)).toHaveLength(7);
+    const allActions = [...state.actionDeck, ...state.actionMarket];
+    for (const k of ["swap_own", "double", "draw_three", "enlightenment", "reactivation", "defense", "swap_other", "action_thief", "meteor"]) expect(allActions.filter((x: string) => x === k)).toHaveLength(3);
   });
 
   it("Skyjo Action lets a player take, mature, then play an action card", () => {
@@ -51,6 +57,24 @@ describe("Skyjo rule regressions", () => {
     state.drawnCard = 1;
     Skyjo.applyAction(state, 0, { action: "swap", index: 4 });
     expect(state.players[0].board.slice(0, 4).every((c: any) => c.cleared)).toBe(true);
+  });
+
+  it("Skyjo Action does not auto-clear star groups and offers a clear choice", () => {
+    const state: any = Skyjo.create(["A", "B"], "action");
+    state.phase = "PLAY"; state.currentPlayer = 0; state.turnAction = null;
+    state.players[0].board[0] = { value: 5, revealed: true, cleared: false };
+    state.players[0].board[1] = { value: 99, revealed: true, cleared: false };
+    state.players[0].board[2] = { value: 5, revealed: true, cleared: false };
+    state.players[0].board[3] = { value: 5, revealed: true, cleared: false };
+    Skyjo.applyAction(state, 0, { action: "draw_deck" });
+    state.drawnCard = 1;
+    Skyjo.applyAction(state, 0, { action: "swap", index: 4 });
+    expect(state.players[0].board.slice(0, 4).every((c: any) => !c.cleared)).toBe(true);
+    expect(state.skyjoAction?.kind).toBe("star_clear");
+    expect(Skyjo.legalActions!(state, 0).some((a: any) => a.action === "clear_group" && a.starOnTop === true)).toBe(true);
+    Skyjo.applyAction(state, 0, { action: "clear_group", group: 0, starOnTop: true });
+    expect(state.players[0].board.slice(0, 4).every((c: any) => c.cleared)).toBe(true);
+    expect(state.discard[state.discard.length - 1]).toBe(99);
   });
 });
 

@@ -18,7 +18,8 @@
     return { zone:'skyjo', faceDown:true };
   }
   function skyjoVisual(c){ return Kit.Cards.el(skyjoSpec(c)); }
-  function actionLabel(k){return ({swap_own:'Swap Own',double:'Double Move',draw_three:'Draw 3',reveal:'Reveal'})[k]||String(k||'Action');}
+  function actionLabel(k){return ({swap_own:'Swap Own',double:'Double Move',draw_three:'Draw 3',enlightenment:'Enlighten',reactivation:'Reactivate',defense:'Defense',swap_other:'Swap Other',action_thief:'Thief',meteor:'Meteor',reveal:'Reveal'})[k]||String(k||'Action');}
+  function actionIcon(k){return ({swap_own:'↕',double:'2×',draw_three:'3',enlightenment:'EYE',reactivation:'R',defense:'DEF',swap_other:'↔',action_thief:'THF',meteor:'MTR',reveal:'REV'})[k]||'ACT';}
   function skyjoLegal(action){return (window._renderView?.state?.legal||[]).filter(a=>a.action===action);}
   function skyjoCardId(s,pi,ci){return `skyjo:table:r${s.round}:p${pi}:c${ci}`;}
   // The discard pile is a PERMANENT card (id 'skyjo:discard') pinned to #uiDiscard.
@@ -202,13 +203,22 @@
       const legalTake=skyjoLegal('take_action');
       const market=(s.actionMarket||[]).map((k,i)=>{
         const can=legalTake.some(a=>a.source==='market'&&a.index===i);
-        return `<button class="skyjo-action-card ${can?'can':''}" data-act-market="${i}" ${can?'':'disabled'}><b>${esc(actionLabel(k))}</b><small>action</small></button>`;
+        return `<button class="skyjo-action-card ${can?'can':''}" data-action-kind="${esc(k)}" data-act-market="${i}" ${can?'':'disabled'}><span class="skyjo-action-icon">${esc(actionIcon(k))}</span><b>${esc(actionLabel(k))}</b><small>action</small></button>`;
       }).join('');
       const deckCan=legalTake.some(a=>a.source==='deck');
-      zone.innerHTML=`<div class="skyjo-action-title">Action cards</div><div class="skyjo-action-market">${market}<button class="skyjo-action-card deck ${deckCan?'can':''}" data-act-deck="1" ${deckCan?'':'disabled'}><b>?</b><small>${esc(s.actionDeckCount||0)} left</small></button></div>`;
+      zone.innerHTML=`<div class="skyjo-action-title">Action cards</div><div class="skyjo-action-market">${market}<button class="skyjo-action-card deck ${deckCan?'can':''}" data-act-deck="1" ${deckCan?'':'disabled'}><span class="skyjo-action-icon">?</span><b>Deck</b><small>${esc(s.actionDeckCount||0)} left</small></button></div>`;
       const top=$('topArea'); if(top)top.appendChild(zone);
       zone.querySelectorAll('[data-act-market]').forEach(btn=>btn.onclick=()=>act(s.currentPlayer,{action:'take_action',source:'market',index:Number(btn.dataset.actMarket)}));
       zone.querySelector('[data-act-deck]')?.addEventListener('click',()=>act(s.currentPlayer,{action:'take_action',source:'deck',index:-1}));
+    }
+
+    Kit.Controls.clear('skyjoActionControls');
+    if(s.skyjoAction&&s.skyjoAction.kind==='star_clear'){
+      const legal=window._renderView?.state?.legal||[];
+      const buttons=[];
+      legal.filter(a=>a.action==='clear_group').slice(0,4).forEach((a,idx)=>buttons.push({label:`Clear ${a.group+1}${a.starOnTop?' ★ top':''}`,kind:'secondary',onClick:()=>act(s.currentPlayer,a)}));
+      if(legal.some(a=>a.action==='skip_clear_group'))buttons.push({label:'Keep stars',kind:'green',onClick:()=>act(s.currentPlayer,{action:'skip_clear_group'})});
+      if(buttons.length)Kit.Controls.set(buttons,{id:'skyjoActionControls'});
     }
 
     // status bar
@@ -321,7 +331,8 @@
         const item=document.createElement('div');item.className='skyjo-action-held'+(a.fresh?' fresh':'');
         const play=legalPlay.some(x=>x.hand===handIndex);
         const disc=legalDiscard.some(x=>x.hand===handIndex);
-        item.innerHTML=`<b>${esc(actionLabel(a.kind))}</b><small>${a.fresh?'next turn':'+10 if kept'}</small><span><button ${play?'':'disabled'} data-play="${handIndex}">Play</button><button ${disc?'':'disabled'} data-discard="${handIndex}">Discard</button></span>`;
+        item.dataset.actionKind=a.kind;
+        item.innerHTML=`<span class="skyjo-action-icon">${esc(actionIcon(a.kind))}</span><b>${esc(actionLabel(a.kind))}</b><small>${a.fresh?'next turn':'+10 if kept'}</small><span><button ${play?'':'disabled'} data-play="${handIndex}">Play</button><button ${disc?'':'disabled'} data-discard="${handIndex}">Discard</button></span>`;
         hand.appendChild(item);
       });
       hand.querySelectorAll('[data-play]').forEach(b=>b.onclick=()=>act(pi,{action:'play_action',hand:Number(b.dataset.play)}));

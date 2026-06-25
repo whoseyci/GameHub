@@ -14,10 +14,15 @@ const SkyjoBots = (() => {
   function visibleScore(p) { return p.board.filter(c => c.revealed && !c.cleared).reduce((a, c) => a + c.value, 0); }
   
   // ---- Easy Bot ----
+  function legal(view, action){return (view?.state?.legal||[]).filter(a=>a.action===action);}
+  function anyLegal(view, actions){const all=view?.state?.legal||[];return all.find(a=>actions.includes(a.action))||null;}
+
   function easyChoose(view) {
     const s = view.skyjo;
     const me = s.currentPlayer;
     const p = s.players[me];
+    const pending = anyLegal(view, ['clear_group','skip_clear_group','action_cell']);
+    if (pending) return pending;
     
     if (s.phase === 'REVEAL') {
       const hid = hidden(p);
@@ -25,6 +30,8 @@ const SkyjoBots = (() => {
     }
     
     if (s.turnAction === null) {
+      const actionPick = anyLegal(view, ['play_action','take_action']);
+      if (s.variant === 'action' && actionPick && Math.random() < 0.3) return actionPick;
       return Math.random() < 0.5 ? { action: 'draw_deck' } : { action: 'take_discard' };
     }
     
@@ -51,6 +58,8 @@ const SkyjoBots = (() => {
     const s = view.skyjo;
     const me = s.currentPlayer;
     const p = s.players[me];
+    const pending = anyLegal(view, ['clear_group','skip_clear_group','action_cell']);
+    if (pending) return pending;
     const P = MED_P;
     
     if (s.phase === 'REVEAL') {
@@ -64,6 +73,8 @@ const SkyjoBots = (() => {
     const hid = hidden(p);
     
     if (s.turnAction === null) {
+      const actionPick = anyLegal(view, ['play_action','take_action']);
+      if (s.variant === 'action' && actionPick && Math.random() < 0.25) return actionPick;
       const dt = s.discardTop;
       const take = dt != null && (dt <= P[0] || (worst - dt) >= P[1]);
       return take ? { action: 'take_discard' } : { action: 'draw_deck' };
@@ -156,6 +167,8 @@ const SkyjoBots = (() => {
     const s = view.skyjo;
     const me = s.currentPlayer;
     const p = s.players[me];
+    const pending = anyLegal(view, ['clear_group','skip_clear_group','action_cell']);
+    if (pending) return pending;
     const playerCount = s.players.length;
     
     // Select policy based on player count
@@ -170,6 +183,10 @@ const SkyjoBots = (() => {
     }
     
     if (s.turnAction === null) {
+      const play = legal(view,'play_action').find(a=>/double|draw_three|reveal|swap_own/.test(s.players[me].actionHand?.[a.hand]?.kind||''));
+      if (s.variant === 'action' && play && Math.random() < 0.35) return play;
+      const takeAct = legal(view,'take_action')[0];
+      if (s.variant === 'action' && takeAct && Math.random() < 0.12) return takeAct;
       const dt = s.discardTop;
       if (dt == null) return { action: 'draw_deck' };
       

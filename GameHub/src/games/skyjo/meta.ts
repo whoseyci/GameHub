@@ -23,5 +23,5 @@ export const SkyjoMeta: GameMeta = {
   emoji: "🃏",
   features: SkyjoFeatures,
   variants: [...(SkyjoFeatures.variants ?? [])],
-  actionTypes: ["draw_deck","take_discard","discard_drawn","swap","reveal","reveal_after_discard","tiebreaker","take_action","play_action","discard_action","action_cell","next_round"] as const,
+  actionTypes: ["draw_deck","take_discard","discard_drawn","swap","reveal","reveal_after_discard","tiebreaker","take_action","play_action","discard_action","action_cell","clear_group","skip_clear_group","next_round"] as const,
 };

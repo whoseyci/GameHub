@@ -73,7 +73,7 @@ export const Skyjo: GameModule = {
     icon: "cards",
     features: SkyjoFeatures,
     variants: [...(SkyjoFeatures.variants ?? [])],
-    actionTypes: ["draw_deck","take_discard","discard_drawn","swap","reveal","reveal_after_discard","tiebreaker","take_action","play_action","discard_action","action_cell","next_round"] as const,
+    actionTypes: ["draw_deck","take_discard","discard_drawn","swap","reveal","reveal_after_discard","tiebreaker","take_action","play_action","discard_action","action_cell","clear_group","skip_clear_group","next_round"] as const,
     schemaSpec: { kind: "imperative", paradigm: "reducers", version: 1 },
   },
 
@@ -125,6 +125,12 @@ export const Skyjo: GameModule = {
         break;
       case "action_cell":
         g.actionCell(seat, msg.index | 0);
+        break;
+      case "clear_group":
+        g.clearStarGroup(seat, msg.group | 0, !!msg.starOnTop);
+        break;
+      case "skip_clear_group":
+        g.skipStarClear(seat);
         break;
       case "next_round": // host-only; hub gates this
         if (g.phase === "GAME_OVER") g.newGame();
@@ -187,6 +193,13 @@ export const Skyjo: GameModule = {
       if (state.currentPlayer !== seat) return out;
       const me: any = state.players?.[seat]; if (!me) return out;
       if (state.skyjoAction?.player === seat) {
+        if (state.skyjoAction.kind === "star_clear") {
+          (state.skyjoAction.groups || []).forEach((_: any, group: number) => {
+            out.push({ action: "clear_group", group, starOnTop: false }, { action: "clear_group", group, starOnTop: true });
+          });
+          out.push({ action: "skip_clear_group" });
+          return out;
+        }
         (me.board || []).forEach((c: any, idx: number) => {
           if (!c.cleared) out.push({ action: "action_cell", index: idx });
         });
@@ -207,7 +220,7 @@ export const Skyjo: GameModule = {
         if (Array.isArray(state.discard) && state.discard.length > 0) {
           out.push({ action: "take_discard" });
         }
-        if (state.variant === "action") {
+        if (state.variant === "action" && state.phase === "PLAY") {
           (state.actionMarket || []).forEach((_: any, index: number) => out.push({ action: "take_action", source: "market", index }));
           out.push({ action: "take_action", source: "deck", index: -1 });
           (me.actionHand || []).forEach((a: any, hand: number) => {
