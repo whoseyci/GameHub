@@ -219,10 +219,11 @@ describe("Flip7 rule regressions", () => {
     ];
     expect(state.variant).toBe("vengeance");
     expect(all).toHaveLength(108);
-    expect(all.filter((c: any) => c.kind === "act").map((c: any) => c.v).sort()).toEqual(["discard", "flip4", "just1more", "steal", "swap"]);
+    expect(all.filter((c: any) => c.kind === "act").map((c: any) => c.v).sort()).toEqual(["discard", "discard", "flip4", "flip4", "just1more", "just1more", "steal", "steal", "swap", "swap"]);
     expect(all.filter((c: any) => c.kind === "act" && (c.v === "freeze" || c.v === "second" || c.v === "flip3"))).toHaveLength(0);
+    expect(all.filter((c: any) => c.kind === "mod")).toHaveLength(6);
     expect(all.filter((c: any) => c.kind === "mod" && c.v === "div2")).toHaveLength(1);
-    for (const m of ["-2", "-4", "-6", "-8", "-10"]) expect(all.filter((c: any) => c.kind === "mod" && c.v === m)).toHaveLength(2);
+    for (const m of ["-2", "-4", "-6", "-8", "-10"]) expect(all.filter((c: any) => c.kind === "mod" && c.v === m)).toHaveLength(1);
     expect(all.filter((c: any) => c.kind === "num" && c.v === 0 && c.special === "zero")).toHaveLength(1);
     expect(all.filter((c: any) => c.kind === "num" && c.v === 7 && c.special === "unlucky7")).toHaveLength(1);
     expect(all.filter((c: any) => c.kind === "num" && c.v === 13 && c.special === "lucky13")).toHaveLength(1);

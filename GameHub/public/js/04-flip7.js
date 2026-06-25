@@ -13,39 +13,43 @@
   // (busted/bust-cause) and the existing animation/mini-board CSS.
   // A Flip 7 card as a STRICT declarative spec (tokens only — no raw classes).
   // Theming = bg/border/content tokens; sizing context = zone:'f7'; states via tokens.
-  function f7Title(bg,border,emblem,text,color='#fff',size='.205'){
-    return { bg, border, borderWidth:'thick', emblem, content:{ text, color, size:`calc(var(--kc-w,56px)*${size})`, weight:1000, shadow:true } };
+  const F7_WORDS=['ZERO','ONE','TWO','THREE','FOUR','FIVE','SIX','SEVEN','EIGHT','NINE','TEN','ELEVEN','TWELVE','THIRTEEN'];
+  const F7_CREAM={gradient:['#fff9df','#f0dfaa'],angle:155};
+  function f7Art({bg=F7_CREAM,border='#1e1b4b',accent='#c2410c',muted='rgba(30,27,75,.48)',emblem='',content='',caption='',topNote='',bottomNote='',contentColor='#1e1b4b',contentSize='.46',captionColor='rgba(30,27,75,.68)',captionBg='rgba(255,247,210,.82)',captionPos='bottom',captionSize=null}){
+    return { bg, border, borderWidth:'thick', accentColor:accent, mutedColor:muted, sideGlyph:'◖', emblem,
+      topNote, bottomNote, caption, captionColor, captionBg, captionPos, captionSize,
+      content:{ text:content, color:contentColor, size:`calc(var(--kc-w,56px)*${contentSize})`, weight:1000, shadow:true }
+    };
   }
   function f7NumberSpec(val,{special=null}={}){
-    if(special==='zero') return f7Title({gradient:['#0f172a','#0ea5e9'],angle:155},'#38bdf8','0','0\nSCORE ZERO\nUNLESS 7','#e0f2fe','.19');
-    if(special==='unlucky7') return f7Title({gradient:['#020617','#7f1d1d'],angle:155},'#ef4444','7','UNLUCKY\n7\nWIPE LINE','#fee2e2','.18');
-    if(special==='lucky13') return f7Title({gradient:['#bbf7d0','#fef08a'],angle:155},'#16a34a','13','LUCKY\n13\nONE EXTRA','#14532d','.18');
     const n=Number(val)||0;
-    return {
-      bg:{gradient:[numFace(n),'#fff7cc'],angle:150},
-      border:'#1e1b4b', borderWidth:'thick', emblem:String(val),
-      content:{ text:val, color:'#fff', size:'calc(var(--kc-w,56px)*.62)', weight:1000, shadow:true },
-      pips:[val,val]
-    };
+    const color=numFace(n);
+    if(special==='zero') return f7Art({bg:F7_CREAM,border:'#0891b2',accent:'#0ea5e9',emblem:'0',content:'0',caption:'SCORE ZERO',bottomNote:'UNLESS YOU FLIP 7',contentColor:'#0e7490',contentSize:'.58'});
+    if(special==='unlucky7') return f7Art({bg:F7_CREAM,border:'#991b1b',accent:'#ef4444',emblem:'7',content:'7',caption:'UNLUCKY SEVEN',bottomNote:'DISCARD ALL OTHER CARDS',contentColor:'#b91c1c',contentSize:'.58'});
+    if(special==='lucky13') return f7Art({bg:F7_CREAM,border:'#16a34a',accent:'#22c55e',emblem:'13',content:'13',caption:'LUCKY THIRTEEN',bottomNote:'MAY HAVE ONE OTHER 13',contentColor:'#15803d',contentSize:'.52'});
+    return f7Art({bg:F7_CREAM,border:'#1e1b4b',accent:color,emblem:String(val),content:val,caption:F7_WORDS[n]||String(val),contentColor:color,contentSize:n>=10?'.52':'.62'});
+  }
+  function f7Action(title,{bg=F7_CREAM,border='#1e1b4b',accent='#c2410c',emblem='',topNote='PLAY ON ANY PLAYER',bottomNote=''}){
+    return f7Art({bg,border,accent,emblem,topNote,bottomNote,content:'',caption:title,captionPos:'center',captionSize:`calc(var(--kc-w,56px)*${title.length>9?'.15':'.18'})`,captionBg:'rgba(255,249,223,.88)',captionColor:'#1e1b4b',muted:'rgba(30,27,75,.36)'});
   }
   function f7Spec(kind,val,{busted=false,cause=false,special=null}={}){
     let spec;
     if(kind==='num') spec=f7NumberSpec(val,{special});
     else if(kind==='mod') spec= val==='x2'
-      ? f7Title({gradient:['#111827','#831843'],angle:155},'#f472b6','×2','×2\nDOUBLE\nNUMBERS','#fce7f3','.19')
+      ? f7Art({bg:{gradient:['#fff9df','#f3d6ef'],angle:155},border:'#831843',accent:'#db2777',emblem:'×2',content:'×2',caption:'DOUBLE',bottomNote:'THE SUM OF NUMBER CARDS',contentColor:'#be185d',contentSize:'.46'})
       : val==='div2'
-        ? f7Title({gradient:['#fef08a','#f59e0b'],angle:155},'#7c2d12','÷2','÷2\nHALVE\nNUMBERS','#422006','.19')
+        ? f7Art({bg:{gradient:['#fff9df','#f8d98b'],angle:155},border:'#92400e',accent:'#d97706',emblem:'÷2',content:'÷2',caption:'DIVIDE',bottomNote:'THE SUM OF NUMBER CARDS',contentColor:'#92400e',contentSize:'.46'})
         : String(val).startsWith('-')
-          ? f7Title({gradient:['#ef4444','#7f1d1d'],angle:155},'#fecaca','−',`${modText(val)}\nPLAY ON\nANY PLAYER`,'#fff','.17')
-          : f7Title({gradient:['#fef3c7','#fcd34d'],angle:155},'#d97706','+ ',`${modText(val)}\nBONUS\nPOINTS`,'#7c4a03','.18');
-    else if(val==='second') spec=f7Title({gradient:['#dc2626','#7f1d1d'],angle:155},'#fca5a5','♥','SECOND\nCHANCE\nSAVE BUST','#fee2e2','.17');
-    else if(val==='freeze') spec=f7Title({gradient:['#e0f2fe','#38bdf8'],angle:155},'#0369a1','❄','FREEZE\nTARGET\nSTAYS','#082f49','.17');
-    else if(val==='flip3')  spec=f7Title({gradient:['#fef08a','#d4e600'],angle:155},'#854d0e','3','FLIP 3\nTARGET\nDRAWS','#1a1a00','.18');
-    else if(val==='flip4')  spec=f7Title({gradient:['#fef08a','#fde047'],angle:155},'#ca8a04','4','FLIP 4\nTARGET\nDRAWS','#422006','.18');
-    else if(val==='steal') spec=f7Title({gradient:['#111827','#4c1d95'],angle:155},'#a78bfa','$','STEAL\nANY\nCARD','#fff','.19');
-    else if(val==='swap') spec=f7Title({gradient:['#f59e0b','#b45309'],angle:155},'#fde68a','↔','SWAP\n2 FACE-UP\nCARDS','#fff7ed','.17');
-    else if(val==='discard') spec=f7Title({gradient:['#374151','#111827'],angle:155},'#9ca3af','×','DISCARD\nCHOOSE\nCARD','#f9fafb','.18');
-    else if(val==='just1more') spec=f7Title({gradient:['#ec4899','#9d174d'],angle:155},'#f9a8d4','+1','ONE\nMORE\nTHEN STAY','#fff','.18');
+          ? f7Art({bg:{gradient:['#f3a066','#bd3d2c'],angle:155},border:'#7f1d1d',accent:'#fee2e2',emblem:'−',topNote:'PLAY ON ANY PLAYER',content:modText(val),caption:'MODIFIER',bottomNote:'THE SUM OF NUMBER CARDS',contentColor:'#7f1d1d',contentSize:'.48',captionColor:'rgba(127,29,29,.66)',captionBg:'rgba(255,247,210,.72)',muted:'rgba(127,29,29,.48)'})
+          : f7Art({bg:{gradient:['#fff9df','#fcd34d'],angle:155},border:'#d97706',accent:'#f59e0b',emblem:'+',content:modText(val),caption:'BONUS',bottomNote:'ADD TO YOUR SCORE',contentColor:'#92400e',contentSize:'.46'});
+    else if(val==='second') spec=f7Action('SECOND\nCHANCE',{bg:{gradient:['#fff9df','#fecaca'],angle:155},border:'#991b1b',accent:'#dc2626',emblem:'♥',topNote:'KEEP UNTIL NEEDED',bottomNote:'DISCARD WITH DUPLICATE'});
+    else if(val==='freeze') spec=f7Action('FREEZE',{bg:{gradient:['#fff9df','#bae6fd'],angle:155},border:'#0369a1',accent:'#38bdf8',emblem:'❄',bottomNote:'TARGET STAYS'});
+    else if(val==='flip3')  spec=f7Action('FLIP\nTHREE',{bg:{gradient:['#fff9df','#fef08a'],angle:155},border:'#a16207',accent:'#eab308',emblem:'3',bottomNote:'TARGET DRAWS 3'});
+    else if(val==='flip4')  spec=f7Action('FLIP\nFOUR',{bg:{gradient:['#fff9df','#fef08a'],angle:155},border:'#a16207',accent:'#eab308',emblem:'4',bottomNote:'TARGET DRAWS 4'});
+    else if(val==='steal') spec=f7Action('STEAL',{bg:{gradient:['#fff9df','#d8b4fe'],angle:155},border:'#5b21b6',accent:'#7c3aed',emblem:'$',bottomNote:'TAKE A FACE-UP CARD'});
+    else if(val==='swap') spec=f7Action('SWAP',{bg:{gradient:['#fff9df','#fed7aa'],angle:155},border:'#b45309',accent:'#f59e0b',emblem:'↔',bottomNote:'TWO FACE-UP CARDS'});
+    else if(val==='discard') spec=f7Action('DISCARD',{bg:{gradient:['#fff9df','#c4b5fd'],angle:155},border:'#6d28d9',accent:'#8b5cf6',emblem:'×',topNote:'FORCE ANY PLAYER',bottomNote:'DISCARD A CARD'});
+    else if(val==='just1more') spec=f7Action('JUST ONE\nMORE',{bg:{gradient:['#fff9df','#f9a8d4'],angle:155},border:'#9d174d',accent:'#ec4899',emblem:'+1',bottomNote:'DRAW 1 THEN STAY'});
     else spec={ content:{ text:val } };
     spec.zone='f7';
     const st=[]; if(busted)st.push('dim'); if(cause)st.push('shake','highlight');

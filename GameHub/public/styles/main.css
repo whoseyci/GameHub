@@ -978,6 +978,13 @@ html,body,#app{min-height:100%;height:auto;max-height:none;overflow-x:hidden;ove
 .kc-emblem{position:absolute;inset:0;z-index:0;display:flex;align-items:center;justify-content:center;
   font-size:calc(var(--kc-w,56px)*.9);font-weight:1000;line-height:1;color:rgba(255,255,255,.14);
   pointer-events:none}
+.kc-side-glyph{position:absolute;z-index:0;top:50%;transform:translateY(-50%);font-size:calc(var(--kc-w,56px)*.34);font-weight:1000;line-height:1;color:rgba(30,27,75,.34);opacity:.72;pointer-events:none}
+.kc-side-glyph.left{left:4%}.kc-side-glyph.right{right:4%;transform:translateY(-50%) scaleX(-1)}
+.kc-note{position:absolute;z-index:1;left:10%;right:10%;font-size:calc(var(--kc-w,56px)*.072);line-height:1.05;text-align:center;text-transform:uppercase;letter-spacing:.055em;font-weight:900;color:rgba(30,27,75,.52);opacity:.72;pointer-events:none;white-space:pre-line}
+.kc-note.top{top:7%}.kc-note.bottom{bottom:7%}
+.kc-caption{position:absolute;z-index:1;left:14%;right:14%;bottom:14%;padding:1.5% 2%;border-radius:calc(var(--kc-w,56px)*.035);background:rgba(255,247,210,.82);color:rgba(30,27,75,.72);font-size:var(--kc-caption-fs,calc(var(--kc-w,56px)*.105));line-height:1;text-align:center;text-transform:uppercase;letter-spacing:.08em;font-weight:1000;pointer-events:none;white-space:pre-line}
+.kc-caption.pos-center{top:50%;bottom:auto;transform:translateY(-50%);padding:3% 2%;box-shadow:0 0 0 1px rgba(30,27,75,.18)}
+.kc-caption.pos-top{top:14%;bottom:auto}
 /* WATER-TIGHT: the registered overlay (idle) AND the moving overlay (flying) must
    keep the canonical corners/aspect — no game/legacy rule can flatten a flying card
    into a pointy rectangle. These win because they target the framework classes. */

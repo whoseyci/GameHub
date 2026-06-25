@@ -97,6 +97,29 @@
     if (spec.emblem != null && spec.emblem !== '') {
       const em = document.createElement('div'); em.className = 'kc-emblem'; em.textContent = String(spec.emblem); card.appendChild(em);
     }
+    // Side ornaments + small instructional notes. These are intentionally small
+    // and muted: they help first-time players without overpowering the card face.
+    const muted = paint(spec.mutedColor) || '';
+    const accent = paint(spec.accentColor) || '';
+    if (spec.sideGlyph != null && spec.sideGlyph !== '') {
+      const l = document.createElement('div'); l.className = 'kc-side-glyph left'; l.textContent = String(spec.sideGlyph); if (accent) l.style.color = accent; card.appendChild(l);
+      const r = document.createElement('div'); r.className = 'kc-side-glyph right'; r.textContent = String(spec.sideGlyph); if (accent) r.style.color = accent; card.appendChild(r);
+    }
+    if (spec.topNote != null && spec.topNote !== '') {
+      const n = document.createElement('div'); n.className = 'kc-note top'; n.textContent = String(spec.topNote); if (muted) n.style.color = muted; card.appendChild(n);
+    }
+    if (spec.bottomNote != null && spec.bottomNote !== '') {
+      const n = document.createElement('div'); n.className = 'kc-note bottom'; n.textContent = String(spec.bottomNote); if (muted) n.style.color = muted; card.appendChild(n);
+    }
+    if (spec.caption != null && spec.caption !== '') {
+      const cap = document.createElement('div'); cap.className = 'kc-caption'; cap.textContent = String(spec.caption);
+      if (spec.captionPos === 'center') cap.classList.add('pos-center');
+      else if (spec.captionPos === 'top') cap.classList.add('pos-top');
+      if (spec.captionBg) cap.style.background = paint(spec.captionBg);
+      if (spec.captionColor) cap.style.color = paint(spec.captionColor);
+      if (spec.captionSize) cap.style.setProperty('--kc-caption-fs', typeof spec.captionSize === 'number' ? spec.captionSize + 'px' : spec.captionSize);
+      card.appendChild(cap);
+    }
 
     // content (text only)
     const c = (typeof spec.content === 'string' || typeof spec.content === 'number') ? { text: spec.content } : (spec.content || {});

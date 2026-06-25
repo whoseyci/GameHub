@@ -652,9 +652,8 @@
       }
       add("num", 7, "unlucky7");
       add("num", 13, "lucky13");
-      for (const m of ["-2", "-4", "-6", "-8", "-10"]) for (let i = 0; i < 2; i++) add("mod", m);
-      add("mod", "div2");
-      for (const a of ["just1more", "swap", "steal", "discard", "flip4"]) add("act", a);
+      for (const m of ["-2", "-4", "-6", "-8", "-10", "div2"]) add("mod", m);
+      for (const a of ["just1more", "swap", "steal", "discard", "flip4"]) for (let i = 0; i < 2; i++) add("act", a);
     } else {
       add("num", 0);
       for (let n = 1; n <= 12; n++) for (let i = 0; i < n; i++) add("num", n);

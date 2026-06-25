@@ -93,12 +93,11 @@ function buildDeck(rng: RngStateHolder, variant = "standard"): Card[] {
     add("num", 7, "unlucky7");
     add("num", 13, "lucky13");
 
-    // Modifier cards: two each -2/-4/-6/-8/-10, one ÷2.
-    for (const m of ["-2", "-4", "-6", "-8", "-10"]) for (let i = 0; i < 2; i++) add("mod", m);
-    add("mod", "div2");
+    // Modifier cards: one each -2/-4/-6/-8/-10, one ÷2.
+    for (const m of ["-2", "-4", "-6", "-8", "-10", "div2"]) add("mod", m);
 
-    // Action cards: one each. No Freeze, Flip 3, or Second Chance in Vengeance.
-    for (const a of ["just1more", "swap", "steal", "discard", "flip4"]) add("act", a);
+    // Action cards: two each. No Freeze, Flip 3, or Second Chance in Vengeance.
+    for (const a of ["just1more", "swap", "steal", "discard", "flip4"]) for (let i = 0; i < 2; i++) add("act", a);
   } else {
     add("num", 0);
     for (let n = 1; n <= 12; n++) for (let i = 0; i < n; i++) add("num", n);
