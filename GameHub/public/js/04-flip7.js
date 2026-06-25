@@ -13,31 +13,39 @@
   // (busted/bust-cause) and the existing animation/mini-board CSS.
   // A Flip 7 card as a STRICT declarative spec (tokens only — no raw classes).
   // Theming = bg/border/content tokens; sizing context = zone:'f7'; states via tokens.
+  function f7Title(bg,border,emblem,text,color='#fff',size='.205'){
+    return { bg, border, borderWidth:'thick', emblem, content:{ text, color, size:`calc(var(--kc-w,56px)*${size})`, weight:1000, shadow:true } };
+  }
+  function f7NumberSpec(val,{special=null}={}){
+    if(special==='zero') return f7Title({gradient:['#0f172a','#0ea5e9'],angle:155},'#38bdf8','0','0\nSCORE ZERO\nUNLESS 7','#e0f2fe','.19');
+    if(special==='unlucky7') return f7Title({gradient:['#020617','#7f1d1d'],angle:155},'#ef4444','7','UNLUCKY\n7\nWIPE LINE','#fee2e2','.18');
+    if(special==='lucky13') return f7Title({gradient:['#bbf7d0','#fef08a'],angle:155},'#16a34a','13','LUCKY\n13\nONE EXTRA','#14532d','.18');
+    const n=Number(val)||0;
+    return {
+      bg:{gradient:[numFace(n),'#fff7cc'],angle:150},
+      border:'#1e1b4b', borderWidth:'thick', emblem:String(val),
+      content:{ text:val, color:'#fff', size:'calc(var(--kc-w,56px)*.62)', weight:1000, shadow:true },
+      pips:[val,val]
+    };
+  }
   function f7Spec(kind,val,{busted=false,cause=false,special=null}={}){
     let spec;
-    if(kind==='num') {
-      if(special==='unlucky7') spec={ bg:'#111827', border:'#ef4444', content:{ text:'U7', color:'#fecaca' } };
-      else if(special==='lucky13') spec={ bg:'#bbf7d0', border:'#16a34a', content:{ text:'L13', color:'#14532d' } };
-      else if(special==='zero') spec={ bg:'#0f172a', border:'#38bdf8', content:{ text:'0', color:'#e0f2fe' } };
-      else spec={ bg:numFace(val), content:{ text:val, color:'#fff' } };
-    }
+    if(kind==='num') spec=f7NumberSpec(val,{special});
     else if(kind==='mod') spec= val==='x2'
-      ? { bg:'#1f2937', border:'#f472b6', content:{ text:'×2', color:'#f472b6' } }
+      ? f7Title({gradient:['#111827','#831843'],angle:155},'#f472b6','×2','×2\nDOUBLE\nNUMBERS','#fce7f3','.19')
       : val==='div2'
-        ? { bg:'#fef08a', border:'#ca8a04', content:{ text:'÷2', color:'#713f12' } }
+        ? f7Title({gradient:['#fef08a','#f59e0b'],angle:155},'#7c2d12','÷2','÷2\nHALVE\nNUMBERS','#422006','.19')
         : String(val).startsWith('-')
-          ? { bg:'#ef4444', border:'#991b1b', content:{ text:modText(val), color:'#fff' } }
-          : { bg:{gradient:['#fef3c7','#fcd34d']}, border:'#d97706', content:{ text:modText(val), color:'#7c4a03' } };
-    else if(val==='second') spec={ bg:'#dc2626', border:'#ef4444', content:{ text:'♥', color:'#fbcfe8' } };
-    else if(val==='freeze') spec={ bg:{gradient:['#bae6fd','#7dd3fc']}, border:'#38bdf8', content:{ text:'❄', color:'#0369a1' } };
-    else if(val==='flip3')  spec={ bg:'#eaff00', border:'#d4e600', content:{ text:'F3', color:'#1a1a00', italic:true } };
-    else if(val==='flip4')  spec={ bg:{gradient:['#fef08a','#fde047']}, border:'#ca8a04', emblem:'4', content:{ text:'FLIP 4', color:'#422006', size:'calc(var(--kc-w,56px)*.20)', weight:1000 } };
-    else if(val==='unlucky7') spec={ bg:'#000', border:'#ff0000', content:{ text:'U7', color:'#ff0000' } };
-    else if(val==='lucky13') spec={ bg:'#4ade80', border:'#166534', content:{ text:'L13', color:'#166534' } };
-    else if(val==='steal') spec={ bg:{gradient:['#111827','#4c1d95']}, border:'#a78bfa', emblem:'$', content:{ text:'STEAL', color:'#fff', size:'calc(var(--kc-w,56px)*.21)', weight:1000 } };
-    else if(val==='swap') spec={ bg:{gradient:['#f59e0b','#b45309']}, border:'#fde68a', emblem:'↔', content:{ text:'SWAP', color:'#fff7ed', size:'calc(var(--kc-w,56px)*.23)', weight:1000 } };
-    else if(val==='discard') spec={ bg:{gradient:['#374151','#111827']}, border:'#9ca3af', emblem:'×', content:{ text:'DROP', color:'#f9fafb', size:'calc(var(--kc-w,56px)*.23)', weight:1000 } };
-    else if(val==='just1more') spec={ bg:{gradient:['#ec4899','#9d174d']}, border:'#f9a8d4', emblem:'1', content:{ text:'+1 MORE', color:'#fff', size:'calc(var(--kc-w,56px)*.18)', weight:1000 } };
+          ? f7Title({gradient:['#ef4444','#7f1d1d'],angle:155},'#fecaca','−',`${modText(val)}\nPLAY ON\nANY PLAYER`,'#fff','.17')
+          : f7Title({gradient:['#fef3c7','#fcd34d'],angle:155},'#d97706','+ ',`${modText(val)}\nBONUS\nPOINTS`,'#7c4a03','.18');
+    else if(val==='second') spec=f7Title({gradient:['#dc2626','#7f1d1d'],angle:155},'#fca5a5','♥','SECOND\nCHANCE\nSAVE BUST','#fee2e2','.17');
+    else if(val==='freeze') spec=f7Title({gradient:['#e0f2fe','#38bdf8'],angle:155},'#0369a1','❄','FREEZE\nTARGET\nSTAYS','#082f49','.17');
+    else if(val==='flip3')  spec=f7Title({gradient:['#fef08a','#d4e600'],angle:155},'#854d0e','3','FLIP 3\nTARGET\nDRAWS','#1a1a00','.18');
+    else if(val==='flip4')  spec=f7Title({gradient:['#fef08a','#fde047'],angle:155},'#ca8a04','4','FLIP 4\nTARGET\nDRAWS','#422006','.18');
+    else if(val==='steal') spec=f7Title({gradient:['#111827','#4c1d95'],angle:155},'#a78bfa','$','STEAL\nANY\nCARD','#fff','.19');
+    else if(val==='swap') spec=f7Title({gradient:['#f59e0b','#b45309'],angle:155},'#fde68a','↔','SWAP\n2 FACE-UP\nCARDS','#fff7ed','.17');
+    else if(val==='discard') spec=f7Title({gradient:['#374151','#111827'],angle:155},'#9ca3af','×','DISCARD\nCHOOSE\nCARD','#f9fafb','.18');
+    else if(val==='just1more') spec=f7Title({gradient:['#ec4899','#9d174d'],angle:155},'#f9a8d4','+1','ONE\nMORE\nTHEN STAY','#fff','.18');
     else spec={ content:{ text:val } };
     spec.zone='f7';
     const st=[]; if(busted)st.push('dim'); if(cause)st.push('shake','highlight');

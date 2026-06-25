@@ -909,7 +909,7 @@ html,body,#app{min-height:100%;height:auto;max-height:none;overflow-x:hidden;ove
 /* content layer (declarative: text/emoji/svg-free), honors rotation/align/color/font.
    font-size derives from --kc-w so the number scales WITH the card (no min/max floor). */
 .kc-content{position:relative;z-index:1;display:flex;align-items:center;justify-content:center;
-  width:100%;height:100%;font-weight:1000;line-height:1;text-align:center;
+  width:100%;height:100%;font-weight:1000;line-height:1;text-align:center;white-space:pre-line;
   font-size:var(--kc-fs,calc(var(--kc-w,56px)*.5));
   color:var(--kc-fg,#fff);transform:rotate(var(--kc-rot,0deg))}
 .kc-content.kc-tl{align-items:flex-start;justify-content:flex-start;padding:6%}
