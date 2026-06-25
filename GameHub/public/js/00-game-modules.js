@@ -456,6 +456,10 @@
       emoji: "\u{1F0CF}",
       icon: "cards",
       features: SkyjoFeatures,
+      variants: [
+        { id: "standard", name: "Standard", description: "Classic Skyjo to 100 points." },
+        { id: "extreme", name: "Skyjo Extreme", description: "Extreme mode with negative wild cards and void redistribution." }
+      ],
       actionTypes: ["draw_deck", "take_discard", "discard_drawn", "swap", "reveal", "reveal_after_discard", "tiebreaker", "next_round"],
       schemaSpec: { kind: "imperative", paradigm: "reducers", version: 1 }
     },
@@ -1001,6 +1005,10 @@
         maxDurationSec: 900
       },
       actionTypes: ["hit", "stay", "target", "give_second", "next_round"],
+      variants: [
+        { id: "standard", name: "Standard", description: "Race to 200 points." },
+        { id: "vengeance", name: "Flip 7 with a vengeance", description: "High stakes aggressive targeting and double penalty action cards." }
+      ],
       schemaSpec: { kind: "imperative", paradigm: "reducers", version: 1 }
     },
     parseAction(raw) {
@@ -2630,6 +2638,7 @@
     icon: g.meta.icon,
     // Phosphor icon name; the hub UI prefers it over emoji.
     features: g.meta.features,
+    variants: g.meta.variants ?? g.meta.features?.variants,
     schemaSpec: g.meta.schemaSpec,
     // Schema-defined games carry this so the bundled client attaches the generic
     // renderer (no hand-written client module). Hand-written games omit it.

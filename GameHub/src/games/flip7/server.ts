@@ -357,6 +357,10 @@ export const Flip7: GameModule = {
       maxDurationSec: 900,
     },
     actionTypes: ["hit","stay","target","give_second","next_round"] as const,
+    variants: [
+      { id: "standard", name: "Standard", description: "Race to 200 points." },
+      { id: "vengeance", name: "Flip 7 with a vengeance", description: "High stakes aggressive targeting and double penalty action cards." }
+    ],
     schemaSpec: { kind: "imperative", paradigm: "reducers", version: 1 },
   },
 

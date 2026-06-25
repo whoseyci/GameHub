@@ -88,6 +88,8 @@ export interface GameMeta {
    *  no-emoji-in-UI principle while preserving back-compat. */
   icon?: string;
   features?: GameFeatures; // optional capability manifest
+  /** Game variants / game-mode API list */
+  variants?: Array<{ id: string; name: string; description?: string }>;
   /** U-1: Universal Schema paradigm header descriptor */
   schemaSpec?: unknown;
   /** The action strings this game's applyAction() recognises. Used by the

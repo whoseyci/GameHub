@@ -78,6 +78,10 @@ export const Skyjo: GameModule = {
     emoji: "🃏",
     icon: "cards",
     features: SkyjoFeatures,
+    variants: [
+      { id: "standard", name: "Standard", description: "Classic Skyjo to 100 points." },
+      { id: "extreme", name: "Skyjo Extreme", description: "Extreme mode with negative wild cards and void redistribution." }
+    ],
     actionTypes: ["draw_deck","take_discard","discard_drawn","swap","reveal","reveal_after_discard","tiebreaker","next_round"] as const,
     schemaSpec: { kind: "imperative", paradigm: "reducers", version: 1 },
   },

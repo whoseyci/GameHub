@@ -667,9 +667,15 @@ export class Room extends Server<Env> {
       if (this.isPublic) await this.lobbyUpdate();
       this.broadcastState();
       // If we hit the all-ready gate for a quick-play / group lobby, launch.
-      if ((this.quickGame || this.isGroup) && this.canAllReadyStart()) {
+      if ((this.quickGame || this.isGroup) && this.canAllReadyStart(msg.gameId)) {
         const launchGameId = this.quickGame || msg.gameId;
-        if (launchGameId) this.startGame(launchGameId);
+        if (launchGameId) {
+          const err = this.startGame(launchGameId);
+          if (!err) {
+            void this.persistRoom(); void this.lobbyUpdate();
+            this.broadcastState();
+          }
+        }
       }
       return;
     }
@@ -887,8 +893,8 @@ export class Room extends Server<Env> {
    *   3. EVERY human member has set ready=true (bots auto-ready)
    *   4. There's at least one human (no all-bot lobbies launching ghosts)
    */
-  private canAllReadyStart(): boolean {
-    const gid = this.quickGame; // group launches come through msg.gameId path
+  private canAllReadyStart(launchGameId?: string | null): boolean {
+    const gid = this.quickGame || launchGameId || this.gameId;
     if (!gid) return false;
     const g = getGame(gid);
     if (!g) return false;
@@ -902,7 +908,7 @@ export class Room extends Server<Env> {
   private async maybeQuickStart() {
     if (!this.canAllReadyStart()) return;
     this.startGame(this.quickGame!);
-    await this.persistRoom(); await this.lobbyUpdate(); this.broadcastState();
+    void this.persistRoom(); void this.lobbyUpdate(); this.broadcastState();
   }
 
   async onClose(conn: Connection<ConnState>) {

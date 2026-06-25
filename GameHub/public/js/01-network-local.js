@@ -8,15 +8,14 @@ function onlineSeatsPayload(){syncOnlinePrimaryName();return onlineDevicePlayers
 function renderOnlineDevicePlayers(){syncOnlinePrimaryName();const box=$('onlineDevicePlayers');if(!box)return;box.innerHTML=onlineDevicePlayers.map((p,i)=>`<div style="display:flex;gap:6px;align-items:center;margin-bottom:5px"><input class="input" style="margin:0;padding:8px" value="${p.name.replace(/"/g,'&quot;')}" ${i===0?'placeholder="Main player"':'placeholder="Same-device player"'} oninput="onlineDevicePlayers[${i}].name=this.value; if(${i}===0)$('onlineName').value=this.value"><button class="icon-btn" ${i===0?'disabled style="opacity:.3"':''} onclick="onlineDevicePlayers.splice(${i},1);renderOnlineDevicePlayers()">${Kit.Icon.html('x',{size:14})}</button></div>`).join('');}
 function addOnlineDevicePlayer(){syncOnlinePrimaryName();if(onlineDevicePlayers.length>=8)return;onlineDevicePlayers.push({name:'Player '+(onlineDevicePlayers.length+1)});renderOnlineDevicePlayers();}
 function connectRoom(code,{isPublic=false,isGroup=false,quickGame=null,maxPlayers=8,shard=null}={}){
+  const resolvedGroup = isGroup || String(code||'').toUpperCase().startsWith('GROUP-');
   mode='online';net.room=code;net.isHost=false;net.spectating=false;
-  // Phase 6: mirror to window so LocalSeatEditor.refreshButton hides
-  // #seatsBtn when we leave local play for online.
   window.mode = mode;
-  _joinAttempt={code,isPublic,isGroup,quickGame,maxPlayers,shard};
+  _joinAttempt={code,isPublic,isGroup:resolvedGroup,quickGame,maxPlayers,shard};
   if(net.ws){try{net.ws.close();}catch(e){}}
   resetGameUi();
   const ws=new WebSocket(wsUrl('room',code));net.ws=ws;
-  ws.onopen=()=>ws.send(JSON.stringify({type:'join',pid:getPid(),name:myName,seats:onlineSeatsPayload(),isPublic,isGroup,quickGame,maxPlayers}));
+  ws.onopen=()=>ws.send(JSON.stringify({type:'join',pid:getPid(),name:myName,seats:onlineSeatsPayload(),isPublic,isGroup:resolvedGroup,quickGame,maxPlayers}));
   ws.onmessage=ev=>{let m;try{m=JSON.parse(ev.data);}catch(e){return;}handleNet(m);};
   ws.onerror=()=>toast('Connection error');
 }

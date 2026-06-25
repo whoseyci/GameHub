@@ -34,6 +34,7 @@ export const GAME_CATALOGUE = Object.values(GAMES).map((g) => ({
   emoji: g.meta.emoji,
   icon: g.meta.icon, // Phosphor icon name; the hub UI prefers it over emoji.
   features: g.meta.features,
+  variants: g.meta.variants ?? (g.meta.features as any)?.variants,
   schemaSpec: g.meta.schemaSpec,
   // Schema-defined games carry this so the bundled client attaches the generic
   // renderer (no hand-written client module). Hand-written games omit it.
