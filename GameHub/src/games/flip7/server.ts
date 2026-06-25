@@ -22,7 +22,7 @@ function buildViewState(s: State): GameViewState {
       seat: i,
       name: p.name,
       status: p.status,
-      score: liveScore(p),
+      score: liveScore(p, s.variant),
       banked: p.banked,
     })),
     // Flip 7 is turn-based: exactly one seat acts at a time, or one seat is
@@ -33,7 +33,8 @@ function buildViewState(s: State): GameViewState {
 }
 
 type CardKind = "num" | "mod" | "act";
-interface Card { id: string; kind: CardKind; v: number | string; }
+type SpecialNumber = "zero" | "unlucky7" | "lucky13";
+interface Card { id: string; kind: CardKind; v: number | string; special?: SpecialNumber; }
 
 interface Player {
   name: string; nums: number[]; mods: string[]; tableau: Card[]; spentActions?: Card[];
@@ -49,7 +50,9 @@ interface Player {
 //   freeze/flip3/flip4 -> choose a target to apply to
 //   give_second        -> choose an active opponent to hand a duplicate Second Chance
 //   steal/discard/just1more -> choose a target
-//   swap               -> choose two targets (handled as multi-step or separate kind)
+//   modifier           -> choose who receives a Vengeance modifier card
+//   swap               -> choose a target to swap with (card-level selection is supported via cardId/cardId2)
+type PendingAction = { kind: "freeze" | "flip3" | "flip4" | "give_second" | "steal" | "swap" | "discard" | "just1more" | "modifier"; from: number; card?: Card; target1?: number; cardId?: string };
 interface State extends RngStateHolder {
   schemaVersion: number;
   players: Player[];
@@ -57,12 +60,13 @@ interface State extends RngStateHolder {
   current: number;
   phase: "PLAY" | "ROUND_END" | "GAME_OVER";
   round: number;
-  pendingAction: null | { kind: "freeze" | "flip3" | "flip4" | "give_second" | "steal" | "swap" | "discard" | "just1more"; from: number; card?: Card; target1?: number };
+  pendingAction: null | PendingAction;
+  deferredActions?: PendingAction[];
   flip3Left: number; flip3Target: number;
-  // Stack of suspended Flip-Three frames so nested action cards (freeze / 2nd /
-  // another flip3) drawn DURING a flip3 can PAUSE for the target's choice and
-  // then resume the remaining draws. Each frame = { left, target }.
-  flip3Stack?: Array<{ left: number; target: number }>;
+  // Stack of suspended Flip-Three / Flip-Four frames so nested action cards can
+  // pause for target choices. Vengeance Flip Four defers action/modifier target
+  // choices until all four cards are revealed (unless the target busts / flips 7).
+  flip3Stack?: Array<{ left: number; target: number; flip4?: boolean; delayed?: PendingAction[] }>;
   events: any[];       // replay timeline for the client (cleared each applyAction)
   seq: number;         // monotonically increasing so the client can dedupe
   log: any;            // last event (back-compat / quick checks)
@@ -72,23 +76,29 @@ interface State extends RngStateHolder {
 function buildDeck(rng: RngStateHolder, variant = "standard"): Card[] {
   const d: Card[] = [];
   let seq = 0;
-  const add = (kind: CardKind, v: number | string) => d.push({ id: `f7c_${seq++}_${kind}_${String(v).replace(/\W/g, "")}`, kind, v });
-  
+  const safe = (v: number | string, special?: string) => String(special ?? v).replace(/\W/g, "");
+  const add = (kind: CardKind, v: number | string, special?: SpecialNumber) =>
+    d.push({ id: `f7c_${seq++}_${kind}_${safe(v, special)}`, kind, v, ...(special ? { special } : {}) });
+
   if (variant === "vengeance") {
-    add("num", 0);
+    // Ruleset Edition 1: 108 cards total.
+    // Number distribution is one 1, two 2s ... thirteen 13s, with the
+    // Unlucky 7 replacing one regular 7 and Lucky 13 replacing one regular 13.
+    // The 0 is the third Special Number card.
+    add("num", 0, "zero");
     for (let n = 1; n <= 13; n++) {
-       for (let i = 0; i < n; i++) {
-         add("num", n);
-       }
+      const copies = n - (n === 7 ? 1 : 0) - (n === 13 ? 1 : 0);
+      for (let i = 0; i < copies; i++) add("num", n);
     }
-    // Special Cards
-    add("act", "unlucky7");
-    add("act", "lucky13");
-    
-    for (const m of ["+2", "+4", "+6", "+8", "+10", "div2"]) add("mod", m);
-    for (const a of ["freeze", "flip4", "steal", "swap", "discard", "just1more"]) {
-       for (let i = 0; i < 3; i++) add("act", a);
-    }
+    add("num", 7, "unlucky7");
+    add("num", 13, "lucky13");
+
+    // Modifier cards: two each -2/-4/-6/-8/-10, one ÷2.
+    for (const m of ["-2", "-4", "-6", "-8", "-10"]) for (let i = 0; i < 2; i++) add("mod", m);
+    add("mod", "div2");
+
+    // Action cards: one each. No Freeze, Flip 3, or Second Chance in Vengeance.
+    for (const a of ["just1more", "swap", "steal", "discard", "flip4"]) add("act", a);
   } else {
     add("num", 0);
     for (let n = 1; n <= 12; n++) for (let i = 0; i < n; i++) add("num", n);
@@ -147,7 +157,7 @@ function fresh(names: string[], banked: number[], rngState = makeSeed(), variant
     schemaVersion: 1,
     rngState: rng.rngState,
     players, deck, discard: [], current: 0, phase: "PLAY", round: 1,
-    pendingAction: null, flip3Left: 0, flip3Target: -1, flip3Stack: [], events: [], seq: 0, log: null,
+    pendingAction: null, deferredActions: [], flip3Left: 0, flip3Target: -1, flip3Stack: [], events: [], seq: 0, log: null,
     variant,
   };
   dealOpeningHands(s);
@@ -160,10 +170,11 @@ function fresh(names: string[], banked: number[], rngState = makeSeed(), variant
 function startNextRound(s: State) {
   for (const p of s.players) {
     p.nums = []; p.mods = []; p.tableau = []; p.spentActions = []; p.secondChance = false;
+    p.hasLucky13 = false; p.mustHit = false;
     p.status = "active"; p.bustCard = null; p.roundScore = 0;
   }
   s.current = 0; s.phase = "PLAY"; s.round += 1;
-  s.pendingAction = null; s.flip3Left = 0; s.flip3Target = -1; s.flip3Stack = [];
+  s.pendingAction = null; s.deferredActions = []; s.flip3Left = 0; s.flip3Target = -1; s.flip3Stack = [];
   dealOpeningHands(s);
 }
 
@@ -178,7 +189,47 @@ function firstActive(s: State, from: number): number {
 }
 function activeCount(s: State) { return s.players.filter((p) => p.status === "active").length; }
 function activeOthers(s: State, exclude: number) { return s.players.map((p, i) => i).filter((i) => i !== exclude && s.players[i].status === "active"); }
+function targetableSeats(s: State, exclude: number, includeSelf = true) {
+  return s.players.map((p, i) => i).filter((i) => (includeSelf || i !== exclude) && pNotBusted(s.players[i]));
+}
+function pNotBusted(p: Player | undefined) { return !!p && p.status !== "busted"; }
 function uniqueCount(p: Player) { return new Set(p.nums).size; }
+function removeOne<T>(arr: T[], val: T): boolean { const i = arr.indexOf(val); if (i < 0) return false; arr.splice(i, 1); return true; }
+function isVengeance(s: State) { return s.variant === "vengeance"; }
+function countNumber(p: Player, n: number) { return p.nums.filter((x) => x === n).length; }
+function refreshSpecialFlags(p: Player) {
+  p.hasLucky13 = p.tableau.some((c) => c.kind === "num" && c.special === "lucky13");
+  p.mustHit = p.status === "active" && p.tableau.some((c) => c.kind === "num" && c.special === "zero");
+}
+function removeCardFromPlayer(p: Player, card: Card | null): Card | null {
+  if (!card) return null;
+  const i = p.tableau.findIndex((c) => c.id === card.id);
+  if (i >= 0) p.tableau.splice(i, 1);
+  if (card.kind === "num") removeOne(p.nums, card.v as number);
+  else if (card.kind === "mod") removeOne(p.mods, card.v as string);
+  else if (card.v === "second") p.secondChance = false;
+  refreshSpecialFlags(p);
+  return card;
+}
+function chooseFaceUpCard(p: Player, cardId?: string): Card | null {
+  const cards = p.tableau.filter((c) => c.kind === "num" || c.kind === "mod");
+  if (!cards.length) return null;
+  if (cardId) return cards.find((c) => c.id === cardId) ?? null;
+  return cards[cards.length - 1];
+}
+function maybeBustFromTransfer(s: State, seat: number, card: Card | null) {
+  if (!card || card.kind !== "num") return;
+  const p = s.players[seat];
+  if (!p || p.status === "busted") return;
+  const n = card.v as number;
+  if (card.special === "unlucky7") return;
+  if (n === 13 && p.hasLucky13 && countNumber(p, 13) <= 2) return;
+  if (countNumber(p, n) > 1) {
+    p.status = "busted";
+    p.bustCard = n;
+    emit(s, { type: "bust", player: seat, value: n });
+  }
+}
 
 // Bust probability for player `pi` BEFORE drawing the next card, given remaining
 // deck composition. = (count of number cards in the deck whose value the player
@@ -194,7 +245,17 @@ function bustProbability(s: State, pi: number): number {
 // Place a card WITHOUT drama (used for opening deal & internal updates).
 function placeCard(s: State, pi: number, card: Card) {
   const p = s.players[pi];
-  if (card.kind === "num") { if (!p.nums.includes(card.v as number)) { p.nums.push(card.v as number); p.nums.sort((a, b) => a - b); p.tableau.push(card); } }
+  if (card.kind === "num") {
+    if (card.special === "unlucky7" && isVengeance(s)) {
+      for (const c of p.tableau) if (c.kind === "num" || c.kind === "mod") s.discard.push(c);
+      p.nums = [7]; p.mods = []; p.tableau = p.tableau.filter((c) => c.kind === "act");
+      p.secondChance = false; p.hasLucky13 = false; p.mustHit = false;
+      p.tableau.push(card);
+    } else {
+      p.nums.push(card.v as number); p.nums.sort((a, b) => a - b); p.tableau.push(card);
+      refreshSpecialFlags(p);
+    }
+  }
   else if (card.kind === "mod") { p.mods.push(card.v as string); p.tableau.push(card); }
   else if (card.v === "second") { p.secondChance = true; p.tableau.push(card); }
 }
@@ -218,20 +279,46 @@ function applyDrawnCard(s: State, pi: number, card: Card, opts: { flip3?: boolea
   const p = s.players[pi];
   if (card.kind === "num") {
     const n = card.v as number;
-    if (n === 0 && s.variant === "vengeance") {
-       p.mustHit = true;
-       p.nums.push(n); p.tableau.push(card);
-       emit(s, { type: "card", player: pi, card });
-       return "ok";
+
+    if (isVengeance(s) && card.special === "unlucky7") {
+      for (const c of p.tableau) if (c.kind === "num" || c.kind === "mod") s.discard.push(c);
+      p.nums = [7]; p.mods = []; p.tableau = p.tableau.filter((c) => c.kind === "act");
+      p.secondChance = false; p.hasLucky13 = false; p.mustHit = false;
+      p.tableau.push(card);
+      emit(s, { type: "card", player: pi, card, flip3: !!opts.flip3 });
+      emit(s, { type: "unlucky7", player: pi, card });
+      return "ok";
     }
+
+    if (isVengeance(s) && card.special === "lucky13") {
+      if (countNumber(p, 13) >= 2) {
+        p.status = "busted"; p.bustCard = 13;
+        emit(s, { type: "bust", player: pi, value: 13, flip3: !!opts.flip3 });
+        return "bust";
+      }
+      p.hasLucky13 = true;
+      p.nums.push(13); p.nums.sort((a, b) => a - b); p.tableau.push(card);
+      emit(s, { type: "card", player: pi, card, flip3: !!opts.flip3 });
+      if (uniqueCount(p) >= 7) { p.status = "stayed"; emit(s, { type: "flip7", player: pi }); return "flip7"; }
+      return "ok";
+    }
+
+    if (isVengeance(s) && card.special === "zero") {
+      p.nums.push(0); p.nums.sort((a, b) => a - b); p.tableau.push(card);
+      refreshSpecialFlags(p);
+      emit(s, { type: "card", player: pi, card, flip3: !!opts.flip3 });
+      if (uniqueCount(p) >= 7) { p.status = "stayed"; p.mustHit = false; emit(s, { type: "flip7", player: pi }); return "flip7"; }
+      return "ok";
+    }
+
     if (p.nums.includes(n)) {
-      if (n === 13 && p.hasLucky13) {
-         // Second 13 is okay!
-         p.nums.push(n); p.tableau.push(card);
+      if (isVengeance(s) && n === 13 && p.hasLucky13 && countNumber(p, 13) < 2) {
+         // Lucky 13 allows exactly one other 13.
+         p.nums.push(n); p.nums.sort((a, b) => a - b); p.tableau.push(card);
          emit(s, { type: "card", player: pi, card, flip3: !!opts.flip3 });
          return "ok";
       }
-      if (p.secondChance) {
+      if (!isVengeance(s) && p.secondChance) {
         p.secondChance = false; s.discard.push(card);
         const used = removeTableauCard(p, (c) => c.kind === "act" && c.v === "second");
         if (used) s.discard.push(used);
@@ -243,6 +330,7 @@ function applyDrawnCard(s: State, pi: number, card: Card, opts: { flip3?: boolea
       return "bust";
     }
     p.nums.push(n); p.nums.sort((a, b) => a - b); p.tableau.push(card);
+    refreshSpecialFlags(p);
     emit(s, { type: "card", player: pi, card, flip3: !!opts.flip3 });
     if (uniqueCount(p) >= 7) { 
        p.status = "stayed"; 
@@ -252,7 +340,17 @@ function applyDrawnCard(s: State, pi: number, card: Card, opts: { flip3?: boolea
     }
     return "ok";
   }
-  if (card.kind === "mod") { 
+  if (card.kind === "mod") {
+     if (isVengeance(s)) {
+       // Vengeance modifiers are played on ANY non-busted player (including stayed players).
+       p.mods.push(card.v as string); p.tableau.push(card);
+       emit(s, { type: "card", player: pi, card, flip3: !!opts.flip3 });
+       const targets = targetableSeats(s, pi, true);
+       if (targets.length <= 1) { resolveModifier(s, pi, targets[0] ?? pi, card, true); return "ok"; }
+       s.pendingAction = { kind: "modifier", from: pi, card };
+       emit(s, { type: "await_target", kind: "modifier", from: pi });
+       return "action";
+     }
      p.mods.push(card.v as string); p.tableau.push(card); 
      emit(s, { type: "card", player: pi, card, flip3: !!opts.flip3 }); 
      return "ok"; 
@@ -267,9 +365,9 @@ function applyDrawnCard(s: State, pi: number, card: Card, opts: { flip3?: boolea
      return "ok";
   }
   if (a === "lucky13" && s.variant === "vengeance") {
-     p.hasLucky13 = true; p.tableau.push(card);
-     emit(s, { type: "card", player: pi, card });
-     return "ok";
+     p.hasLucky13 = true; p.nums.push(13); p.nums.sort((x, y) => x - y); p.tableau.push({ ...card, kind: "num", v: 13, special: "lucky13" });
+     emit(s, { type: "card", player: pi, card: { ...card, kind: "num", v: 13, special: "lucky13" } });
+     return uniqueCount(p) >= 7 ? "flip7" : "ok";
   }
   if (a === "second") {
     if (!p.secondChance) { p.secondChance = true; p.tableau.push(card); emit(s, { type: "card", player: pi, card }); return "ok"; }
@@ -283,9 +381,16 @@ function applyDrawnCard(s: State, pi: number, card: Card, opts: { flip3?: boolea
   }
   // freeze / flip3 / flip4 / steal / swap / discard / just1more
   p.tableau.push(card); emit(s, { type: "action_card", player: pi, kind: a, card }); 
-  const others = activeOthers(s, pi);
-  if (others.length === 0) {
-    resolveAction(s, pi, a as any, pi, true);
+  const targets = isVengeance(s) ? targetableSeats(s, pi, true) : activeOthers(s, pi);
+  const needsFaceUpCard = a === "steal" || a === "swap" || a === "discard";
+  const hasFaceUpTarget = targets.some((t) => s.players[t].tableau.some((c) => c.kind === "num" || c.kind === "mod"));
+  if (isVengeance(s) && needsFaceUpCard && !hasFaceUpTarget) {
+    removeCardFromPlayer(p, card); s.discard.push(card);
+    emit(s, { type: "effect.action_fizzle", player: pi, kind: a, card });
+    return "ok";
+  }
+  if (targets.length === 0 || (targets.length === 1 && targets[0] === pi)) {
+    resolveAction(s, pi, a as any, targets[0] ?? pi, true);
     return "ok";
   }
   s.pendingAction = { kind: a as any, from: pi, card };
@@ -293,13 +398,28 @@ function applyDrawnCard(s: State, pi: number, card: Card, opts: { flip3?: boolea
   return "action";
 }
 
-function resolveAction(s: State, from: number, kind: "freeze" | "flip3" | "flip4" | "steal" | "swap" | "discard" | "just1more", target: number, auto = false): string {
+function resolveModifier(s: State, from: number, target: number, card: Card, auto = false): string {
+  const fp = s.players[from];
+  const tp = s.players[target];
+  if (!fp || !tp || tp.status === "busted") return "ok";
+  // The card was temporarily placed on the drawing player's row for the reveal.
+  removeCardFromPlayer(fp, card);
+  placeCard(s, target, card);
+  s.pendingAction = null;
+  emit(s, { type: "play_action", kind: "modifier", from, target, card, auto });
+  emit(s, { type: "effect.modifier", from, target, card });
+  return "ok";
+}
+
+function resolveAction(s: State, from: number, kind: "freeze" | "flip3" | "flip4" | "steal" | "swap" | "discard" | "just1more", target: number, auto = false, opts: { cardId?: string; cardId2?: string } = {}): string {
   const actionCard = s.pendingAction?.card ?? removeTableauCard(s.players[from], (c) => c.kind === "act" && c.v === kind) ?? undefined;
   s.pendingAction = null;
   const tp = s.players[target];
   const fp = s.players[from];
-  
-  if (actionCard) (tp.spentActions ??= []).push({ ...actionCard, id: `spent_${actionCard.id ?? kind}_${s.seq}` });
+  if (!tp || !fp || tp.status === "busted") return "ok";
+
+  if (actionCard) { removeCardFromPlayer(fp, actionCard); s.discard.push(actionCard); }
+  if (actionCard && !isVengeance(s)) (tp.spentActions ??= []).push({ ...actionCard, id: `spent_${actionCard.id ?? kind}_${s.seq}` });
 
   if (kind === "freeze") {
     emit(s, { type: "play_action", kind: "freeze", from, target, card: actionCard, auto });
@@ -308,40 +428,33 @@ function resolveAction(s: State, from: number, kind: "freeze" | "flip3" | "flip4
   }
   if (kind === "discard") {
      emit(s, { type: "play_action", kind: "discard", from, target, card: actionCard, auto });
-     const c = tp.tableau.pop();
+     const c = chooseFaceUpCard(tp, opts.cardId);
      if (c) {
+        removeCardFromPlayer(tp, c);
         s.discard.push(c);
-        if (c.kind === "num") removeOne(tp.nums, c.v as number);
-        else if (c.kind === "mod") removeOne(tp.mods, c.v as string);
         emit(s, { type: "effect.discarded", player: target, card: c });
      }
      return "ok";
   }
   if (kind === "steal") {
      emit(s, { type: "play_action", kind: "steal", from, target, card: actionCard, auto });
-     const c = tp.tableau.pop();
+     const c = chooseFaceUpCard(tp, opts.cardId);
      if (c) {
-        if (c.kind === "num") removeOne(tp.nums, c.v as number);
-        else if (c.kind === "mod") removeOne(tp.mods, c.v as string);
+        removeCardFromPlayer(tp, c);
         placeCard(s, from, c);
+        maybeBustFromTransfer(s, from, c);
         emit(s, { type: "effect.stolen", from: target, to: from, card: c });
      }
      return "ok";
   }
   if (kind === "swap") {
      emit(s, { type: "play_action", kind: "swap", from, target, card: actionCard, auto });
-     const tc = tp.tableau.pop();
-     const fc = fp.tableau.pop();
-     if (tc) {
-        if (tc.kind === "num") removeOne(tp.nums, tc.v as number);
-        else if (tc.kind === "mod") removeOne(tp.mods, tc.v as string);
-        placeCard(s, from, tc);
-     }
-     if (fc) {
-        if (fc.kind === "num") removeOne(fp.nums, fc.v as number);
-        else if (fc.kind === "mod") removeOne(fp.mods, fc.v as string);
-        placeCard(s, target, fc);
-     }
+     const tc = chooseFaceUpCard(tp, opts.cardId);
+     const fc = chooseFaceUpCard(fp, opts.cardId2);
+     if (tc) removeCardFromPlayer(tp, tc);
+     if (fc) removeCardFromPlayer(fp, fc);
+     if (tc) { placeCard(s, from, tc); maybeBustFromTransfer(s, from, tc); }
+     if (fc) { placeCard(s, target, fc); maybeBustFromTransfer(s, target, fc); }
      emit(s, { type: "effect.swapped", p1: from, p2: target, c1: fc, c2: tc });
      return "ok";
   }
@@ -354,40 +467,45 @@ function resolveAction(s: State, from: number, kind: "freeze" | "flip3" | "flip4
 
   const isF4 = kind === "flip4";
   emit(s, { type: "play_action", kind, from, target, card: actionCard, auto });
-  (s.flip3Stack ??= []).push({ left: isF4 ? 4 : 3, target });
+  (s.flip3Stack ??= []).push({ left: isF4 ? 4 : 3, target, flip4: isF4 });
   runFlip3(s);
   return "ok";
 }
 
-// Flip Three: reveal up to 3, ABANDON immediately on bust/flip7. Each draw is its
-// own event so the client can reveal them one slow card at a time.
-//
-// PAUSABLE: if an action card (freeze / flip3 / give-second) is drawn during a
-// flip3, applyDrawnCard leaves a pendingAction set and we RETURN, keeping the
-// current frame on flip3Stack. The flip3 target then chooses (apply() handler),
-// and resumeFlip3() is called to continue the remaining draws. Nested flip3s are
-// handled by stacking frames; the inner finishes before the outer resumes.
+// Flip Three / Flip Four: reveal cards one at a time, abandoning immediately on
+// bust/Flip7. Standard Flip Three pauses as soon as an action asks for a target.
+// Vengeance Flip Four is different: any Action/Modifier cards revealed as part
+// of the four are queued and resolved only AFTER all four cards are drawn, as
+// long as the target did not bust or Flip 7.
 function runFlip3(s: State) {
   const stack = (s.flip3Stack ??= []);
   while (stack.length) {
     const frame = stack[stack.length - 1];
     const t = frame.target; const tp = s.players[t];
-    if (!tp || tp.status !== "active" || frame.left <= 0) { stack.pop(); continue; }
+    if (!tp || tp.status !== "active") { stack.pop(); continue; }
+    if (frame.left <= 0) {
+      stack.pop();
+      if (frame.flip4 && frame.delayed && frame.delayed.length) {
+        s.deferredActions = [...frame.delayed, ...(s.deferredActions ?? [])];
+        popDeferredAction(s);
+        return;
+      }
+      continue;
+    }
     frame.left--;
     const r = applyDrawnCard(s, t, draw(s), { flip3: true });
     if (r === "flip7") {
-      // Flip 7 reached during a flip3: abandon the flip3 and END THE ROUND for
-      // everyone (the flip3 target already banks via scoreRound).
       emit(s, { type: "flip3_abandon", target: t });
       forceEndRoundOnFlip7(s, t);
       return;
     }
     if (r === "bust") { emit(s, { type: "flip3_abandon", target: t }); stack.pop(); continue; }
     if (r === "action") {
-      // A nested freeze / flip3 / give-second was drawn. The pendingAction.from
-      // is the flip3 target (t), so THAT player chooses. Pause here — the frame
-      // stays on the stack and resumeFlip3() continues after the choice.
-      // (A nested flip3, once chosen, pushes its own frame and runs first.)
+      if (frame.flip4 && s.pendingAction) {
+        (frame.delayed ??= []).push(s.pendingAction);
+        s.pendingAction = null;
+        continue;
+      }
       return;
     }
   }
@@ -398,6 +516,14 @@ function runFlip3(s: State) {
 // Called after a flip3-nested action's target is chosen, to continue the draws.
 function resumeFlip3(s: State) {
   if (s.flip3Stack && s.flip3Stack.length) runFlip3(s);
+}
+
+function popDeferredAction(s: State): boolean {
+  const next = s.deferredActions?.shift();
+  if (!next) return false;
+  s.pendingAction = next;
+  emit(s, { type: "await_target", kind: next.kind, from: next.from });
+  return true;
 }
 
 function endTurnAdvance(s: State) {
@@ -416,7 +542,7 @@ function forceEndRoundOnFlip7(s: State, flip7Seat: number): boolean {
       emit(s, { type: "stay", player: i, forced: true });
     }
   }
-  s.pendingAction = null; s.flip3Left = 0; s.flip3Target = -1; s.flip3Stack = [];
+  s.pendingAction = null; s.deferredActions = []; s.flip3Left = 0; s.flip3Target = -1; s.flip3Stack = [];
   scoreRound(s);
   return true;
 }
@@ -428,9 +554,16 @@ function scoreRound(s: State) {
     if (p.status === "busted") { p.roundScore = 0; continue; }
     const u = uniqueCount(p);
     let base = p.nums.reduce((a, b) => a + b, 0);
-    if (p.mods.includes("x2")) base *= 2;
-    if (p.mods.includes("div2")) base = Math.floor(base / 2);
-    for (const m of p.mods) if (m.startsWith("+")) base += parseInt(m.slice(1));
+    if (isVengeance(s) && p.nums.includes(0) && u < 7) base = 0;
+    else {
+      if (p.mods.includes("x2")) base *= 2;
+      if (p.mods.includes("div2")) base = Math.floor(base / 2);
+      for (const m of p.mods) {
+        if (m.startsWith("+")) base += parseInt(m.slice(1));
+        else if (m.startsWith("-")) base -= parseInt(m.slice(1));
+      }
+      if (base < 0) base = 0;
+    }
     if (u >= 7) { base += 15; flip7Bonus = i; }
     p.roundScore = base; p.banked += base;
   }
@@ -440,7 +573,7 @@ function scoreRound(s: State) {
     if (p.tableau && p.tableau.length) { for (const c of p.tableau) s.discard.push(c); }
     p.tableau = [];
   }
-  s.pendingAction = null; s.flip3Left = 0; s.flip3Target = -1; s.flip3Stack = [];
+  s.pendingAction = null; s.deferredActions = []; s.flip3Left = 0; s.flip3Target = -1; s.flip3Stack = [];
   s.phase = s.players.some((p) => p.banked >= 200) ? "GAME_OVER" : "ROUND_END";
   const max = Math.max(...s.players.map((p) => p.banked));
   emit(s, { type: s.phase === "GAME_OVER" ? "game_over" : "round_end",
@@ -462,7 +595,7 @@ export const Flip7: GameModule = {
     actionTypes: ["hit","stay","target","give_second","next_round"] as const,
     variants: [
       { id: "standard", name: "Standard", description: "Race to 200 points." },
-      { id: "vengeance", name: "Flip 7 with a vengeance", description: "High stakes aggressive targeting and double penalty action cards." }
+      { id: "vengeance", name: "With a Vengeance", description: "Standalone 108-card ruleset: 13s, negative modifiers, Zero, Lucky 13, Unlucky 7, and take-that action cards." }
     ],
     schemaSpec: { kind: "imperative", paradigm: "reducers", version: 1 },
   },
@@ -499,7 +632,7 @@ export const Flip7: GameModule = {
       const pa = state.pendingAction;
       if (msg.action === "target" && pa.from === seat) {
         const t = Math.max(0, Math.min(state.players.length - 1, msg.target | 0));
-        if (state.players[t].status === "busted") return; // can target stayed players
+        if (state.players[t].status === "busted") return; // Vengeance can target stayed players
         // Are we resolving an action that was drawn DURING a flip3? If so, after
         // the choice we resume the remaining flip3 draws instead of ending the turn.
         const midFlip3 = !!(state.flip3Stack && state.flip3Stack.length);
@@ -516,11 +649,19 @@ export const Flip7: GameModule = {
             if (!state.pendingAction && !(state.flip3Stack && state.flip3Stack.length)) endTurnAdvance(state);
           }
           // (outside flip3, giving a second chance does NOT end your turn)
-        } else {
-          resolveAction(state, seat, pa.kind, t);
+        } else if (pa.kind === "modifier") {
+          if (pa.card) resolveModifier(state, seat, t, pa.card);
           if (midFlip3) resumeFlip3(state);
-          // Advance only when the whole flip3 chain is done and nothing is pending.
-          if (!state.pendingAction && !(state.flip3Stack && state.flip3Stack.length)) endTurnAdvance(state);
+          if (!state.pendingAction && !(state.flip3Stack && state.flip3Stack.length)) {
+            if (!popDeferredAction(state)) endTurnAdvance(state);
+          }
+        } else {
+          resolveAction(state, seat, pa.kind, t, false, { cardId: typeof msg.cardId === "string" ? msg.cardId : undefined, cardId2: typeof msg.cardId2 === "string" ? msg.cardId2 : undefined });
+          if (midFlip3) resumeFlip3(state);
+          // Advance only when the whole flip3/Flip4 chain is done and nothing is pending.
+          if (!state.pendingAction && !(state.flip3Stack && state.flip3Stack.length)) {
+            if (!popDeferredAction(state)) endTurnAdvance(state);
+          }
         }
       }
       return;
@@ -558,11 +699,15 @@ export const Flip7: GameModule = {
       const out: any[] = [];
       const kind = state.pendingAction.kind;
       const isSecond = kind === "give_second";
-      const isSwap = kind === "swap";
+      const needsCard = kind === "steal" || kind === "swap" || kind === "discard";
       for (let t = 0; t < state.players.length; t++) {
         if (state.players[t].status === "busted") continue;
-        if (isSecond && t === seat) continue; 
-        if (isSwap && t === seat) continue;
+        if (isSecond && t === seat) continue;
+        if (needsCard) {
+          const cards = state.players[t].tableau.filter((c) => c.kind === "num" || c.kind === "mod");
+          for (const c of cards) out.push({ action: "target", target: t, cardId: c.id });
+          continue;
+        }
         out.push({ action: "target", target: t });
       }
       return out;
@@ -597,27 +742,34 @@ export const Flip7: GameModule = {
       summary,
       state: buildViewState(state),
       flip7: {
-        round: state.round, current: state.current, phase: state.phase,
+        round: state.round, current: state.current, phase: state.phase, variant: state.variant,
         pendingAction: state.pendingAction, viewerSeat: seat,
         deckCount: state.deck.length, discardCount: state.discard.length,
-        discardTop: state.discard.length ? { kind: state.discard[state.discard.length - 1].kind, v: state.discard[state.discard.length - 1].v } : null,
+        discardTop: state.discard.length ? { kind: state.discard[state.discard.length - 1].kind, v: state.discard[state.discard.length - 1].v, special: state.discard[state.discard.length - 1].special } : null,
         seq: state.seq, events: state.events,
         players: state.players.map((p) => ({
-          name: p.name, nums: p.nums, mods: p.mods, second: p.secondChance, cards: orderedTableau(p).map((c) => ({ id: c.id, kind: c.kind, v: c.v })),
-          spentActions: (p.spentActions ?? []).map((c) => ({ id: c.id, kind: c.kind, v: c.v })),
+          name: p.name, nums: p.nums, mods: p.mods, second: p.secondChance, cards: orderedTableau(p).map((c) => ({ id: c.id, kind: c.kind, v: c.v, special: c.special })),
+          spentActions: (p.spentActions ?? []).map((c) => ({ id: c.id, kind: c.kind, v: c.v, special: c.special })),
           status: p.status, bustCard: p.bustCard, banked: p.banked, unique: uniqueCount(p),
-          live: liveScore(p),
+          live: liveScore(p, state.variant),
         })),
       },
     };
   },
 };
 
-function liveScore(p: Player): number {
+function liveScore(p: Player, variant = "standard"): number {
   if (p.status === "busted") return 0;
+  const u = new Set(p.nums).size;
   let base = p.nums.reduce((a, b) => a + b, 0);
+  if (variant === "vengeance" && p.nums.includes(0) && u < 7) return 0;
   if (p.mods.includes("x2")) base *= 2;
-  for (const m of p.mods) if (m.startsWith("+")) base += parseInt(m.slice(1));
-  if (new Set(p.nums).size >= 7) base += 15;
+  if (p.mods.includes("div2")) base = Math.floor(base / 2);
+  for (const m of p.mods) {
+    if (m.startsWith("+")) base += parseInt(m.slice(1));
+    else if (m.startsWith("-")) base -= parseInt(m.slice(1));
+  }
+  if (base < 0) base = 0;
+  if (u >= 7) base += 15;
   return base;
 }

@@ -116,6 +116,7 @@ export class Room extends Server<Env> {
       this.isPublic = m.isPublic ?? false;
       this.isGroup = m.isGroup ?? false;
       this.quickGame = m.quickGame ?? null;
+      this.quickVariant = m.quickVariant ?? null;
       this.maxPlayers = m.maxPlayers ?? 8;
       this.lastActivity = m.lastActivity ?? Date.now();
       this.actionLog = m.actionLog ?? [];
@@ -141,7 +142,7 @@ export class Room extends Server<Env> {
   private async persistMeta() {
     await this.ctx.storage.put("meta", {
       members: this.members, pending: this.pending, hostId: this.hostId,
-      isPublic: this.isPublic, isGroup: this.isGroup, quickGame: this.quickGame, maxPlayers: this.maxPlayers,
+      isPublic: this.isPublic, isGroup: this.isGroup, quickGame: this.quickGame, quickVariant: this.quickVariant, maxPlayers: this.maxPlayers,
       lastActivity: this.lastActivity, actionLog: this.actionLog,
       gameId: this.gameId, tickAt: this.tickAt,
       replayCounter: this.replayCounter,

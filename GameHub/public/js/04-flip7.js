@@ -1,9 +1,9 @@
 /* -------------------- FLIP 7 client (event-timeline) -------------------- */
 (function(){
-  window.GameRules['flip7']={title:'🎴 Flip 7',quick:'Push your luck — race to 200.',steps:['On your turn choose <b>Hit</b> (draw a card) or <b>Stay</b> (bank your points, you’re out for the round).','Number cards: there’s one 0, two 2s, three 3s … twelve 12s. Draw a <b>duplicate number → BUST</b> (score 0 this round).','Get <b>7 unique numbers → Flip 7!</b> +15 bonus and the round ends instantly.','Modifiers (+2…+10, ×2) boost your score; ×2 doubles numbers first, then + adds on.','Action cards: <b>Freeze</b> (target banks &amp; is out), <b>Flip Three</b> (target draws 3), <b>Second Chance</b> (saves you from one bust).','Round ends when all players bust/stay or someone Flip 7s. First to 200 wins.'],tip:'High numbers are riskier (more copies in the deck). The 0 is always safe.'};
-  function modText(m){return m==='x2'?'×2':m;}
-  const NUMCOL=['#94a3b8','#38bdf8','#22d3ee','#34d399','#4ade80','#a3e635','#facc15','#fb923c','#f97316','#ef4444','#ec4899','#d946ef','#a855f7'];
-  function numFace(n){return NUMCOL[Math.max(0,Math.min(12,n))];}
+  window.GameRules['flip7']={title:'🎴 Flip 7',quick:'Push your luck — race to 200.',steps:['Choose <b>Hit</b> to draw or <b>Stay</b> to stop taking voluntary cards for the round.','Standard deck: numbers 0–12, positive modifiers, Freeze, Flip Three, and Second Chance. Duplicate number → BUST.','<b>With a Vengeance</b>: standalone 108-card deck with numbers through 13, negative modifiers, ÷2, Zero, Lucky 13, Unlucky 7, and take-that actions.','In Vengeance, staying does <b>not</b> make you safe: non-busted stayed players can still receive modifiers and action effects until the round ends.','Get <b>7 unique numbers → Flip 7!</b> +15 bonus and the round ends instantly.','First player to 200+ at the end of a round wins.'],tip:'High numbers are riskier because more copies exist. In Vengeance, Zero scores 0 unless you Flip 7.'};
+  function modText(m){return m==='x2'?'×2':m==='div2'?'÷2':m;}
+  const NUMCOL=['#94a3b8','#38bdf8','#22d3ee','#34d399','#4ade80','#a3e635','#facc15','#fb923c','#f97316','#ef4444','#ec4899','#d946ef','#a855f7','#14b8a6'];
+  function numFace(n){return NUMCOL[Math.max(0,Math.min(13,Number(n)||0))];}
   // Pacing (dramatic).
   const SPEED={cardReveal:560,flip3Gap:780,wiggleMin:350,wiggleMax:1700,actionFly:620,beat:420};
   // Flip 7 cards now use the unified framework card (Kit.Cards.el → .kc): one shared
@@ -13,22 +13,31 @@
   // (busted/bust-cause) and the existing animation/mini-board CSS.
   // A Flip 7 card as a STRICT declarative spec (tokens only — no raw classes).
   // Theming = bg/border/content tokens; sizing context = zone:'f7'; states via tokens.
-  function f7Spec(kind,val,{busted=false,cause=false}={}){
+  function f7Spec(kind,val,{busted=false,cause=false,special=null}={}){
     let spec;
-    if(kind==='num') spec={ bg:numFace(val), content:{ text:val, color:'#fff' } };
+    if(kind==='num') {
+      if(special==='unlucky7') spec={ bg:'#111827', border:'#ef4444', content:{ text:'U7', color:'#fecaca' } };
+      else if(special==='lucky13') spec={ bg:'#bbf7d0', border:'#16a34a', content:{ text:'L13', color:'#14532d' } };
+      else if(special==='zero') spec={ bg:'#0f172a', border:'#38bdf8', content:{ text:'0', color:'#e0f2fe' } };
+      else spec={ bg:numFace(val), content:{ text:val, color:'#fff' } };
+    }
     else if(kind==='mod') spec= val==='x2'
       ? { bg:'#1f2937', border:'#f472b6', content:{ text:'×2', color:'#f472b6' } }
-      : { bg:{gradient:['#fef3c7','#fcd34d']}, border:'#d97706', content:{ text:modText(val), color:'#7c4a03' } };
+      : val==='div2'
+        ? { bg:'#fef08a', border:'#ca8a04', content:{ text:'÷2', color:'#713f12' } }
+        : String(val).startsWith('-')
+          ? { bg:'#ef4444', border:'#991b1b', content:{ text:modText(val), color:'#fff' } }
+          : { bg:{gradient:['#fef3c7','#fcd34d']}, border:'#d97706', content:{ text:modText(val), color:'#7c4a03' } };
     else if(val==='second') spec={ bg:'#dc2626', border:'#ef4444', content:{ text:'♥', color:'#fbcfe8' } };
     else if(val==='freeze') spec={ bg:{gradient:['#bae6fd','#7dd3fc']}, border:'#38bdf8', content:{ text:'❄', color:'#0369a1' } };
     else if(val==='flip3')  spec={ bg:'#eaff00', border:'#d4e600', content:{ text:'F3', color:'#1a1a00', italic:true } };
-    else if(val==='flip4')  spec={ bg:'#eaff00', border:'#d4e600', content:{ text:'F4', color:'#1a1a00', italic:true } };
+    else if(val==='flip4')  spec={ bg:{gradient:['#fef08a','#fde047']}, border:'#ca8a04', emblem:'4', content:{ text:'FLIP 4', color:'#422006', size:'calc(var(--kc-w,56px)*.20)', weight:1000 } };
     else if(val==='unlucky7') spec={ bg:'#000', border:'#ff0000', content:{ text:'U7', color:'#ff0000' } };
     else if(val==='lucky13') spec={ bg:'#4ade80', border:'#166534', content:{ text:'L13', color:'#166534' } };
-    else if(val==='steal') spec={ bg:'#7c3aed', border:'#5b21b6', content:{ text:'S', color:'#fff' } };
-    else if(val==='swap') spec={ bg:'#f59e0b', border:'#b45309', content:{ text:'W', color:'#fff' } };
-    else if(val==='discard') spec={ bg:'#4b5563', border:'#1f2937', content:{ text:'D', color:'#fff' } };
-    else if(val==='just1more') spec={ bg:'#ec4899', border:'#9d174d', content:{ text:'+1', color:'#fff' } };
+    else if(val==='steal') spec={ bg:{gradient:['#111827','#4c1d95']}, border:'#a78bfa', emblem:'$', content:{ text:'STEAL', color:'#fff', size:'calc(var(--kc-w,56px)*.21)', weight:1000 } };
+    else if(val==='swap') spec={ bg:{gradient:['#f59e0b','#b45309']}, border:'#fde68a', emblem:'↔', content:{ text:'SWAP', color:'#fff7ed', size:'calc(var(--kc-w,56px)*.23)', weight:1000 } };
+    else if(val==='discard') spec={ bg:{gradient:['#374151','#111827']}, border:'#9ca3af', emblem:'×', content:{ text:'DROP', color:'#f9fafb', size:'calc(var(--kc-w,56px)*.23)', weight:1000 } };
+    else if(val==='just1more') spec={ bg:{gradient:['#ec4899','#9d174d']}, border:'#f9a8d4', emblem:'1', content:{ text:'+1 MORE', color:'#fff', size:'calc(var(--kc-w,56px)*.18)', weight:1000 } };
     else spec={ content:{ text:val } };
     spec.zone='f7';
     const st=[]; if(busted)st.push('dim'); if(cause)st.push('shake','highlight');
@@ -37,7 +46,8 @@
   }
   function cardEl(kind,val,opts={}){
     const c=Kit.Cards.el(f7Spec(kind,val,opts));
-    if(kind!=='num'&&val) c.title = val==='second'?'Second Chance':val==='freeze'?'Freeze':val==='flip3'?'Flip Three':val==='flip4'?'Flip Four':val==='unlucky7'?'Unlucky 7':val==='lucky13'?'Lucky 13':val==='steal'?'Steal':val==='swap'?'Swap':val==='discard'?'Discard':val==='just1more'?'Just One More':'';
+    if(opts.special) c.title = opts.special==='zero'?'Zero':opts.special==='unlucky7'?'Unlucky 7':opts.special==='lucky13'?'Lucky 13':'';
+    else if(kind!=='num'&&val) c.title = val==='second'?'Second Chance':val==='freeze'?'Freeze':val==='flip3'?'Flip Three':val==='flip4'?'Flip Four':val==='steal'?'Steal':val==='swap'?'Swap':val==='discard'?'Discard':val==='just1more'?'Just One More':val==='div2'?'Divide by 2':String(val);
     return c;
   }
 
@@ -53,6 +63,7 @@
     // stamp the card's value so handlers can find e.g. the Second Chance card on a
     // board regardless of its tableau id (anchors carry no face attr otherwise).
     a.dataset.act=String(val);
+    if(opts.special)a.dataset.special=String(opts.special);
     row.appendChild(a);return a;
   }
   function syncF7Cards(){
@@ -148,7 +159,7 @@
   }
   function makeActionTargetSlot(targetSeat,card){
     const row=rowOf(targetSeat); if(!row)return null;
-    const ghost=cardEl(card?.kind||'act',card?.v||'flip3');
+    const ghost=cardEl(card?.kind||'act',card?.v||'flip3',{special:card?.special});
     ghost.classList.add('registry-anchor');ghost.style.visibility='hidden';
     // Match the destination row's card width so the flight lands at a real card size
     // (and never reads a stretched flex box → no "wide pill"). The aspect-lock in the
@@ -180,7 +191,7 @@
   function renderF7PlayerCards(row,p,busted){
     const cards=Array.isArray(p.cards)?p.cards:null;
     if(cards&&cards.length){
-      cards.forEach((c,idx)=>addF7Card(row,c.kind,c.v,c.id||('card-'+idx+'-'+c.kind+'-'+c.v),{busted}));
+      cards.forEach((c,idx)=>addF7Card(row,c.kind,c.v,c.id||('card-'+idx+'-'+c.kind+'-'+c.v),{busted,special:c.special}));
     }else{
       p.nums.forEach(n=>addF7Card(row,'num',n,'num-'+n,{busted}));
       p.mods.forEach((m,mi)=>addF7Card(row,'mod',m,'mod-'+mi+'-'+m,{busted}));
@@ -229,7 +240,7 @@
     // Render the discard's top card as a REAL card (same cardEl component as on
     // the board / in flight), so a card's design does NOT change when it lands on
     // the pile. kindFor maps the stored {kind,v} to cardEl's kind argument.
-    const discFace=top?(()=>{const kind=top.kind==='num'?'num':top.kind==='mod'?'mod':'act';const el=cardEl(kind,top.v);el.classList.add('f7-discard-card');return el.outerHTML;})():'';
+    const discFace=top?(()=>{const kind=top.kind==='num'?'num':top.kind==='mod'?'mod':'act';const el=cardEl(kind,top.v,{special:top.special});el.classList.add('f7-discard-card');return el.outerHTML;})():'';
     const center=s.phase==='PLAY'?`<div id="f7DealerWrap" class="f7-dealer"><div class="pile-label">Dealer</div><div class="f7-piles"><div class="f7-pile-col"><div id="f7Deck" class="f7-deck"><span class="cnt">deck ${esc(s.deckCount)}</span></div></div><div class="f7-pile-col"><div id="f7Discard" class="f7-discard${top?'':' empty'}">${discFace}<span class="cnt">discard ${esc(s.discardCount)}</span></div></div></div></div>`:'';
     GameShell.renderTable({game:'flip7',opponents:miniFrag,center,focus:mainFrag,status:'',topMode:s.phase==='PLAY'?'custom':'hidden',opponentClass:'f7-mini-strip'});
     syncF7Cards();
@@ -278,7 +289,7 @@
     const s=view.flip7,p=s.players[seat];if(!p)return;
     const seats=s.players.map((_,i)=>i).filter(i=>i!==view.flip7.viewerSeat);
     const idx=seats.indexOf(seat),prev=seats[(idx-1+seats.length)%seats.length],next=seats[(idx+1)%seats.length];
-    const row=(p.cards&&p.cards.length?p.cards.map(c=>cardEl(c.kind,c.v,{busted:p.status==='busted'})):[...p.nums.map(n=>cardEl('num',n,{busted:p.status==='busted'})),...p.mods.map(m=>cardEl('mod',m,{busted:p.status==='busted'})),...(p.second?[cardEl('act','second')]:[]),...(p.actionCards||[]).map(a=>cardEl('act',a))]);
+    const row=(p.cards&&p.cards.length?p.cards.map(c=>cardEl(c.kind,c.v,{busted:p.status==='busted',special:c.special})):[...p.nums.map(n=>cardEl('num',n,{busted:p.status==='busted'})),...p.mods.map(m=>cardEl('mod',m,{busted:p.status==='busted'})),...(p.second?[cardEl('act','second')]:[]),...(p.actionCards||[]).map(a=>cardEl('act',a))]);
     const cards=document.createElement('div');cards.className='f7-row';row.forEach(c=>cards.appendChild(c));
     const box=GameShell.inspect(`<div class="inspect-head"><button class="icon-btn" onclick="window.GameClients['flip7'].inspect(${prev})">‹</button><b>${esc(p.name)} · ${esc(p.status)}</b><button class="icon-btn" onclick="window.GameClients['flip7'].inspect(${next})">›</button><button class="icon-btn" onclick="GameShell.closeInspect()">${Kit.Icon.html('x',{size:14})}</button></div><div class="player-board f7-focus-board"><div class="board-header"><span>${esc(p.name)}</span><span class="score-badge">Now ${esc(p.live)} · Total ${esc(p.banked)} · ${esc(p.unique)}/7</span></div></div>`);
     box.querySelector('.player-board').appendChild(cards);
@@ -314,14 +325,9 @@
     }
     else if(pending){
       const k=s.pendingAction.kind;
-      // Use the same color tokens as the card faces for visual continuity.
-      const kindIcon = k==='freeze' ? '<span style="color:#7dd3fc">❄</span>'
-                     : k==='flip3'  ? Kit.Icon.html('sparkle',{size:14,cls:'kit-icon-inline'})
-                     :                '<span style="color:#fbcfe8">♥</span>';
-      const label = k==='freeze' ? 'Choose who to Freeze'
-                  : k==='flip3'  ? 'Choose who flips 3'
-                  :                'Give Second Chance to an opponent';
-      Kit.Status.set({html: kindIcon + label + ' (tap a player)', tone:'warn'});
+      const iconMap={freeze:'<span style="color:#7dd3fc">❄</span>',flip3:Kit.Icon.html('sparkle',{size:14,cls:'kit-icon-inline'}),flip4:'<b>F4</b>',give_second:'<span style="color:#fbcfe8">♥</span>',modifier:'<b>±</b>',steal:'<b>S</b>',swap:'<b>W</b>',discard:'<b>D</b>',just1more:'<b>+1</b>'};
+      const labelMap={freeze:'Choose who to Freeze',flip3:'Choose who flips 3',flip4:'Choose who flips 4',give_second:'Give Second Chance to an opponent',modifier:'Choose who receives the modifier',steal:'Choose who to steal from',swap:'Choose who to swap with',discard:'Choose who discards a card',just1more:'Choose who takes Just One More'};
+      Kit.Status.set({html: (iconMap[k]||'') + (labelMap[k]||'Choose a target') + ' (tap a player)', tone:'warn'});
     }
     else {
       // Are hit/stay legal for the viewer? (Replaces the old myTurn check.)
@@ -334,10 +340,8 @@
         const cur=s.players[s.current];
         if(s.pendingAction){
           const k=s.pendingAction.kind;
-          const verb = k==='freeze' ? 'Freeze <span style="color:#7dd3fc">❄</span>'
-                     : k==='flip3'  ? 'Flip 3 '+Kit.Icon.html('sparkle',{size:12})
-                     :                'Give <span style="color:#fbcfe8">♥</span>';
-          Kit.Status.set({html:esc(cur.name)+': '+verb+' — tap a player',tone:'warn'});
+          const verbMap={freeze:'Freeze <span style="color:#7dd3fc">❄</span>',flip3:'Flip 3 '+Kit.Icon.html('sparkle',{size:12}),flip4:'Flip 4',give_second:'Give <span style="color:#fbcfe8">♥</span>',modifier:'Play modifier',steal:'Steal',swap:'Swap',discard:'Discard',just1more:'Just One More'};
+          Kit.Status.set({html:esc(cur.name)+': '+(verbMap[k]||'Choose')+' — tap a player',tone:'warn'});
         } else {
           Kit.Status.set({text:(cur?cur.name:'')+'\'s turn',tone:'go'});
           // Pass-and-play: query legal for whoever's turn it is on the device.
@@ -433,15 +437,23 @@
   function eventView(base, seat){ const v=cloneView(base); v.flip7.viewerSeat=seat; return v; }
   function ensureExtras(lv){ lv.flip7.players.forEach(p=>{ if(!p.actionCards)p.actionCards=[]; }); }
   function removeOne(arr,val){ const i=arr.indexOf(val); if(i>=0)arr.splice(i,1); }
-  function liveScore(p){
+  function liveScore(p,variant='standard'){
     if(p.status==='busted')return 0;
+    const unique=new Set(p.nums||[]).size;
     let base=(p.nums||[]).reduce((a,b)=>a+b,0);
+    if(variant==='vengeance'&&(p.nums||[]).includes(0)&&unique<7)return 0;
     if((p.mods||[]).includes('x2'))base*=2;
-    for(const m of (p.mods||[])) if(String(m)[0]==='+') base+=parseInt(String(m).slice(1));
-    if(new Set(p.nums||[]).size>=7)base+=15;
+    if((p.mods||[]).includes('div2'))base=Math.floor(base/2);
+    for(const m of (p.mods||[])){
+      const s=String(m);
+      if(s[0]==='+') base+=parseInt(s.slice(1));
+      else if(s[0]==='-') base-=parseInt(s.slice(1));
+    }
+    if(base<0)base=0;
+    if(unique>=7)base+=15;
     return base;
   }
-  function recalcAll(lv){ lv.flip7.players.forEach(x=>{x.unique=new Set(x.nums||[]).size;x.live=liveScore(x);}); }
+  function recalcAll(lv){ const variant=lv?.flip7?.variant||'standard'; lv.flip7.players.forEach(x=>{x.unique=new Set(x.nums||[]).size;x.live=liveScore(x,variant);}); }
   // Order cards the way the engine's _ordered() does (num, mod, act; numbers by
   // value) so the live view's layout matches the authoritative final view — this
   // keeps the FLIP "slide aside" shift correct and the new card's slot stable.
@@ -455,7 +467,7 @@
   // `cards` for its permanent anchor (and the deck→slot flight) to exist.
   function addCard(p,card){
     if(!p||!card)return;
-    if(card.kind==='num'){ if(!p.nums.includes(card.v)){p.nums.push(card.v);p.nums.sort((a,b)=>a-b);} }
+    if(card.kind==='num'){ if(card.special==='lucky13'||!p.nums.includes(card.v)){p.nums.push(card.v);p.nums.sort((a,b)=>a-b);} }
     else if(card.kind==='mod') p.mods.push(card.v);
     else if(card.v==='second') p.second=true;
     else p.actionCards.push(card.v);
@@ -491,8 +503,11 @@
     else if(e.type==='effect.stay'&&p){ p.status='stayed'; }
     else if(e.type==='card.transfer'){
       const fp=lv.flip7.players[e.actor];
+      if(fp&&e.card) removeCard(fp,e.card);
       if(fp&&fp.actionCards) removeOne(fp.actionCards,e.actionKind||e.card?.v);
-      if(e.secondPass){ const tp=lv.flip7.players[e.target]; if(tp)tp.second=true; }
+      const tp=lv.flip7.players[e.target];
+      if(e.secondPass){ if(tp)tp.second=true; }
+      else if(tp&&e.card&&e.card.kind==='mod') addCard(tp,e.card);
       // freeze/flip3 spent marker on the target comes from the authoritative view's
       // spentActions (server), so no client-side bookkeeping needed here.
     }

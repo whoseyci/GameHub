@@ -189,6 +189,104 @@ describe("Flip7 rule regressions", () => {
     expect(state.discard.length).toBeGreaterThan(before);
     expect(state.players.every((p: any) => p.tableau.length === 0)).toBe(true);
   });
+
+  it("Vengeance uses the official 108-card standalone composition", () => {
+    const state: any = Flip7.create(["A", "B"], "vengeance");
+    const all = [
+      ...state.deck,
+      ...state.discard,
+      ...state.players.flatMap((p: any) => p.tableau),
+    ];
+    expect(state.variant).toBe("vengeance");
+    expect(all).toHaveLength(108);
+    expect(all.filter((c: any) => c.kind === "act").map((c: any) => c.v).sort()).toEqual(["discard", "flip4", "just1more", "steal", "swap"]);
+    expect(all.filter((c: any) => c.kind === "act" && (c.v === "freeze" || c.v === "second" || c.v === "flip3"))).toHaveLength(0);
+    expect(all.filter((c: any) => c.kind === "mod" && c.v === "div2")).toHaveLength(1);
+    for (const m of ["-2", "-4", "-6", "-8", "-10"]) expect(all.filter((c: any) => c.kind === "mod" && c.v === m)).toHaveLength(2);
+    expect(all.filter((c: any) => c.kind === "num" && c.v === 0 && c.special === "zero")).toHaveLength(1);
+    expect(all.filter((c: any) => c.kind === "num" && c.v === 7 && c.special === "unlucky7")).toHaveLength(1);
+    expect(all.filter((c: any) => c.kind === "num" && c.v === 13 && c.special === "lucky13")).toHaveLength(1);
+    expect(all.filter((c: any) => c.kind === "num" && c.v === 7)).toHaveLength(7);
+    expect(all.filter((c: any) => c.kind === "num" && c.v === 13)).toHaveLength(13);
+  });
+
+  it("Vengeance modifiers are targeted and can hit stayed players", () => {
+    const state: any = Flip7.create(["A", "B"], "vengeance");
+    state.current = 0;
+    state.players.forEach((p: any) => { p.nums = []; p.mods = []; p.tableau = []; p.status = "active"; p.secondChance = false; });
+    state.players[1].status = "stayed";
+    state.deck = [{ id: "minus4", kind: "mod", v: "-4" }];
+    state.discard = [];
+
+    Flip7.applyAction(state, 0, { action: "hit" });
+
+    expect(state.pendingAction?.kind).toBe("modifier");
+    expect(Flip7.legalActions!(state, 0)).toContainEqual({ action: "target", target: 1 });
+    Flip7.applyAction(state, 0, { action: "target", target: 1 });
+    expect(state.players[1].mods).toContain("-4");
+  });
+
+  it("Vengeance Flip Four defers action/modifier resolution until all four cards are revealed", () => {
+    const state: any = Flip7.create(["A", "B", "C"], "vengeance");
+    state.current = 0;
+    state.players.forEach((p: any) => { p.nums = []; p.mods = []; p.tableau = []; p.status = "active"; p.secondChance = false; });
+    state.pendingAction = { kind: "flip4", from: 0, card: { id: "f4", kind: "act", v: "flip4" } };
+    state.deck = [
+      { id: "n5", kind: "num", v: 5 },
+      { id: "n4", kind: "num", v: 4 },
+      { id: "minus2", kind: "mod", v: "-2" },
+      { id: "n3", kind: "num", v: 3 },
+    ];
+
+    Flip7.applyAction(state, 0, { action: "target", target: 1 });
+
+    expect(state.players[1].nums).toEqual([3, 4, 5]);
+    expect(state.pendingAction?.kind).toBe("modifier");
+    expect(state.pendingAction?.from).toBe(1);
+    expect(state.players[2].mods).toEqual([]);
+
+    Flip7.applyAction(state, 1, { action: "target", target: 2 });
+    expect(state.players[2].mods).toEqual(["-2"]);
+    expect(state.pendingAction).toBeNull();
+  });
+
+  it("Vengeance Zero forces hit while active and scores zero unless Flip 7", () => {
+    const state: any = Flip7.create(["A", "B"], "vengeance");
+    state.current = 0;
+    state.players.forEach((p: any) => { p.nums = []; p.mods = []; p.tableau = []; p.status = "active"; p.secondChance = false; p.mustHit = false; });
+    state.deck = [{ id: "zero", kind: "num", v: 0, special: "zero" }];
+    state.discard = [];
+
+    Flip7.applyAction(state, 0, { action: "hit" });
+
+    expect(state.players[0].mustHit).toBe(true);
+    state.current = 0;
+    expect(Flip7.legalActions!(state, 0)).toEqual([{ action: "hit" }]);
+    state.players[0].nums.push(12);
+    expect(Flip7.viewFor(state, 0).flip7.players[0].live).toBe(0);
+  });
+
+  it("Vengeance Lucky 13 allows exactly one other 13", () => {
+    const state: any = Flip7.create(["A", "B"], "vengeance");
+    state.current = 0;
+    state.players.forEach((p: any) => { p.nums = []; p.mods = []; p.tableau = []; p.status = "active"; p.secondChance = false; p.hasLucky13 = false; });
+    state.deck = [
+      { id: "third13", kind: "num", v: 13 },
+      { id: "plain13", kind: "num", v: 13 },
+      { id: "lucky", kind: "num", v: 13, special: "lucky13" },
+    ];
+
+    Flip7.applyAction(state, 0, { action: "hit" });
+    expect(state.players[0].status).toBe("active");
+    expect(state.players[0].nums).toEqual([13]);
+    state.current = 0;
+    Flip7.applyAction(state, 0, { action: "hit" });
+    expect(state.players[0].status).toBe("active");
+    expect(state.players[0].nums).toEqual([13, 13]);
+    state.current = 0;
+    Flip7.applyAction(state, 0, { action: "hit" });
+    expect(state.players[0].status).toBe("busted");
+  });
 });
 
 describe("Qwixx rule regressions", () => {

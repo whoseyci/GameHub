@@ -7,15 +7,15 @@ function syncOnlinePrimaryName(){const n=($('onlineName')?.value||'').trim();if(
 function onlineSeatsPayload(){syncOnlinePrimaryName();return onlineDevicePlayers.map((p,i)=>({pid:getSeatPid(i),name:(p.name||('Player '+(i+1))).slice(0,20)}));}
 function renderOnlineDevicePlayers(){syncOnlinePrimaryName();const box=$('onlineDevicePlayers');if(!box)return;box.innerHTML=onlineDevicePlayers.map((p,i)=>`<div style="display:flex;gap:6px;align-items:center;margin-bottom:5px"><input class="input" style="margin:0;padding:8px" value="${p.name.replace(/"/g,'&quot;')}" ${i===0?'placeholder="Main player"':'placeholder="Same-device player"'} oninput="onlineDevicePlayers[${i}].name=this.value; if(${i}===0)$('onlineName').value=this.value"><button class="icon-btn" ${i===0?'disabled style="opacity:.3"':''} onclick="onlineDevicePlayers.splice(${i},1);renderOnlineDevicePlayers()">${Kit.Icon.html('x',{size:14})}</button></div>`).join('');}
 function addOnlineDevicePlayer(){syncOnlinePrimaryName();if(onlineDevicePlayers.length>=8)return;onlineDevicePlayers.push({name:'Player '+(onlineDevicePlayers.length+1)});renderOnlineDevicePlayers();}
-function connectRoom(code,{isPublic=false,isGroup=false,quickGame=null,maxPlayers=8,shard=null}={}){
+function connectRoom(code,{isPublic=false,isGroup=false,quickGame=null,maxPlayers=8,shard=null,variant=null}={}){
   const resolvedGroup = isGroup || String(code||'').toUpperCase().startsWith('GROUP-');
   mode='online';net.room=code;net.isHost=false;net.spectating=false;
   window.mode = mode;
-  _joinAttempt={code,isPublic,isGroup:resolvedGroup,quickGame,maxPlayers,shard};
+  _joinAttempt={code,isPublic,isGroup:resolvedGroup,quickGame,maxPlayers,shard,variant};
   if(net.ws){try{net.ws.close();}catch(e){}}
   resetGameUi();
   const ws=new WebSocket(wsUrl('room',code));net.ws=ws;
-  ws.onopen=()=>ws.send(JSON.stringify({type:'join',pid:getPid(),name:myName,seats:onlineSeatsPayload(),isPublic,isGroup:resolvedGroup,quickGame,maxPlayers}));
+  ws.onopen=()=>ws.send(JSON.stringify({type:'join',pid:getPid(),name:myName,seats:onlineSeatsPayload(),isPublic,isGroup:resolvedGroup,quickGame,maxPlayers,variant}));
   ws.onmessage=ev=>{let m;try{m=JSON.parse(ev.data);}catch(e){return;}handleNet(m);};
   ws.onerror=()=>toast('Connection error');
 }
@@ -85,7 +85,12 @@ function handleNet(m){
   if(m.type==='room_full'){
     if(_joinAttempt&&_joinAttempt.shard){ // quick play: try the next shard
       const next=_joinAttempt.shard+1;
-      if(next<=20){toast('Room full — finding another table…',1800);quickPlay(_joinAttempt.quickGame,next);return;}
+      if(next<=20){
+        toast('Room full — finding another table…',1800);
+        if(_joinAttempt.variant) connectRoom('quick-'+_joinAttempt.quickGame+'-'+next,{isPublic:true,quickGame:_joinAttempt.quickGame,shard:next,variant:_joinAttempt.variant});
+        else quickPlay(_joinAttempt.quickGame,next);
+        return;
+      }
     }
     toast('That room is full.');leaveOnline();return;
   }
@@ -646,3 +651,13 @@ function quitLocal(){
   resetGameUi();
   showScreen('menuScreen');
 }
+
+// Explicit globals for cross-file callers. Some browsers are less forgiving when
+// a later classic script reads top-level function declarations through `window`,
+// and the local seat screen depends on these to surface variants before launch.
+window.openVariantPicker = openVariantPicker;
+window.startLocalGame = startLocalGame;
+window.renderLocal = renderLocal;
+window.connectRoom = connectRoom;
+window.quickPlay = quickPlay;
+window.ensureName = ensureName;

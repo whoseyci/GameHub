@@ -16,9 +16,9 @@ export const Flip7Meta: GameMeta = {
     minDurationSec: 180,
     maxDurationSec: 900,
   },
-  actionTypes: ["hit","stay","target","give_second","next_round","steal","swap","discard","just1more"] as const,
+  actionTypes: ["hit","stay","target","give_second","next_round"] as const,
   variants: [
     { id: "standard", name: "Standard", description: "Race to 200 points." },
-    { id: "vengeance", name: "Flip 7 with a vengeance", description: "Competitive standalone deck with nasty action cards: Steal, Swap, Discard, and the Unlucky 7." }
+    { id: "vengeance", name: "With a Vengeance", description: "Standalone 108-card ruleset: 13s, negative modifiers, Zero, Lucky 13, Unlucky 7, and take-that action cards." }
   ],
 };

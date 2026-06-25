@@ -630,7 +630,7 @@
         seat: i,
         name: p.name,
         status: p.status,
-        score: liveScore(p),
+        score: liveScore(p, s.variant),
         banked: p.banked
       })),
       // Flip 7 is turn-based: exactly one seat acts at a time, or one seat is
@@ -639,14 +639,28 @@
       autoAdvanceMs: void 0
     };
   }
-  function buildDeck(rng) {
+  function buildDeck(rng, variant = "standard") {
     const d = [];
     let seq = 0;
-    const add = (kind, v) => d.push({ id: `f7c_${seq++}_${kind}_${String(v).replace(/\W/g, "")}`, kind, v });
-    add("num", 0);
-    for (let n = 1; n <= 12; n++) for (let i = 0; i < n; i++) add("num", n);
-    for (const m of ["+2", "+4", "+6", "+8", "+10", "x2"]) add("mod", m);
-    for (const a of ["freeze", "flip3", "second"]) for (let i = 0; i < 3; i++) add("act", a);
+    const safe = (v, special) => String(special ?? v).replace(/\W/g, "");
+    const add = (kind, v, special) => d.push({ id: `f7c_${seq++}_${kind}_${safe(v, special)}`, kind, v, ...special ? { special } : {} });
+    if (variant === "vengeance") {
+      add("num", 0, "zero");
+      for (let n = 1; n <= 13; n++) {
+        const copies = n - (n === 7 ? 1 : 0) - (n === 13 ? 1 : 0);
+        for (let i = 0; i < copies; i++) add("num", n);
+      }
+      add("num", 7, "unlucky7");
+      add("num", 13, "lucky13");
+      for (const m of ["-2", "-4", "-6", "-8", "-10"]) for (let i = 0; i < 2; i++) add("mod", m);
+      add("mod", "div2");
+      for (const a of ["just1more", "swap", "steal", "discard", "flip4"]) add("act", a);
+    } else {
+      add("num", 0);
+      for (let n = 1; n <= 12; n++) for (let i = 0; i < n; i++) add("num", n);
+      for (const m of ["+2", "+4", "+6", "+8", "+10", "x2"]) add("mod", m);
+      for (const a of ["freeze", "flip3", "second"]) for (let i = 0; i < 3; i++) add("act", a);
+    }
     shuffleInPlace(d, rng);
     return d;
   }
@@ -710,9 +724,9 @@
     }
     s.current = firstActive(s, 0);
   }
-  function fresh(names, banked, rngState = makeSeed()) {
+  function fresh(names, banked, rngState = makeSeed(), variant = "standard") {
     const rng = { rngState };
-    const deck = buildDeck(rng);
+    const deck = buildDeck(rng, variant);
     const players = names.map((n, i) => newPlayer(n, banked[i] ?? 0));
     const s = {
       schemaVersion: 1,
@@ -724,12 +738,14 @@
       phase: "PLAY",
       round: 1,
       pendingAction: null,
+      deferredActions: [],
       flip3Left: 0,
       flip3Target: -1,
       flip3Stack: [],
       events: [],
       seq: 0,
-      log: null
+      log: null,
+      variant
     };
     dealOpeningHands(s);
     return s;
@@ -741,6 +757,8 @@
       p.tableau = [];
       p.spentActions = [];
       p.secondChance = false;
+      p.hasLucky13 = false;
+      p.mustHit = false;
       p.status = "active";
       p.bustCard = null;
       p.roundScore = 0;
@@ -749,6 +767,7 @@
     s.phase = "PLAY";
     s.round += 1;
     s.pendingAction = null;
+    s.deferredActions = [];
     s.flip3Left = 0;
     s.flip3Target = -1;
     s.flip3Stack = [];
@@ -776,8 +795,59 @@
   function activeOthers(s, exclude) {
     return s.players.map((p, i) => i).filter((i) => i !== exclude && s.players[i].status === "active");
   }
+  function targetableSeats(s, exclude, includeSelf = true) {
+    return s.players.map((p, i) => i).filter((i) => (includeSelf || i !== exclude) && pNotBusted(s.players[i]));
+  }
+  function pNotBusted(p) {
+    return !!p && p.status !== "busted";
+  }
   function uniqueCount(p) {
     return new Set(p.nums).size;
+  }
+  function removeOne(arr, val) {
+    const i = arr.indexOf(val);
+    if (i < 0) return false;
+    arr.splice(i, 1);
+    return true;
+  }
+  function isVengeance(s) {
+    return s.variant === "vengeance";
+  }
+  function countNumber(p, n) {
+    return p.nums.filter((x) => x === n).length;
+  }
+  function refreshSpecialFlags(p) {
+    p.hasLucky13 = p.tableau.some((c) => c.kind === "num" && c.special === "lucky13");
+    p.mustHit = p.status === "active" && p.tableau.some((c) => c.kind === "num" && c.special === "zero");
+  }
+  function removeCardFromPlayer(p, card) {
+    if (!card) return null;
+    const i = p.tableau.findIndex((c) => c.id === card.id);
+    if (i >= 0) p.tableau.splice(i, 1);
+    if (card.kind === "num") removeOne(p.nums, card.v);
+    else if (card.kind === "mod") removeOne(p.mods, card.v);
+    else if (card.v === "second") p.secondChance = false;
+    refreshSpecialFlags(p);
+    return card;
+  }
+  function chooseFaceUpCard(p, cardId) {
+    const cards = p.tableau.filter((c) => c.kind === "num" || c.kind === "mod");
+    if (!cards.length) return null;
+    if (cardId) return cards.find((c) => c.id === cardId) ?? null;
+    return cards[cards.length - 1];
+  }
+  function maybeBustFromTransfer(s, seat, card) {
+    if (!card || card.kind !== "num") return;
+    const p = s.players[seat];
+    if (!p || p.status === "busted") return;
+    const n = card.v;
+    if (card.special === "unlucky7") return;
+    if (n === 13 && p.hasLucky13 && countNumber(p, 13) <= 2) return;
+    if (countNumber(p, n) > 1) {
+      p.status = "busted";
+      p.bustCard = n;
+      emit(s, { type: "bust", player: seat, value: n });
+    }
   }
   function bustProbability(s, pi) {
     const p = s.players[pi];
@@ -789,10 +859,20 @@
   function placeCard(s, pi, card) {
     const p = s.players[pi];
     if (card.kind === "num") {
-      if (!p.nums.includes(card.v)) {
+      if (card.special === "unlucky7" && isVengeance(s)) {
+        for (const c of p.tableau) if (c.kind === "num" || c.kind === "mod") s.discard.push(c);
+        p.nums = [7];
+        p.mods = [];
+        p.tableau = p.tableau.filter((c) => c.kind === "act");
+        p.secondChance = false;
+        p.hasLucky13 = false;
+        p.mustHit = false;
+        p.tableau.push(card);
+      } else {
         p.nums.push(card.v);
         p.nums.sort((a, b) => a - b);
         p.tableau.push(card);
+        refreshSpecialFlags(p);
       }
     } else if (card.kind === "mod") {
       p.mods.push(card.v);
@@ -820,8 +900,61 @@
     const p = s.players[pi];
     if (card.kind === "num") {
       const n = card.v;
+      if (isVengeance(s) && card.special === "unlucky7") {
+        for (const c of p.tableau) if (c.kind === "num" || c.kind === "mod") s.discard.push(c);
+        p.nums = [7];
+        p.mods = [];
+        p.tableau = p.tableau.filter((c) => c.kind === "act");
+        p.secondChance = false;
+        p.hasLucky13 = false;
+        p.mustHit = false;
+        p.tableau.push(card);
+        emit(s, { type: "card", player: pi, card, flip3: !!opts.flip3 });
+        emit(s, { type: "unlucky7", player: pi, card });
+        return "ok";
+      }
+      if (isVengeance(s) && card.special === "lucky13") {
+        if (countNumber(p, 13) >= 2) {
+          p.status = "busted";
+          p.bustCard = 13;
+          emit(s, { type: "bust", player: pi, value: 13, flip3: !!opts.flip3 });
+          return "bust";
+        }
+        p.hasLucky13 = true;
+        p.nums.push(13);
+        p.nums.sort((a2, b) => a2 - b);
+        p.tableau.push(card);
+        emit(s, { type: "card", player: pi, card, flip3: !!opts.flip3 });
+        if (uniqueCount(p) >= 7) {
+          p.status = "stayed";
+          emit(s, { type: "flip7", player: pi });
+          return "flip7";
+        }
+        return "ok";
+      }
+      if (isVengeance(s) && card.special === "zero") {
+        p.nums.push(0);
+        p.nums.sort((a2, b) => a2 - b);
+        p.tableau.push(card);
+        refreshSpecialFlags(p);
+        emit(s, { type: "card", player: pi, card, flip3: !!opts.flip3 });
+        if (uniqueCount(p) >= 7) {
+          p.status = "stayed";
+          p.mustHit = false;
+          emit(s, { type: "flip7", player: pi });
+          return "flip7";
+        }
+        return "ok";
+      }
       if (p.nums.includes(n)) {
-        if (p.secondChance) {
+        if (isVengeance(s) && n === 13 && p.hasLucky13 && countNumber(p, 13) < 2) {
+          p.nums.push(n);
+          p.nums.sort((a2, b) => a2 - b);
+          p.tableau.push(card);
+          emit(s, { type: "card", player: pi, card, flip3: !!opts.flip3 });
+          return "ok";
+        }
+        if (!isVengeance(s) && p.secondChance) {
           p.secondChance = false;
           s.discard.push(card);
           const used = removeTableauCard(p, (c) => c.kind === "act" && c.v === "second");
@@ -837,21 +970,54 @@
       p.nums.push(n);
       p.nums.sort((a2, b) => a2 - b);
       p.tableau.push(card);
+      refreshSpecialFlags(p);
       emit(s, { type: "card", player: pi, card, flip3: !!opts.flip3 });
       if (uniqueCount(p) >= 7) {
         p.status = "stayed";
         emit(s, { type: "flip7", player: pi });
+        if (p.mustHit) p.mustHit = false;
         return "flip7";
       }
       return "ok";
     }
     if (card.kind === "mod") {
+      if (isVengeance(s)) {
+        p.mods.push(card.v);
+        p.tableau.push(card);
+        emit(s, { type: "card", player: pi, card, flip3: !!opts.flip3 });
+        const targets2 = targetableSeats(s, pi, true);
+        if (targets2.length <= 1) {
+          resolveModifier(s, pi, targets2[0] ?? pi, card, true);
+          return "ok";
+        }
+        s.pendingAction = { kind: "modifier", from: pi, card };
+        emit(s, { type: "await_target", kind: "modifier", from: pi });
+        return "action";
+      }
       p.mods.push(card.v);
       p.tableau.push(card);
       emit(s, { type: "card", player: pi, card, flip3: !!opts.flip3 });
       return "ok";
     }
     const a = card.v;
+    if (a === "unlucky7" && s.variant === "vengeance") {
+      for (const c of p.tableau) s.discard.push(c);
+      p.nums = [7];
+      p.mods = [];
+      p.tableau = [card];
+      p.secondChance = false;
+      p.hasLucky13 = false;
+      emit(s, { type: "effect.unlucky7", player: pi, card });
+      return "ok";
+    }
+    if (a === "lucky13" && s.variant === "vengeance") {
+      p.hasLucky13 = true;
+      p.nums.push(13);
+      p.nums.sort((x, y) => x - y);
+      p.tableau.push({ ...card, kind: "num", v: 13, special: "lucky13" });
+      emit(s, { type: "card", player: pi, card: { ...card, kind: "num", v: 13, special: "lucky13" } });
+      return uniqueCount(p) >= 7 ? "flip7" : "ok";
+    }
     if (a === "second") {
       if (!p.secondChance) {
         p.secondChance = true;
@@ -859,16 +1025,16 @@
         emit(s, { type: "card", player: pi, card });
         return "ok";
       }
-      const others2 = activeOthers(s, pi).filter((i) => !s.players[i].secondChance);
-      if (others2.length === 0) {
+      const others = activeOthers(s, pi).filter((i) => !s.players[i].secondChance);
+      if (others.length === 0) {
         s.discard.push(card);
         emit(s, { type: "second_discard", player: pi });
         return "ok";
       }
-      if (others2.length === 1) {
-        s.players[others2[0]].secondChance = true;
-        s.players[others2[0]].tableau.push(card);
-        emit(s, { type: "second_pass", from: pi, to: others2[0], card, auto: true });
+      if (others.length === 1) {
+        s.players[others[0]].secondChance = true;
+        s.players[others[0]].tableau.push(card);
+        emit(s, { type: "second_pass", from: pi, to: others[0], card, auto: true });
         return "ok";
       }
       s.pendingAction = { kind: "give_second", from: pi, card };
@@ -877,20 +1043,45 @@
     }
     p.tableau.push(card);
     emit(s, { type: "action_card", player: pi, kind: a, card });
-    const others = activeOthers(s, pi);
-    if (others.length === 0) {
-      resolveAction(s, pi, a, pi, true);
+    const targets = isVengeance(s) ? targetableSeats(s, pi, true) : activeOthers(s, pi);
+    const needsFaceUpCard = a === "steal" || a === "swap" || a === "discard";
+    const hasFaceUpTarget = targets.some((t) => s.players[t].tableau.some((c) => c.kind === "num" || c.kind === "mod"));
+    if (isVengeance(s) && needsFaceUpCard && !hasFaceUpTarget) {
+      removeCardFromPlayer(p, card);
+      s.discard.push(card);
+      emit(s, { type: "effect.action_fizzle", player: pi, kind: a, card });
+      return "ok";
+    }
+    if (targets.length === 0 || targets.length === 1 && targets[0] === pi) {
+      resolveAction(s, pi, a, targets[0] ?? pi, true);
       return "ok";
     }
     s.pendingAction = { kind: a, from: pi, card };
     emit(s, { type: "await_target", kind: a, from: pi });
     return "action";
   }
-  function resolveAction(s, from, kind, target, auto = false) {
+  function resolveModifier(s, from, target, card, auto = false) {
+    const fp = s.players[from];
+    const tp = s.players[target];
+    if (!fp || !tp || tp.status === "busted") return "ok";
+    removeCardFromPlayer(fp, card);
+    placeCard(s, target, card);
+    s.pendingAction = null;
+    emit(s, { type: "play_action", kind: "modifier", from, target, card, auto });
+    emit(s, { type: "effect.modifier", from, target, card });
+    return "ok";
+  }
+  function resolveAction(s, from, kind, target, auto = false, opts = {}) {
     const actionCard = s.pendingAction?.card ?? removeTableauCard(s.players[from], (c) => c.kind === "act" && c.v === kind) ?? void 0;
     s.pendingAction = null;
     const tp = s.players[target];
-    if (actionCard) (tp.spentActions ?? (tp.spentActions = [])).push({ ...actionCard, id: `spent_${actionCard.id ?? kind}_${s.seq}` });
+    const fp = s.players[from];
+    if (!tp || !fp || tp.status === "busted") return "ok";
+    if (actionCard) {
+      removeCardFromPlayer(fp, actionCard);
+      s.discard.push(actionCard);
+    }
+    if (actionCard && !isVengeance(s)) (tp.spentActions ?? (tp.spentActions = [])).push({ ...actionCard, id: `spent_${actionCard.id ?? kind}_${s.seq}` });
     if (kind === "freeze") {
       emit(s, { type: "play_action", kind: "freeze", from, target, card: actionCard, auto });
       if (tp.status === "active") {
@@ -899,8 +1090,56 @@
       }
       return "ok";
     }
-    emit(s, { type: "play_action", kind: "flip3", from, target, card: actionCard, auto });
-    (s.flip3Stack ?? (s.flip3Stack = [])).push({ left: 3, target });
+    if (kind === "discard") {
+      emit(s, { type: "play_action", kind: "discard", from, target, card: actionCard, auto });
+      const c = chooseFaceUpCard(tp, opts.cardId);
+      if (c) {
+        removeCardFromPlayer(tp, c);
+        s.discard.push(c);
+        emit(s, { type: "effect.discarded", player: target, card: c });
+      }
+      return "ok";
+    }
+    if (kind === "steal") {
+      emit(s, { type: "play_action", kind: "steal", from, target, card: actionCard, auto });
+      const c = chooseFaceUpCard(tp, opts.cardId);
+      if (c) {
+        removeCardFromPlayer(tp, c);
+        placeCard(s, from, c);
+        maybeBustFromTransfer(s, from, c);
+        emit(s, { type: "effect.stolen", from: target, to: from, card: c });
+      }
+      return "ok";
+    }
+    if (kind === "swap") {
+      emit(s, { type: "play_action", kind: "swap", from, target, card: actionCard, auto });
+      const tc = chooseFaceUpCard(tp, opts.cardId);
+      const fc = chooseFaceUpCard(fp, opts.cardId2);
+      if (tc) removeCardFromPlayer(tp, tc);
+      if (fc) removeCardFromPlayer(fp, fc);
+      if (tc) {
+        placeCard(s, from, tc);
+        maybeBustFromTransfer(s, from, tc);
+      }
+      if (fc) {
+        placeCard(s, target, fc);
+        maybeBustFromTransfer(s, target, fc);
+      }
+      emit(s, { type: "effect.swapped", p1: from, p2: target, c1: fc, c2: tc });
+      return "ok";
+    }
+    if (kind === "just1more") {
+      emit(s, { type: "play_action", kind: "just1more", from, target, card: actionCard, auto });
+      applyDrawnCard(s, target, draw(s));
+      if (tp.status === "active") {
+        tp.status = "stayed";
+        emit(s, { type: "stay", player: target, forced: true });
+      }
+      return "ok";
+    }
+    const isF4 = kind === "flip4";
+    emit(s, { type: "play_action", kind, from, target, card: actionCard, auto });
+    (s.flip3Stack ?? (s.flip3Stack = [])).push({ left: isF4 ? 4 : 3, target, flip4: isF4 });
     runFlip3(s);
     return "ok";
   }
@@ -910,8 +1149,17 @@
       const frame = stack[stack.length - 1];
       const t = frame.target;
       const tp = s.players[t];
-      if (!tp || tp.status !== "active" || frame.left <= 0) {
+      if (!tp || tp.status !== "active") {
         stack.pop();
+        continue;
+      }
+      if (frame.left <= 0) {
+        stack.pop();
+        if (frame.flip4 && frame.delayed && frame.delayed.length) {
+          s.deferredActions = [...frame.delayed, ...s.deferredActions ?? []];
+          popDeferredAction(s);
+          return;
+        }
         continue;
       }
       frame.left--;
@@ -927,6 +1175,11 @@
         continue;
       }
       if (r === "action") {
+        if (frame.flip4 && s.pendingAction) {
+          (frame.delayed ?? (frame.delayed = [])).push(s.pendingAction);
+          s.pendingAction = null;
+          continue;
+        }
         return;
       }
     }
@@ -935,6 +1188,13 @@
   }
   function resumeFlip3(s) {
     if (s.flip3Stack && s.flip3Stack.length) runFlip3(s);
+  }
+  function popDeferredAction(s) {
+    const next = s.deferredActions?.shift();
+    if (!next) return false;
+    s.pendingAction = next;
+    emit(s, { type: "await_target", kind: next.kind, from: next.from });
+    return true;
   }
   function endTurnAdvance(s) {
     if (activeCount(s) === 0) {
@@ -951,6 +1211,7 @@
       }
     }
     s.pendingAction = null;
+    s.deferredActions = [];
     s.flip3Left = 0;
     s.flip3Target = -1;
     s.flip3Stack = [];
@@ -967,8 +1228,16 @@
       }
       const u = uniqueCount(p);
       let base = p.nums.reduce((a, b) => a + b, 0);
-      if (p.mods.includes("x2")) base *= 2;
-      for (const m of p.mods) if (m.startsWith("+")) base += parseInt(m.slice(1));
+      if (isVengeance(s) && p.nums.includes(0) && u < 7) base = 0;
+      else {
+        if (p.mods.includes("x2")) base *= 2;
+        if (p.mods.includes("div2")) base = Math.floor(base / 2);
+        for (const m of p.mods) {
+          if (m.startsWith("+")) base += parseInt(m.slice(1));
+          else if (m.startsWith("-")) base -= parseInt(m.slice(1));
+        }
+        if (base < 0) base = 0;
+      }
       if (u >= 7) {
         base += 15;
         flip7Bonus = i;
@@ -983,6 +1252,7 @@
       p.tableau = [];
     }
     s.pendingAction = null;
+    s.deferredActions = [];
     s.flip3Left = 0;
     s.flip3Target = -1;
     s.flip3Stack = [];
@@ -1015,7 +1285,7 @@
       actionTypes: ["hit", "stay", "target", "give_second", "next_round"],
       variants: [
         { id: "standard", name: "Standard", description: "Race to 200 points." },
-        { id: "vengeance", name: "Flip 7 with a vengeance", description: "High stakes aggressive targeting and double penalty action cards." }
+        { id: "vengeance", name: "With a Vengeance", description: "Standalone 108-card ruleset: 13s, negative modifiers, Zero, Lucky 13, Unlucky 7, and take-that action cards." }
       ],
       schemaSpec: { kind: "imperative", paradigm: "reducers", version: 1 }
     },
@@ -1024,15 +1294,15 @@
       if (Flip7.meta.actionTypes && !Flip7.meta.actionTypes.includes(raw.action)) return null;
       return raw;
     },
-    create(names) {
-      return fresh(names, names.map(() => 0));
+    create(names, variant) {
+      return fresh(names, names.map(() => 0), void 0, variant);
     },
     applyAction(state, seat, msg) {
       state.events = [];
       if (state.phase !== "PLAY") {
         if (msg.action === "next_round") {
           if (state.phase === "GAME_OVER") {
-            const ns = fresh(state.players.map((p) => p.name), state.players.map(() => 0), state.rngState);
+            const ns = fresh(state.players.map((p) => p.name), state.players.map(() => 0), state.rngState, state.variant);
             ns.seq = state.seq + 1;
             Object.assign(state, ns);
           } else {
@@ -1047,7 +1317,7 @@
         const pa = state.pendingAction;
         if (msg.action === "target" && pa.from === seat) {
           const t = Math.max(0, Math.min(state.players.length - 1, msg.target | 0));
-          if (state.players[t].status !== "active") return;
+          if (state.players[t].status === "busted") return;
           const midFlip3 = !!(state.flip3Stack && state.flip3Stack.length);
           if (pa.kind === "give_second") {
             if (t === seat) return;
@@ -1060,10 +1330,18 @@
               resumeFlip3(state);
               if (!state.pendingAction && !(state.flip3Stack && state.flip3Stack.length)) endTurnAdvance(state);
             }
-          } else {
-            resolveAction(state, seat, pa.kind, t);
+          } else if (pa.kind === "modifier") {
+            if (pa.card) resolveModifier(state, seat, t, pa.card);
             if (midFlip3) resumeFlip3(state);
-            if (!state.pendingAction && !(state.flip3Stack && state.flip3Stack.length)) endTurnAdvance(state);
+            if (!state.pendingAction && !(state.flip3Stack && state.flip3Stack.length)) {
+              if (!popDeferredAction(state)) endTurnAdvance(state);
+            }
+          } else {
+            resolveAction(state, seat, pa.kind, t, false, { cardId: typeof msg.cardId === "string" ? msg.cardId : void 0, cardId2: typeof msg.cardId2 === "string" ? msg.cardId2 : void 0 });
+            if (midFlip3) resumeFlip3(state);
+            if (!state.pendingAction && !(state.flip3Stack && state.flip3Stack.length)) {
+              if (!popDeferredAction(state)) endTurnAdvance(state);
+            }
           }
         }
         return;
@@ -1102,16 +1380,25 @@
       if (state.pendingAction) {
         if (state.pendingAction.from !== seat) return [];
         const out = [];
-        const isSecond = state.pendingAction.kind === "give_second";
+        const kind = state.pendingAction.kind;
+        const isSecond = kind === "give_second";
+        const needsCard = kind === "steal" || kind === "swap" || kind === "discard";
         for (let t = 0; t < state.players.length; t++) {
-          if (state.players[t].status !== "active") continue;
+          if (state.players[t].status === "busted") continue;
           if (isSecond && t === seat) continue;
+          if (needsCard) {
+            const cards = state.players[t].tableau.filter((c) => c.kind === "num" || c.kind === "mod");
+            for (const c of cards) out.push({ action: "target", target: t, cardId: c.id });
+            continue;
+          }
           out.push({ action: "target", target: t });
         }
         return out;
       }
+      const p = state.players[seat];
       if (seat !== state.current) return [];
-      if (state.players[seat]?.status !== "active") return [];
+      if (p?.status !== "active") return [];
+      if (p.mustHit) return [{ action: "hit" }];
       return [{ action: "hit" }, { action: "stay" }];
     },
     summarize(state) {
@@ -1146,11 +1433,12 @@
           round: state.round,
           current: state.current,
           phase: state.phase,
+          variant: state.variant,
           pendingAction: state.pendingAction,
           viewerSeat: seat,
           deckCount: state.deck.length,
           discardCount: state.discard.length,
-          discardTop: state.discard.length ? { kind: state.discard[state.discard.length - 1].kind, v: state.discard[state.discard.length - 1].v } : null,
+          discardTop: state.discard.length ? { kind: state.discard[state.discard.length - 1].kind, v: state.discard[state.discard.length - 1].v, special: state.discard[state.discard.length - 1].special } : null,
           seq: state.seq,
           events: state.events,
           players: state.players.map((p) => ({
@@ -1158,24 +1446,31 @@
             nums: p.nums,
             mods: p.mods,
             second: p.secondChance,
-            cards: orderedTableau(p).map((c) => ({ id: c.id, kind: c.kind, v: c.v })),
-            spentActions: (p.spentActions ?? []).map((c) => ({ id: c.id, kind: c.kind, v: c.v })),
+            cards: orderedTableau(p).map((c) => ({ id: c.id, kind: c.kind, v: c.v, special: c.special })),
+            spentActions: (p.spentActions ?? []).map((c) => ({ id: c.id, kind: c.kind, v: c.v, special: c.special })),
             status: p.status,
             bustCard: p.bustCard,
             banked: p.banked,
             unique: uniqueCount(p),
-            live: liveScore(p)
+            live: liveScore(p, state.variant)
           }))
         }
       };
     }
   };
-  function liveScore(p) {
+  function liveScore(p, variant = "standard") {
     if (p.status === "busted") return 0;
+    const u = new Set(p.nums).size;
     let base = p.nums.reduce((a, b) => a + b, 0);
+    if (variant === "vengeance" && p.nums.includes(0) && u < 7) return 0;
     if (p.mods.includes("x2")) base *= 2;
-    for (const m of p.mods) if (m.startsWith("+")) base += parseInt(m.slice(1));
-    if (new Set(p.nums).size >= 7) base += 15;
+    if (p.mods.includes("div2")) base = Math.floor(base / 2);
+    for (const m of p.mods) {
+      if (m.startsWith("+")) base += parseInt(m.slice(1));
+      else if (m.startsWith("-")) base -= parseInt(m.slice(1));
+    }
+    if (base < 0) base = 0;
+    if (u >= 7) base += 15;
     return base;
   }
 
