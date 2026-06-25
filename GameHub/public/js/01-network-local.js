@@ -270,7 +270,7 @@ function renderRoom(m){
 // fire launch_game immediately like before.
 function hostLaunchGame(gameId){
   const g = (catalogue||[]).find(x=>x.id===gameId);
-  const variants = g?.features?.variants;
+  const variants = g?.variants || g?.features?.variants;
   if(!variants || !variants.length){
     net.send({type:'launch_game',gameId});
     return;
@@ -278,24 +278,26 @@ function hostLaunchGame(gameId){
   openVariantPicker(gameId, variants);
 }
 
-// Tiny in-page modal for choosing a game variant. Re-uses the existing
-// #rulesOverlay shell so we don't add another full-screen layer.
 function openVariantPicker(gameId, variants){
   const overlay = $('rulesOverlay');
   const box = $('rulesBox');
   if(!overlay || !box) return;
   const g = (catalogue||[]).find(x=>x.id===gameId);
-  const rows = variants.map(v => `
-    <button class="btn" style="display:block;width:100%;margin:0 0 8px;text-align:left;padding:12px 14px"
-            onclick="pickVariantAndLaunch(${JSON.stringify(gameId)}, ${JSON.stringify(v.id)})">
-      <div style="font-weight:800;font-size:1.02rem">${esc(v.name)}</div>
-      ${v.description ? `<div class="muted" style="font-size:.82rem;margin-top:2px">${esc(v.description)}</div>` : ''}
-    </button>`).join('');
   box.innerHTML = `
     <h2 style="margin:0 0 6px;display:flex;align-items:center;gap:8px;justify-content:center">${Kit.Icon.html('cube',{size:20})}<span>${esc(g?.name || gameId)} · choose variant</span></h2>
     <div class="muted" style="margin-bottom:14px">Each variant uses different rules.</div>
-    ${rows}
+    <div id="variantBtnList">
+      ${variants.map(v => `
+        <button class="btn variant-choice-chip" style="display:block;width:100%;margin:0 0 8px;text-align:left;padding:12px 14px"
+                data-gid="${esc(gameId)}" data-vid="${esc(v.id)}">
+          <div style="font-weight:800;font-size:1.02rem">${esc(v.name)}</div>
+          ${v.description ? `<div class="muted" style="font-size:.82rem;margin-top:2px">${esc(v.description)}</div>` : ''}
+        </button>`).join('')}
+    </div>
     <button class="btn secondary" style="margin-top:6px" onclick="$('rulesOverlay').classList.add('hidden')">Cancel</button>`;
+  box.querySelectorAll('.variant-choice-chip').forEach(btn => {
+    btn.onclick = () => pickVariantAndLaunch(btn.dataset.gid, btn.dataset.vid);
+  });
   overlay.classList.remove('hidden');
 }
 function pickVariantAndLaunch(gameId, variantId){
