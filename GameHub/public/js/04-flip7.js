@@ -392,6 +392,7 @@
       case 'second_discard':return{type:'effect.second_discard',actor:e.player,seq:e.seq,legacy:e.type};
       case 'stay':return{type:'effect.stay',actor:e.player,seq:e.seq,legacy:e.type};
       case 'freeze_done':return{type:'effect.freeze_done',target:e.target,seq:e.seq,legacy:e.type};
+      case 'vengeance_penalty':return{type:'effect.vengeance_penalty',target:e.target,points:e.points,seq:e.seq,legacy:e.type};
       case 'reshuffle':return{type:'deck.reshuffle',seq:e.seq,legacy:e.type};
       case 'await_target':return{type:'target.prompt',actor:e.from,actionKind:e.kind,seq:e.seq,legacy:e.type};
       case 'round_end':return{type:'effect.round_end',winners:e.winners,flip7:e.flip7,seq:e.seq,legacy:e.type};
@@ -470,6 +471,10 @@
       if(e.secondPass){ const tp=lv.flip7.players[e.target]; if(tp)tp.second=true; }
       // freeze/flip3 spent marker on the target comes from the authoritative view's
       // spentActions (server), so no client-side bookkeeping needed here.
+    }
+    else if(e.type==='effect.vengeance_penalty'){
+      const tp=lv.flip7.players[e.target];
+      if(tp) tp.banked = Math.max(0, tp.banked - e.points);
     }
     else if(e.type==='effect.freeze_done'){ const tp=lv.flip7.players[e.target]; if(tp)tp.status='stayed'; }
     recalcAll(lv);
@@ -641,6 +646,12 @@
         await sleep(SPEED.beat*0.4); break;
       }
       case 'effect.flip7':{ advanceLiveView(liveView,e); draw(liveView); SFX.win(); Kit.confetti(); Kit.turnBanner('FLIP 7! +15',true); await sleep(SPEED.beat); break; }
+      case 'effect.vengeance_penalty':{
+        advanceLiveView(liveView,e); draw(liveView); SFX.bad();
+        Kit.turnBanner('VENGEANCE! -'+e.points,false);
+        const b=boardOf(e.target); if(b){b.style.animation='shakeX .5s ease';setTimeout(()=>b&&(b.style.animation=''),520);}
+        await sleep(SPEED.beat); break;
+      }
       case 'effect.stay':{ advanceLiveView(liveView,e); draw(liveView); SFX.good(); break; }
       case 'effect.flip3_abandon':{ Kit.turnBanner('Flip 3 abandoned',false); await sleep(SPEED.beat*0.6); break; }
       case 'effect.second_discard':{ await sleep(SPEED.beat*0.3); break; }

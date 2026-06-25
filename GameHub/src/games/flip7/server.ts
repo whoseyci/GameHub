@@ -62,6 +62,7 @@ interface State extends RngStateHolder {
   events: any[];       // replay timeline for the client (cleared each applyAction)
   seq: number;         // monotonically increasing so the client can dedupe
   log: any;            // last event (back-compat / quick checks)
+  variant: string;
 }
 
 function buildDeck(rng: RngStateHolder): Card[] {
@@ -116,7 +117,7 @@ function dealOpeningHands(s: State) {
 
 // Build a brand-new game (new shuffled deck, empty discard). Used at game
 // creation and when restarting after GAME_OVER.
-function fresh(names: string[], banked: number[], rngState = makeSeed()): State {
+function fresh(names: string[], banked: number[], rngState = makeSeed(), variant = "standard"): State {
   const rng = { rngState };
   const deck = buildDeck(rng);
   const players = names.map((n, i) => newPlayer(n, banked[i] ?? 0));
@@ -125,6 +126,7 @@ function fresh(names: string[], banked: number[], rngState = makeSeed()): State 
     rngState: rng.rngState,
     players, deck, discard: [], current: 0, phase: "PLAY", round: 1,
     pendingAction: null, flip3Left: 0, flip3Target: -1, flip3Stack: [], events: [], seq: 0, log: null,
+    variant,
   };
   dealOpeningHands(s);
   return s;
@@ -246,13 +248,18 @@ function resolveAction(s: State, from: number, kind: "freeze" | "flip3", target:
   if (actionCard) (tp.spentActions ??= []).push({ ...actionCard, id: `spent_${actionCard.id ?? kind}_${s.seq}` });
   if (kind === "freeze") {
     emit(s, { type: "play_action", kind: "freeze", from, target, card: actionCard, auto });
+    if (s.variant === "vengeance") {
+      tp.banked = Math.max(0, tp.banked - 10);
+      emit(s, { type: "effect.vengeance_penalty", target, points: 10 });
+    }
     if (tp.status === "active") { tp.status = "stayed"; emit(s, { type: "freeze_done", target }); }
     return "ok";
   }
   emit(s, { type: "play_action", kind: "flip3", from, target, card: actionCard, auto });
   // Push a new Flip-Three frame. Nested flip3s stack so the outer one resumes
   // after the inner finishes; the runner processes the top frame.
-  (s.flip3Stack ??= []).push({ left: 3, target });
+  const count = s.variant === "vengeance" ? 4 : 3;
+  (s.flip3Stack ??= []).push({ left: count, target });
   runFlip3(s);
   return "ok";
 }
@@ -313,6 +320,10 @@ function forceEndRoundOnFlip7(s: State, flip7Seat: number): boolean {
       s.players[i].status = "stayed";
       emit(s, { type: "stay", player: i, forced: true });
     }
+    if (s.variant === "vengeance" && i !== flip7Seat) {
+      s.players[i].banked = Math.max(0, s.players[i].banked - 15);
+      emit(s, { type: "effect.vengeance_penalty", target: i, points: 15 });
+    }
   }
   s.pendingAction = null; s.flip3Left = 0; s.flip3Target = -1; s.flip3Stack = [];
   scoreRound(s);
@@ -370,7 +381,7 @@ export const Flip7: GameModule = {
     return raw;
   },
 
-  create(names) { return fresh(names, names.map(() => 0)); },
+  create(names, variant) { return fresh(names, names.map(() => 0), undefined, variant); },
 
   applyAction(state: State, seat, msg) {
     state.events = []; // fresh timeline for this action
@@ -378,7 +389,7 @@ export const Flip7: GameModule = {
       if (msg.action === "next_round") {
         if (state.phase === "GAME_OVER") {
           // New game: fresh deck, empty discard, scores reset.
-          const ns = fresh(state.players.map((p) => p.name), state.players.map(() => 0), state.rngState);
+          const ns = fresh(state.players.map((p) => p.name), state.players.map(() => 0), state.rngState, state.variant);
           ns.seq = state.seq + 1;
           Object.assign(state, ns);
         } else {

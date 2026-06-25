@@ -17,4 +17,8 @@ export const Flip7Meta: GameMeta = {
     maxDurationSec: 900,
   },
   actionTypes: ["hit","stay","target","give_second","next_round"] as const,
+  variants: [
+    { id: "standard", name: "Standard", description: "Race to 200 points." },
+    { id: "vengeance", name: "Flip 7 with a vengeance", description: "High stakes aggressive targeting (Freeze -10pts) and Flip 4 action cards." }
+  ],
 };

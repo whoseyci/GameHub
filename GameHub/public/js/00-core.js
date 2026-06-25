@@ -942,7 +942,7 @@ const GameShell=(()=>{
 catalogue = (window.GameCatalogue || []).map(g => ({
   id: g.id, name: g.name, minPlayers: g.minPlayers, maxPlayers: g.maxPlayers,
   description: g.description, emoji: g.emoji, icon: g.icon, features: g.features,
-  variants: g.variants,
+  variants: g.variants || g.features?.variants,
 }));
 window.catalogue = catalogue;
 

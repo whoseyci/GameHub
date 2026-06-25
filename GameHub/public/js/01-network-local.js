@@ -24,7 +24,18 @@ function joinByCode(){ensureName();const c=$('joinRoom').value.trim().toUpperCas
 function joinPublic(code){ensureName();connectRoom(code,{});}
 // Quick Play uses sharded room codes: quick-<game>-1, -2, … On "full" we roll to
 // the next shard so players pool together until a room fills, then overflow opens a new one.
-function quickPlay(gameId,shard=1){ensureName();connectRoom('quick-'+gameId+'-'+shard,{isPublic:true,quickGame:gameId,shard});}
+function quickPlay(gameId,shard=1){
+  ensureName();
+  const g = (catalogue||[]).find(x=>x.id===gameId);
+  const variants = g?.variants || g?.features?.variants;
+  if(variants && variants.length > 1){
+    openVariantPicker(gameId, variants, (vid) => {
+      connectRoom('quick-'+gameId+'-'+shard,{isPublic:true,quickGame:gameId,shard,variant:vid});
+    });
+    return;
+  }
+  connectRoom('quick-'+gameId+'-'+shard,{isPublic:true,quickGame:gameId,shard});
+}
 // W6 part 2: spin up a persistent GROUP room. Group room codes are
 // "group-<6char>" (uppercased). The host hops in via connectRoom with
 // isGroup=true so the server stamps the room as a group on the first join.
