@@ -8,6 +8,10 @@ export const SkyjoFeatures: GameFeatures = {
   canSpectate: true,
   minDurationSec: 120,
   maxDurationSec: 600,
+  variants: [
+    { id: "standard", name: "Standard", description: "Classic Skyjo to 100 points." },
+    { id: "action", name: "Skyjo Action", description: "Adds star cards, row clears, and a separate action-card deck." },
+  ],
 };
 
 export const SkyjoMeta: GameMeta = {
@@ -18,5 +22,6 @@ export const SkyjoMeta: GameMeta = {
   description: "Flip, swap and dump cards to get the lowest score.",
   emoji: "🃏",
   features: SkyjoFeatures,
-  actionTypes: ["draw_deck","take_discard","discard_drawn","swap","reveal","reveal_after_discard","tiebreaker","next_round"] as const,
+  variants: [...(SkyjoFeatures.variants ?? [])],
+  actionTypes: ["draw_deck","take_discard","discard_drawn","swap","reveal","reveal_after_discard","tiebreaker","take_action","play_action","discard_action","action_cell","next_round"] as const,
 };

@@ -26,7 +26,7 @@ function buildViewState(g: GameEngine, seat: number): GameViewState {
   const isTb = isReveal && g.tiebreakerPlayers.length > 0;
   return {
     currentSeat: isTb ? -1 : g.currentPlayer,
-    pendingAction: g.turnAction,
+    pendingAction: g.skyjoAction ? g.skyjoAction.kind : g.turnAction,
     players: g.players.map((p, i) => ({
       seat: i,
       name: p.name,
@@ -56,15 +56,9 @@ const SkyjoFeatures: GameFeatures = {
   canSpectate: true,
   minDurationSec: 120,
   maxDurationSec: 600,
-  // W6 part 2: variant catalogue. The Skyjo module recognises the variant
-  // string on state.variant (set by the server when launch_game carries it)
-  // but for now both variants play identically — the picker UI is real,
-  // gameplay branching is queued for a future session. Listing "standard"
-  // explicitly so the dropdown has labelled choices instead of a bare
-  // "default vs unknown" toggle.
   variants: [
     { id: "standard", name: "Standard", description: "Classic Skyjo to 100 points." },
-    { id: "sprint",   name: "Sprint",   description: "Same rules, faster finish line (target 50)." },
+    { id: "action", name: "Skyjo Action", description: "Adds star cards, row clears, and a separate action-card deck." },
   ],
 };
 
@@ -78,11 +72,8 @@ export const Skyjo: GameModule = {
     emoji: "🃏",
     icon: "cards",
     features: SkyjoFeatures,
-    variants: [
-      { id: "standard", name: "Standard", description: "Classic Skyjo to 100 points." },
-      { id: "extreme", name: "Skyjo Extreme", description: "Extreme mode with negative wild cards and void redistribution." }
-    ],
-    actionTypes: ["draw_deck","take_discard","discard_drawn","swap","reveal","reveal_after_discard","tiebreaker","next_round"] as const,
+    variants: [...(SkyjoFeatures.variants ?? [])],
+    actionTypes: ["draw_deck","take_discard","discard_drawn","swap","reveal","reveal_after_discard","tiebreaker","take_action","play_action","discard_action","action_cell","next_round"] as const,
     schemaSpec: { kind: "imperative", paradigm: "reducers", version: 1 },
   },
 
@@ -122,6 +113,18 @@ export const Skyjo: GameModule = {
         break;
       case "reveal_after_discard":
         g.revealAfterDiscard(seat, msg.index);
+        break;
+      case "take_action":
+        g.takeActionCard(seat, msg.source === "market" ? "market" : "deck", msg.index | 0);
+        break;
+      case "play_action":
+        g.playActionCard(seat, msg.hand | 0);
+        break;
+      case "discard_action":
+        g.discardActionCard(seat, msg.hand | 0);
+        break;
+      case "action_cell":
+        g.actionCell(seat, msg.index | 0);
         break;
       case "next_round": // host-only; hub gates this
         if (g.phase === "GAME_OVER") g.newGame();
@@ -183,6 +186,12 @@ export const Skyjo: GameModule = {
     if (state.phase === "PLAY" || state.phase === "FINAL_TURNS") {
       if (state.currentPlayer !== seat) return out;
       const me: any = state.players?.[seat]; if (!me) return out;
+      if (state.skyjoAction?.player === seat) {
+        (me.board || []).forEach((c: any, idx: number) => {
+          if (!c.cleared) out.push({ action: "action_cell", index: idx });
+        });
+        return out;
+      }
       const ta = state.turnAction;
       if (ta === null) {
         out.push({ action: "draw_deck" });
@@ -197,6 +206,13 @@ export const Skyjo: GameModule = {
         // pass-and-play players couldn't tap the discard pile.
         if (Array.isArray(state.discard) && state.discard.length > 0) {
           out.push({ action: "take_discard" });
+        }
+        if (state.variant === "action") {
+          (state.actionMarket || []).forEach((_: any, index: number) => out.push({ action: "take_action", source: "market", index }));
+          out.push({ action: "take_action", source: "deck", index: -1 });
+          (me.actionHand || []).forEach((a: any, hand: number) => {
+            if (!a.fresh) out.push({ action: "play_action", hand }, { action: "discard_action", hand });
+          });
         }
       } else if (ta === "deck") {
         out.push({ action: "discard_drawn" });

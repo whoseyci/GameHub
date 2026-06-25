@@ -4,26 +4,40 @@
 
 import { makeSeed, shuffleInPlace, type RngStateHolder } from "../../rng";
 
+export const STAR = 99;
 export interface Card { value: number; revealed: boolean; cleared: boolean; }
+export interface HeldAction { kind: string; fresh?: boolean; }
 export interface Player {
   name: string;
   board: Card[];
   roundScore: number;
   totalScore: number;
   revealCount: number;
+  actionHand?: HeldAction[];
 }
 export type Phase = "REVEAL" | "PLAY" | "FINAL_TURNS" | "ROUND_END" | "GAME_OVER";
 export type TurnAction = null | "deck" | "discard" | "must_reveal" | "turn_end_delay";
 
-export function createDeck(rng: RngStateHolder = { rngState: makeSeed() }): number[] {
+export function createDeck(rng: RngStateHolder = { rngState: makeSeed() }, variant = "standard"): number[] {
   const d: number[] = [];
   for (let i = 0; i < 5; i++) d.push(-2);
   for (let i = 0; i < 10; i++) d.push(-1);
   for (let i = 0; i < 15; i++) d.push(0);
   for (let v = 1; v <= 12; v++) for (let i = 0; i < 10; i++) d.push(v);
+  if (variant === "action") for (let i = 0; i < 15; i++) d.push(STAR);
   shuffleInPlace(d, rng);
   return d;
 }
+
+const ACTION_TYPES = ["swap_own", "double", "draw_three", "reveal"] as const;
+function createActionDeck(rng: RngStateHolder): string[] {
+  const d: string[] = [];
+  for (const k of ACTION_TYPES) for (let i = 0; i < 4; i++) d.push(k);
+  shuffleInPlace(d, rng);
+  return d;
+}
+function isStar(v: number) { return v === STAR; }
+function scoreValue(v: number) { return isStar(v) ? 0 : v; }
 
 export class GameEngine {
   schemaVersion = 1;
@@ -39,6 +53,11 @@ export class GameEngine {
   drawnCard: number | null = null;
   turnAction: TurnAction = null;
   tiebreakerPlayers: number[] = [];
+  actionDeck: string[] = [];
+  actionDiscard: string[] = [];
+  actionMarket: string[] = [];
+  skyjoAction: null | { kind: string; player: number; handIndex?: number; first?: number } = null;
+  extraTurnSeat = -1;
   actionSeq = 0; // monotonic action counter (deterministic stand-in for wall-clock; makes each lastAction unique for client change-detection)
   lastAction: any = null;
   pendingTransition: any = null;
@@ -59,7 +78,8 @@ export class GameEngine {
   static readonly STATE_KEYS = [
     "schemaVersion", "rngState", "players", "deck", "discard", "phase", "round",
     "currentPlayer", "roundEnder", "finalTurnsLeft", "drawnCard", "turnAction",
-    "tiebreakerPlayers", "lastAction", "pendingTransition", "actionSeq", "variant",
+    "tiebreakerPlayers", "actionDeck", "actionDiscard", "actionMarket", "skyjoAction", "extraTurnSeat",
+    "lastAction", "pendingTransition", "actionSeq", "variant",
   ] as const;
 
   // Rehydrate from a stored plain object.
@@ -87,12 +107,17 @@ export class GameEngine {
   }
 
   private deal() {
-    this.deck = createDeck(this);
+    this.deck = createDeck(this, this.variant);
     for (const p of this.players) {
       for (const c of p.board) { c.value = this.deck.pop()!; c.revealed = false; c.cleared = false; }
-      p.revealCount = 0; p.roundScore = 0;
+      p.revealCount = 0; p.roundScore = 0; p.actionHand = [];
     }
     this.discard = [this.deck.pop()!];
+    this.actionDeck = this.variant === "action" ? createActionDeck(this) : [];
+    this.actionDiscard = [];
+    this.actionMarket = [];
+    if (this.variant === "action") for (let i = 0; i < 4; i++) this.refillActionMarket();
+    this.skyjoAction = null; this.extraTurnSeat = -1;
     this.phase = "REVEAL"; this.roundEnder = -1; this.finalTurnsLeft = 0;
     this.currentPlayer = 0; this.drawnCard = null; this.turnAction = null;
     this.tiebreakerPlayers = []; this.lastAction = null; this.pendingTransition = null;
@@ -116,6 +141,32 @@ export class GameEngine {
   averageTotal(): number {
     if (!this.players.length) return 0;
     return this.players.reduce((s, p) => s + p.totalScore, 0) / this.players.length;
+  }
+
+  private refillActionMarket() {
+    if (this.variant !== "action") return;
+    if (!this.actionDeck.length && this.actionDiscard.length) {
+      this.actionDeck = this.actionDiscard.splice(0);
+      shuffleInPlace(this.actionDeck, this);
+    }
+    while (this.actionMarket.length < 4 && this.actionDeck.length) this.actionMarket.push(this.actionDeck.pop()!);
+  }
+  private drawActionCard(): string | null {
+    this.refillActionMarket();
+    return this.actionDeck.pop() ?? null;
+  }
+  private addActionToHand(pi: number, kind: string) {
+    const p = this.players[pi];
+    (p.actionHand ??= []).push({ kind, fresh: true });
+  }
+  private matureActions(pi: number) {
+    for (const a of this.players[pi]?.actionHand ?? []) a.fresh = false;
+  }
+  private revealFirstHidden(pi: number): number {
+    const p = this.players[pi];
+    const idx = p.board.findIndex((c) => !c.revealed && !c.cleared);
+    if (idx >= 0) p.board[idx].revealed = true;
+    return idx;
   }
 
   revealInitial(pi: number, ci: number): boolean {
@@ -212,23 +263,105 @@ export class GameEngine {
     this.endTurn();
     return true;
   }
+
+  takeActionCard(pi: number, source: "market" | "deck" = "deck", index = -1): boolean {
+    if (this.variant !== "action") return false;
+    if (this.phase !== "PLAY" && this.phase !== "FINAL_TURNS") return false;
+    if (this.currentPlayer !== pi || this.turnAction !== null || this.skyjoAction) return false;
+    let kind: string | null = null;
+    if (source === "market" && index >= 0 && index < this.actionMarket.length) {
+      kind = this.actionMarket.splice(index, 1)[0];
+      this.refillActionMarket();
+    } else {
+      kind = this.drawActionCard();
+    }
+    if (!kind) return false;
+    this.addActionToHand(pi, kind);
+    this.lastAction = { type: "take_action", player: pi, kind, t: ++this.actionSeq };
+    this.endTurn();
+    return true;
+  }
+
+  discardActionCard(pi: number, handIndex: number): boolean {
+    if (this.variant !== "action") return false;
+    if (this.currentPlayer !== pi || this.turnAction !== null || this.skyjoAction) return false;
+    const hand = this.players[pi].actionHand ?? [];
+    const [card] = hand.splice(handIndex, 1);
+    if (!card) return false;
+    this.actionDiscard.push(card.kind);
+    this.lastAction = { type: "discard_action", player: pi, kind: card.kind, t: ++this.actionSeq };
+    this.endTurn();
+    return true;
+  }
+
+  playActionCard(pi: number, handIndex: number): boolean {
+    if (this.variant !== "action") return false;
+    if (this.phase !== "PLAY" && this.phase !== "FINAL_TURNS") return false;
+    if (this.currentPlayer !== pi || this.turnAction !== null || this.skyjoAction) return false;
+    const hand = this.players[pi].actionHand ?? [];
+    const card = hand[handIndex];
+    if (!card || card.fresh) return false;
+    hand.splice(handIndex, 1);
+    this.actionDiscard.push(card.kind);
+    const kind = card.kind;
+    this.lastAction = { type: "play_action", player: pi, kind, t: ++this.actionSeq };
+    if (kind === "swap_own") { this.skyjoAction = { kind, player: pi, handIndex }; return true; }
+    if (kind === "double") { this.extraTurnSeat = pi; this.endTurn(); return true; }
+    if (kind === "draw_three") {
+      const drawn: number[] = [];
+      for (let i = 0; i < 3 && this.deck.length; i++) drawn.push(this.deck.pop()!);
+      if (!drawn.length) return true;
+      drawn.sort((a, b) => scoreValue(a) - scoreValue(b));
+      const keep = drawn.shift()!;
+      for (const v of drawn) this.discard.push(v);
+      this.drawnCard = keep;
+      this.turnAction = "deck";
+      this.lastAction = { type: "play_action", player: pi, kind, drawn: [keep, ...drawn], t: ++this.actionSeq };
+      return true;
+    }
+    if (kind === "reveal") {
+      const idx = this.revealFirstHidden(pi);
+      this.lastAction = { type: "play_action", player: pi, kind, index: idx, t: ++this.actionSeq };
+      this.endTurn();
+      return true;
+    }
+    this.endTurn();
+    return true;
+  }
+
+  actionCell(pi: number, index: number): boolean {
+    const a = this.skyjoAction;
+    if (!a || a.player !== pi || this.currentPlayer !== pi) return false;
+    if (a.kind === "swap_own") {
+      if (a.first == null) { a.first = index; this.lastAction = { type: "action_select", player: pi, kind: a.kind, index, t: ++this.actionSeq }; return true; }
+      const p = this.players[pi];
+      const j = a.first;
+      [p.board[j], p.board[index]] = [p.board[index], p.board[j]];
+      this.skyjoAction = null;
+      this.lastAction = { type: "play_action", player: pi, kind: a.kind, indices: [j, index], t: ++this.actionSeq };
+      this.endTurn();
+      return true;
+    }
+    return false;
+  }
   checkTriplets(pi: number): boolean {
     const p = this.players[pi]; let cleared = false;
-    for (let col = 0; col < 4; col++) {
-      const idxs = [col, col + 4, col + 8];
+    const groups: number[][] = [];
+    for (let col = 0; col < 4; col++) groups.push([col, col + 4, col + 8]);
+    if (this.variant === "action") for (let row = 0; row < 3; row++) groups.push([row * 4, row * 4 + 1, row * 4 + 2, row * 4 + 3]);
+    for (const idxs of groups) {
       const cards = idxs.map((i) => p.board[i]);
-      if (cards.every((c) => c.revealed && !c.cleared) &&
-          cards[0].value === cards[1].value && cards[1].value === cards[2].value) {
-        idxs.forEach((i) => (p.board[i].cleared = true));
-        for (let i = 0; i < 3; i++) this.discard.push(cards[0].value);
-        cleared = true;
-        // Chain triplet onto swap's lastAction instead of overwriting it,
-        // so both the swap animation and triplet VFX play sequentially.
-        if (this.lastAction && this.lastAction.type === "swap") {
-          this.lastAction.triplet = { value: cards[0].value, indices: idxs };
-        } else {
-          this.lastAction = { type: "triplet", player: pi, value: cards[0].value, indices: idxs, t: ++this.actionSeq };
-        }
+      if (!cards.every((c) => c.revealed && !c.cleared)) continue;
+      const nonStars = cards.filter((c) => !isStar(c.value));
+      if (!nonStars.length) continue; // all-star rows/columns score negative instead of auto-clearing
+      if (!nonStars.every((c) => c.value === nonStars[0].value)) continue;
+      idxs.forEach((i) => (p.board[i].cleared = true));
+      for (const c of cards) this.discard.push(c.value);
+      cleared = true;
+      if (this.lastAction && this.lastAction.type === "swap") {
+        this.lastAction.triplet = { value: nonStars[0].value, indices: idxs };
+      } else {
+        this.lastAction = { type: "triplet", player: pi, value: nonStars[0].value, indices: idxs, t: ++this.actionSeq };
       }
     }
     return cleared;
@@ -236,6 +369,7 @@ export class GameEngine {
   private endTurn() {
     this.checkTriplets(this.currentPlayer);
     this.drawnCard = null;
+    this.skyjoAction = null;
     this.turnAction = "turn_end_delay";
   }
   completeTurnEnd() {
@@ -254,6 +388,7 @@ export class GameEngine {
       this.pendingTransition = null;
       return;
     }
+    this.matureActions(this.currentPlayer);
     const p = this.players[this.currentPlayer];
     if (p.board.every((c) => c.cleared || c.revealed) && this.phase === "PLAY") {
       this.phase = "FINAL_TURNS";
@@ -264,16 +399,28 @@ export class GameEngine {
       if (this.currentPlayer !== this.roundEnder) this.finalTurnsLeft--;
       if (this.finalTurnsLeft <= 0) { this.calculateScores(); return; }
     }
+    if (this.extraTurnSeat === this.currentPlayer) {
+      this.extraTurnSeat = -1;
+      this.lastAction = { type: "extra_turn", player: this.currentPlayer, t: ++this.actionSeq };
+      return;
+    }
     this.currentPlayer = (this.currentPlayer + 1) % this.players.length;
   }
   private calculateScores() {
     for (const p of this.players) {
       for (const c of p.board) if (!c.cleared) c.revealed = true;
       this.checkTriplets(this.players.indexOf(p));
-      p.roundScore = p.board.filter((c) => !c.cleared).reduce((s, c) => s + c.value, 0);
-      if (this.variant === "extreme") {
-        const clearedCols = p.board.filter((c) => c.cleared).length / 3;
-        p.roundScore -= clearedCols * 5;
+      p.roundScore = p.board.filter((c) => !c.cleared).reduce((s, c) => s + scoreValue(c.value), 0);
+      if (this.variant === "action") {
+        p.roundScore += (p.actionHand?.length ?? 0) * 10;
+        for (let col = 0; col < 4; col++) {
+          const cards = [p.board[col], p.board[col + 4], p.board[col + 8]];
+          if (cards.every((c) => !c.cleared && isStar(c.value))) p.roundScore -= 10;
+        }
+        for (let row = 0; row < 3; row++) {
+          const cards = [p.board[row * 4], p.board[row * 4 + 1], p.board[row * 4 + 2], p.board[row * 4 + 3]];
+          if (cards.every((c) => !c.cleared && isStar(c.value))) p.roundScore -= 15;
+        }
       }
     }
     const ender = this.players[this.roundEnder];
@@ -282,8 +429,7 @@ export class GameEngine {
     );
     if (ender.roundScore >= minOther && ender.roundScore > 0) ender.roundScore *= 2;
     for (const p of this.players) p.totalScore += p.roundScore;
-    const targetThreshold = this.variant === "sprint" ? 50 : 100;
-    this.phase = this.players.some((p) => p.totalScore >= targetThreshold) ? "GAME_OVER" : "ROUND_END";
+    this.phase = this.players.some((p) => p.totalScore >= 100) ? "GAME_OVER" : "ROUND_END";
     const min = Math.min(...this.players.map((p) => p.totalScore));
     this.lastAction = {
       type: this.phase === "GAME_OVER" ? "game_over" : "round_end",
@@ -299,8 +445,14 @@ export class GameEngine {
       deckCount: this.deck.length,
       discardTop: this.discard.length ? this.discard[this.discard.length - 1] : null,
       discardCount: this.discard.length,
-      players: this.players.map((p) => ({
+      variant: this.variant,
+      actionDeckCount: this.actionDeck.length,
+      actionDiscardCount: this.actionDiscard.length,
+      actionMarket: [...this.actionMarket],
+      skyjoAction: this.skyjoAction,
+      players: this.players.map((p, pi) => ({
         name: p.name, totalScore: p.totalScore, roundScore: p.roundScore, revealCount: p.revealCount,
+        actionHand: pi === viewerIndex ? (p.actionHand ?? []).map((a) => ({ kind: a.kind, fresh: !!a.fresh })) : (p.actionHand ?? []).map(() => ({ kind: "hidden" })),
         board: p.board.map((c) => ({
           value: c.revealed || c.cleared ? c.value : null, revealed: c.revealed, cleared: c.cleared,
         })),

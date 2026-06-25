@@ -60,8 +60,14 @@ const Flip7Bots = (() => {
   
   // ---- EV calculation ----
   
-  function fullCounts() {
+  function fullCounts(variant = 'standard') {
     const m = { 0: 1 };
+    if (variant === 'vengeance') {
+      for (let v = 1; v <= 13; v++) m[v] = v;
+      for (const k of ['-2','-4','-6','-8','-10','div2']) m[k] = 1;
+      for (const k of ['just1more','swap','steal','discard','flip4']) m[k] = 2;
+      return m;
+    }
     for (let v = 1; v <= 12; v++) m[v] = v;
     for (const k of ['+2','+4','+6','+8','+10','x2']) m[k] = 1;
     for (const k of ['freeze','flip3','second']) m[k] = 3;
@@ -71,7 +77,7 @@ const Flip7Bots = (() => {
   function dec(m, k) { if (m[k] != null) m[k] = Math.max(0, m[k] - 1); }
   
   function remaining(gv) {
-    const m = fullCounts();
+    const m = fullCounts(gv.variant || 'standard');
     for (const p of gv.players) {
       for (const n of p.nums) dec(m, String(n));
       for (const md of p.mods) dec(m, md);
@@ -159,25 +165,32 @@ const Flip7Bots = (() => {
     return p.live < 18 || Math.random() < 0.5;
   }
   
+  function legalTarget(gv, target) {
+    const legal = gv?._legal || [];
+    const hit = legal.find(a => a.action === 'target' && a.target === target);
+    return hit ? JSON.parse(JSON.stringify(hit)) : { action: 'target', target };
+  }
+
   function chooseTarget(gv, me, difficulty) {
-    const others = gv.players.map((_, i) => i).filter(i => i !== me && gv.players[i].status === 'active');
-    if (!others.length) return me;
+    const pa = gv.pendingAction;
+    const vengeance = gv.variant === 'vengeance';
+    const others = gv.players.map((_, i) => i).filter(i => i !== me && (vengeance ? gv.players[i].status !== 'busted' : gv.players[i].status === 'active'));
+    if (!others.length) return legalTarget(gv, me);
     
     if (difficulty === 'hard') {
-      const pa = gv.pendingAction;
       if (pa?.kind === 'give_second') {
         const elig = others.filter(i => !gv.players[i].second);
         const pool = elig.length ? elig : others;
-        return pool.reduce((a, b) =>
+        return legalTarget(gv, pool.reduce((a, b) =>
           (gv.players[b].banked + gv.players[b].live) < (gv.players[a].banked + gv.players[a].live) ? b : a
-        , pool[0]);
+        , pool[0]));
       }
       if (pa?.kind === 'freeze' || pa?.kind === 'discard' || pa?.kind === 'just1more') {
-        return others.reduce((a, b) => {
+        return legalTarget(gv, others.reduce((a, b) => {
           const sa = -gv.players[a].live + 0.12 * gv.players[a].banked;
           const sb = -gv.players[b].live + 0.12 * gv.players[b].banked;
           return sb > sa ? b : a;
-        }, others[0]);
+        }, others[0]));
       }
       if (pa?.kind === 'flip3' || pa?.kind === 'flip4') {
         const score = i => {
@@ -187,31 +200,33 @@ const Flip7Bots = (() => {
           const bustN = 1 - Math.pow(1 - bp, count);
           return bustN * (20 + q.live) + 4 * q.unique + (q.second ? -12 : 0) + 0.03 * q.banked;
         };
-        return others.reduce((a, b) => score(b) > score(a) ? b : a, others[0]);
+        return legalTarget(gv, others.reduce((a, b) => score(b) > score(a) ? b : a, others[0]));
       }
       if (pa?.kind === 'steal' || pa?.kind === 'swap') {
          // Target the player with the best card
-         return others.reduce((a, b) => gv.players[b].live > gv.players[a].live ? b : a, others[0]);
+         return legalTarget(gv, others.reduce((a, b) => gv.players[b].live > gv.players[a].live ? b : a, others[0]));
       }
     }
-    const pa = gv.pendingAction;
-    if (pa?.kind === 'give_second') return others[0];
-    return others.reduce((a, b) => gv.players[b].live > gv.players[a].live ? b : a, others[0]);
+    if (pa?.kind === 'modifier') {
+      return legalTarget(gv, others.reduce((a, b) => (gv.players[b].banked + gv.players[b].live) > (gv.players[a].banked + gv.players[a].live) ? b : a, others[0]));
+    }
+    if (pa?.kind === 'give_second') return legalTarget(gv, others[0]);
+    return legalTarget(gv, others.reduce((a, b) => gv.players[b].live > gv.players[a].live ? b : a, others[0]));
   }
   
   // ---- Main choose function ----
   
-  function choose(view, difficulty) {
+  function choose(view, difficulty, seat = null) {
     const s = view.flip7;
-    const me = s.current;
+    s._legal = view?.state?.legal || [];
+    const me = seat != null ? seat : (s.pendingAction ? s.pendingAction.from : s.current);
     const p = s.players[me];
     
     // Handle pending action targeting
     if (s.pendingAction) {
       const pa = s.pendingAction;
       if (pa.from === me) {
-        const target = chooseTarget(s, me, difficulty);
-        return { action: 'target', target };
+        return chooseTarget(s, me, difficulty);
       }
     }
     
@@ -228,7 +243,7 @@ const Flip7Bots = (() => {
   // ---- BotDriver Registration ----
   BotDriver.register('flip7', {
     choose(view, seat, difficulty) {
-      return choose(view, difficulty);
+      return choose(view, difficulty, seat);
     },
     
     needsBot(view) {

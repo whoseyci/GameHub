@@ -9,12 +9,17 @@
   // card is a declarative SPEC — white face, number coloured by value (low=green …
   // high=red, negatives=indigo). The .board-card class is kept as a hook for Skyjo's
   // grid/mini-board sizing CSS.
+  const SKYJO_STAR = 99;
+  function skyjoValueText(v){ return v===SKYJO_STAR ? '★' : v; }
+  function skyjoValueColor(v){ return v===SKYJO_STAR ? '#f59e0b' : C(v); }
   function skyjoSpec(c){
     if(c.cleared) return { zone:'skyjo', state:'cleared' };
-    if(c.revealed) return { zone:'skyjo', bg:'#fff', border:'#fff', content:{ text:c.value, color:C(c.value) } };
+    if(c.revealed) return { zone:'skyjo', bg:'#fff', border:'#fff', content:{ text:skyjoValueText(c.value), color:skyjoValueColor(c.value) } };
     return { zone:'skyjo', faceDown:true };
   }
   function skyjoVisual(c){ return Kit.Cards.el(skyjoSpec(c)); }
+  function actionLabel(k){return ({swap_own:'Swap Own',double:'Double Move',draw_three:'Draw 3',reveal:'Reveal'})[k]||String(k||'Action');}
+  function skyjoLegal(action){return (window._renderView?.state?.legal||[]).filter(a=>a.action===action);}
   function skyjoCardId(s,pi,ci){return `skyjo:table:r${s.round}:p${pi}:c${ci}`;}
   // The discard pile is a PERMANENT card (id 'skyjo:discard') pinned to #uiDiscard.
   // A card that goes to the discard is the REAL moving card — we fly it onto the
@@ -145,7 +150,7 @@
     uiDeck.classList.remove('pile-hint');uiDeck.onclick=null;uiDiscard.classList.remove('pile-hint');uiDiscard.onclick=null;
 
     // Everyone sees the deck-drawn card flipped face-up on the deck (publicDrawn).
-    if(s.publicDrawn!=null&&viewer!==s.currentPlayer){uiDeck.className='card-slot revealed';uiDeck.textContent=s.publicDrawn;uiDeck.style.color=C(s.publicDrawn);uiDeck.style.borderColor='#fff';uiDeck.innerHTML=s.publicDrawn+'<span id="deckCount" class="deck-count">'+(s.deckCount||'')+'</span>';}
+    if(s.publicDrawn!=null&&viewer!==s.currentPlayer){uiDeck.className='card-slot revealed';uiDeck.textContent=skyjoValueText(s.publicDrawn);uiDeck.style.color=skyjoValueColor(s.publicDrawn);uiDeck.style.borderColor='#fff';uiDeck.innerHTML=skyjoValueText(s.publicDrawn)+'<span id="deckCount" class="deck-count">'+(s.deckCount||'')+'</span>';}
     else{uiDeck.className='card-slot face-down';uiDeck.style.color='';uiDeck.style.borderColor='';uiDeck.innerHTML='<span id="deckCount" class="deck-count">'+(s.deckCount||'')+'</span>';}
 
     // API-11: pile affordances come from server-emitted legality hints. No
@@ -164,7 +169,7 @@
       uiDiscard.onclick=()=>act(s.currentPlayer,{action:'discard_drawn'});
     }
 
-    if(s.discardTop!==null){uiDiscard.className='card-slot revealed';uiDiscard.textContent=s.discardTop;uiDiscard.style.color=C(s.discardTop);uiDiscard.style.borderColor='#fff';if(hints && hints.has('discard_drawn'))uiDiscard.classList.add('pile-hint');}
+    if(s.discardTop!==null){uiDiscard.className='card-slot revealed';uiDiscard.textContent=skyjoValueText(s.discardTop);uiDiscard.style.color=skyjoValueColor(s.discardTop);uiDiscard.style.borderColor='#fff';if(hints && hints.has('discard_drawn'))uiDiscard.classList.add('pile-hint');}
     else{uiDiscard.className='card-slot';uiDiscard.textContent='Empty';uiDiscard.style.color='';uiDiscard.style.borderColor='';}
 
     // held window
@@ -178,7 +183,7 @@
     if(myTurn&&(ta==='deck'||ta==='discard'||ta==='must_reveal')){
       wrap.classList.remove('hidden');
       if(ta==='must_reveal'){$('heldTextLabel').textContent='Discarded!';$('heldSubLabel').textContent='Now reveal a face-down card.';held.style.display='flex';held.textContent=s.lastAction&&s.lastAction.type==='discard_drawn'?s.lastAction.value:'';held.style.color=s.lastAction&&s.lastAction.type==='discard_drawn'?C(s.lastAction.value):'';held.style.borderColor='#fff';held.style.visibility='hidden';}
-      else if(s.myDrawnCard!=null){held.style.visibility='';held.style.display='flex';held.textContent=s.myDrawnCard;held.style.color=C(s.myDrawnCard);held.style.borderColor='#fff';$('heldTextLabel').textContent=ta==='deck'?'Drew from Deck:':'Took from Discard:';$('heldSubLabel').textContent=ta==='deck'?'Tap a card to swap, or Discard to drop it.':'Tap a card to swap.';}
+      else if(s.myDrawnCard!=null){held.style.visibility='';held.style.display='flex';held.textContent=skyjoValueText(s.myDrawnCard);held.style.color=skyjoValueColor(s.myDrawnCard);held.style.borderColor='#fff';$('heldTextLabel').textContent=ta==='deck'?'Drew from Deck:':'Took from Discard:';$('heldSubLabel').textContent=ta==='deck'?'Tap a card to swap, or Discard to drop it.':'Tap a card to swap.';}
       else{held.style.visibility='';held.style.display='flex';held.textContent='?';held.style.color='';}
     } else {
       held.style.visibility='';
@@ -189,6 +194,21 @@
       if(!(typeof Kit!=='undefined'&&Kit.CardManager&&Kit.CardManager.has('skyjo:held'))){
         wrap.classList.add('hidden');
       }
+    }
+
+    document.querySelectorAll('.skyjo-action-zone').forEach(n=>n.remove());
+    if(s.variant==='action'){
+      const zone=document.createElement('div');zone.className='skyjo-action-zone';
+      const legalTake=skyjoLegal('take_action');
+      const market=(s.actionMarket||[]).map((k,i)=>{
+        const can=legalTake.some(a=>a.source==='market'&&a.index===i);
+        return `<button class="skyjo-action-card ${can?'can':''}" data-act-market="${i}" ${can?'':'disabled'}><b>${esc(actionLabel(k))}</b><small>action</small></button>`;
+      }).join('');
+      const deckCan=legalTake.some(a=>a.source==='deck');
+      zone.innerHTML=`<div class="skyjo-action-title">Action cards</div><div class="skyjo-action-market">${market}<button class="skyjo-action-card deck ${deckCan?'can':''}" data-act-deck="1" ${deckCan?'':'disabled'}><b>?</b><small>${esc(s.actionDeckCount||0)} left</small></button></div>`;
+      const top=$('topArea'); if(top)top.appendChild(zone);
+      zone.querySelectorAll('[data-act-market]').forEach(btn=>btn.onclick=()=>act(s.currentPlayer,{action:'take_action',source:'market',index:Number(btn.dataset.actMarket)}));
+      zone.querySelector('[data-act-deck]')?.addEventListener('click',()=>act(s.currentPlayer,{action:'take_action',source:'deck',index:-1}));
     }
 
     // status bar
@@ -293,7 +313,22 @@
     wrap.id='main-board-'+pi;
     const h=document.createElement('div');h.className='board-header';
     h.innerHTML=`<span>${esc(p.name)}${pi===viewer?' (You)':''}</span><span class="score-badge">Now: ${esc(live)} · Total: ${esc(p.totalScore)}</span>`;
-    wrap.appendChild(h);wrap.appendChild(grid);return wrap;
+    wrap.appendChild(h);wrap.appendChild(grid);
+    if(s.variant==='action'&&Array.isArray(p.actionHand)&&p.actionHand.length){
+      const hand=document.createElement('div');hand.className='skyjo-action-hand';
+      const legalPlay=skyjoLegal('play_action'), legalDiscard=skyjoLegal('discard_action');
+      p.actionHand.forEach((a,handIndex)=>{
+        const item=document.createElement('div');item.className='skyjo-action-held'+(a.fresh?' fresh':'');
+        const play=legalPlay.some(x=>x.hand===handIndex);
+        const disc=legalDiscard.some(x=>x.hand===handIndex);
+        item.innerHTML=`<b>${esc(actionLabel(a.kind))}</b><small>${a.fresh?'next turn':'+10 if kept'}</small><span><button ${play?'':'disabled'} data-play="${handIndex}">Play</button><button ${disc?'':'disabled'} data-discard="${handIndex}">Discard</button></span>`;
+        hand.appendChild(item);
+      });
+      hand.querySelectorAll('[data-play]').forEach(b=>b.onclick=()=>act(pi,{action:'play_action',hand:Number(b.dataset.play)}));
+      hand.querySelectorAll('[data-discard]').forEach(b=>b.onclick=()=>act(pi,{action:'discard_action',hand:Number(b.dataset.discard)}));
+      wrap.appendChild(hand);
+    }
+    return wrap;
   }
   function canClick(s,pi,ci,c,viewer){
     // API-11: defer to server-emitted legality. For ONLINE play, view.state.legal
@@ -316,7 +351,7 @@
       legal = [];
     }
     return legal.some(a =>
-      (a.action === 'reveal' || a.action === 'reveal_after_discard' || a.action === 'swap' || a.action === 'tiebreaker')
+      (a.action === 'reveal' || a.action === 'reveal_after_discard' || a.action === 'swap' || a.action === 'tiebreaker' || a.action === 'action_cell')
       && a.index === ci
     );
   }
@@ -332,7 +367,7 @@
     else legal = [];
     // Prefer reveal_after_discard > swap > tiebreaker > reveal (the order
     // ensures we pick the specific action the engine expects in each phase).
-    const ORDER = ['reveal_after_discard','swap','tiebreaker','reveal'];
+    const ORDER = ['action_cell','reveal_after_discard','swap','tiebreaker','reveal'];
     const match = ORDER.map(a => legal.find(x => x.action === a && x.index === ci)).find(Boolean);
     if (match) act(pi, match);
   }

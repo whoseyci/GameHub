@@ -21,6 +21,37 @@ describe("Skyjo rule regressions", () => {
     skyjoCompleteTurnEnd(state);
     expect(state.phase === "PLAY" || state.tiebreakerPlayers.length > 0).toBe(true);
   });
+
+  it("Skyjo Action adds stars and a four-card action market", () => {
+    const state: any = Skyjo.create(["A", "B"], "action");
+    expect(state.variant).toBe("action");
+    expect(state.actionMarket).toHaveLength(4);
+    expect(state.deck.some((v: number) => v === 99) || state.players.some((p: any) => p.board.some((c: any) => c.value === 99))).toBe(true);
+  });
+
+  it("Skyjo Action lets a player take, mature, then play an action card", () => {
+    const state: any = Skyjo.create(["A", "B"], "action");
+    state.phase = "PLAY"; state.currentPlayer = 0; state.turnAction = null;
+    state.actionMarket = ["double", "swap_own", "draw_three", "reveal"];
+    Skyjo.applyAction(state, 0, { action: "take_action", source: "market", index: 0 });
+    expect(state.players[0].actionHand[0].kind).toBe("double");
+    expect(state.turnAction).toBe("turn_end_delay");
+    skyjoCompleteTurnEnd(state);
+    state.currentPlayer = 0; state.turnAction = null;
+    expect(Skyjo.legalActions!(state, 0)).toContainEqual({ action: "play_action", hand: 0 });
+    Skyjo.applyAction(state, 0, { action: "play_action", hand: 0 });
+    expect(state.extraTurnSeat).toBe(0);
+  });
+
+  it("Skyjo Action clears horizontal rows as well as columns", () => {
+    const state: any = Skyjo.create(["A", "B"], "action");
+    state.phase = "PLAY"; state.currentPlayer = 0; state.turnAction = null;
+    for (let i = 0; i < 4; i++) state.players[0].board[i] = { value: 5, revealed: true, cleared: false };
+    Skyjo.applyAction(state, 0, { action: "draw_deck" });
+    state.drawnCard = 1;
+    Skyjo.applyAction(state, 0, { action: "swap", index: 4 });
+    expect(state.players[0].board.slice(0, 4).every((c: any) => c.cleared)).toBe(true);
+  });
 });
 
 describe("Flip7 rule regressions", () => {

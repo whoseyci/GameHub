@@ -59,14 +59,29 @@
   }
 
   // src/games/skyjo/engine.ts
-  function createDeck(rng = { rngState: makeSeed() }) {
+  var STAR = 99;
+  function createDeck(rng = { rngState: makeSeed() }, variant = "standard") {
     const d = [];
     for (let i = 0; i < 5; i++) d.push(-2);
     for (let i = 0; i < 10; i++) d.push(-1);
     for (let i = 0; i < 15; i++) d.push(0);
     for (let v = 1; v <= 12; v++) for (let i = 0; i < 10; i++) d.push(v);
+    if (variant === "action") for (let i = 0; i < 15; i++) d.push(STAR);
     shuffleInPlace(d, rng);
     return d;
+  }
+  var ACTION_TYPES = ["swap_own", "double", "draw_three", "reveal"];
+  function createActionDeck(rng) {
+    const d = [];
+    for (const k of ACTION_TYPES) for (let i = 0; i < 4; i++) d.push(k);
+    shuffleInPlace(d, rng);
+    return d;
+  }
+  function isStar(v) {
+    return v === STAR;
+  }
+  function scoreValue(v) {
+    return isStar(v) ? 0 : v;
   }
   var _GameEngine = class _GameEngine {
     constructor(names) {
@@ -83,6 +98,11 @@
       __publicField(this, "drawnCard", null);
       __publicField(this, "turnAction", null);
       __publicField(this, "tiebreakerPlayers", []);
+      __publicField(this, "actionDeck", []);
+      __publicField(this, "actionDiscard", []);
+      __publicField(this, "actionMarket", []);
+      __publicField(this, "skyjoAction", null);
+      __publicField(this, "extraTurnSeat", -1);
       __publicField(this, "actionSeq", 0);
       // monotonic action counter (deterministic stand-in for wall-clock; makes each lastAction unique for client change-detection)
       __publicField(this, "lastAction", null);
@@ -118,7 +138,7 @@
       return target;
     }
     deal() {
-      this.deck = createDeck(this);
+      this.deck = createDeck(this, this.variant);
       for (const p of this.players) {
         for (const c of p.board) {
           c.value = this.deck.pop();
@@ -127,8 +147,15 @@
         }
         p.revealCount = 0;
         p.roundScore = 0;
+        p.actionHand = [];
       }
       this.discard = [this.deck.pop()];
+      this.actionDeck = this.variant === "action" ? createActionDeck(this) : [];
+      this.actionDiscard = [];
+      this.actionMarket = [];
+      if (this.variant === "action") for (let i = 0; i < 4; i++) this.refillActionMarket();
+      this.skyjoAction = null;
+      this.extraTurnSeat = -1;
       this.phase = "REVEAL";
       this.roundEnder = -1;
       this.finalTurnsLeft = 0;
@@ -166,6 +193,31 @@
     averageTotal() {
       if (!this.players.length) return 0;
       return this.players.reduce((s, p) => s + p.totalScore, 0) / this.players.length;
+    }
+    refillActionMarket() {
+      if (this.variant !== "action") return;
+      if (!this.actionDeck.length && this.actionDiscard.length) {
+        this.actionDeck = this.actionDiscard.splice(0);
+        shuffleInPlace(this.actionDeck, this);
+      }
+      while (this.actionMarket.length < 4 && this.actionDeck.length) this.actionMarket.push(this.actionDeck.pop());
+    }
+    drawActionCard() {
+      this.refillActionMarket();
+      return this.actionDeck.pop() ?? null;
+    }
+    addActionToHand(pi, kind) {
+      const p = this.players[pi];
+      (p.actionHand ?? (p.actionHand = [])).push({ kind, fresh: true });
+    }
+    matureActions(pi) {
+      for (const a of this.players[pi]?.actionHand ?? []) a.fresh = false;
+    }
+    revealFirstHidden(pi) {
+      const p = this.players[pi];
+      const idx = p.board.findIndex((c) => !c.revealed && !c.cleared);
+      if (idx >= 0) p.board[idx].revealed = true;
+      return idx;
     }
     revealInitial(pi, ci) {
       if (this.phase !== "REVEAL") return false;
@@ -278,21 +330,113 @@
       this.endTurn();
       return true;
     }
+    takeActionCard(pi, source = "deck", index = -1) {
+      if (this.variant !== "action") return false;
+      if (this.phase !== "PLAY" && this.phase !== "FINAL_TURNS") return false;
+      if (this.currentPlayer !== pi || this.turnAction !== null || this.skyjoAction) return false;
+      let kind = null;
+      if (source === "market" && index >= 0 && index < this.actionMarket.length) {
+        kind = this.actionMarket.splice(index, 1)[0];
+        this.refillActionMarket();
+      } else {
+        kind = this.drawActionCard();
+      }
+      if (!kind) return false;
+      this.addActionToHand(pi, kind);
+      this.lastAction = { type: "take_action", player: pi, kind, t: ++this.actionSeq };
+      this.endTurn();
+      return true;
+    }
+    discardActionCard(pi, handIndex) {
+      if (this.variant !== "action") return false;
+      if (this.currentPlayer !== pi || this.turnAction !== null || this.skyjoAction) return false;
+      const hand = this.players[pi].actionHand ?? [];
+      const [card] = hand.splice(handIndex, 1);
+      if (!card) return false;
+      this.actionDiscard.push(card.kind);
+      this.lastAction = { type: "discard_action", player: pi, kind: card.kind, t: ++this.actionSeq };
+      this.endTurn();
+      return true;
+    }
+    playActionCard(pi, handIndex) {
+      if (this.variant !== "action") return false;
+      if (this.phase !== "PLAY" && this.phase !== "FINAL_TURNS") return false;
+      if (this.currentPlayer !== pi || this.turnAction !== null || this.skyjoAction) return false;
+      const hand = this.players[pi].actionHand ?? [];
+      const card = hand[handIndex];
+      if (!card || card.fresh) return false;
+      hand.splice(handIndex, 1);
+      this.actionDiscard.push(card.kind);
+      const kind = card.kind;
+      this.lastAction = { type: "play_action", player: pi, kind, t: ++this.actionSeq };
+      if (kind === "swap_own") {
+        this.skyjoAction = { kind, player: pi, handIndex };
+        return true;
+      }
+      if (kind === "double") {
+        this.extraTurnSeat = pi;
+        this.endTurn();
+        return true;
+      }
+      if (kind === "draw_three") {
+        const drawn = [];
+        for (let i = 0; i < 3 && this.deck.length; i++) drawn.push(this.deck.pop());
+        if (!drawn.length) return true;
+        drawn.sort((a, b) => scoreValue(a) - scoreValue(b));
+        const keep = drawn.shift();
+        for (const v of drawn) this.discard.push(v);
+        this.drawnCard = keep;
+        this.turnAction = "deck";
+        this.lastAction = { type: "play_action", player: pi, kind, drawn: [keep, ...drawn], t: ++this.actionSeq };
+        return true;
+      }
+      if (kind === "reveal") {
+        const idx = this.revealFirstHidden(pi);
+        this.lastAction = { type: "play_action", player: pi, kind, index: idx, t: ++this.actionSeq };
+        this.endTurn();
+        return true;
+      }
+      this.endTurn();
+      return true;
+    }
+    actionCell(pi, index) {
+      const a = this.skyjoAction;
+      if (!a || a.player !== pi || this.currentPlayer !== pi) return false;
+      if (a.kind === "swap_own") {
+        if (a.first == null) {
+          a.first = index;
+          this.lastAction = { type: "action_select", player: pi, kind: a.kind, index, t: ++this.actionSeq };
+          return true;
+        }
+        const p = this.players[pi];
+        const j = a.first;
+        [p.board[j], p.board[index]] = [p.board[index], p.board[j]];
+        this.skyjoAction = null;
+        this.lastAction = { type: "play_action", player: pi, kind: a.kind, indices: [j, index], t: ++this.actionSeq };
+        this.endTurn();
+        return true;
+      }
+      return false;
+    }
     checkTriplets(pi) {
       const p = this.players[pi];
       let cleared = false;
-      for (let col = 0; col < 4; col++) {
-        const idxs = [col, col + 4, col + 8];
+      const groups = [];
+      for (let col = 0; col < 4; col++) groups.push([col, col + 4, col + 8]);
+      if (this.variant === "action") for (let row = 0; row < 3; row++) groups.push([row * 4, row * 4 + 1, row * 4 + 2, row * 4 + 3]);
+      for (const idxs of groups) {
         const cards = idxs.map((i) => p.board[i]);
-        if (cards.every((c) => c.revealed && !c.cleared) && cards[0].value === cards[1].value && cards[1].value === cards[2].value) {
-          idxs.forEach((i) => p.board[i].cleared = true);
-          for (let i = 0; i < 3; i++) this.discard.push(cards[0].value);
-          cleared = true;
-          if (this.lastAction && this.lastAction.type === "swap") {
-            this.lastAction.triplet = { value: cards[0].value, indices: idxs };
-          } else {
-            this.lastAction = { type: "triplet", player: pi, value: cards[0].value, indices: idxs, t: ++this.actionSeq };
-          }
+        if (!cards.every((c) => c.revealed && !c.cleared)) continue;
+        const nonStars = cards.filter((c) => !isStar(c.value));
+        if (!nonStars.length) continue;
+        if (!nonStars.every((c) => c.value === nonStars[0].value)) continue;
+        idxs.forEach((i) => p.board[i].cleared = true);
+        for (const c of cards) this.discard.push(c.value);
+        cleared = true;
+        if (this.lastAction && this.lastAction.type === "swap") {
+          this.lastAction.triplet = { value: nonStars[0].value, indices: idxs };
+        } else {
+          this.lastAction = { type: "triplet", player: pi, value: nonStars[0].value, indices: idxs, t: ++this.actionSeq };
         }
       }
       return cleared;
@@ -300,6 +444,7 @@
     endTurn() {
       this.checkTriplets(this.currentPlayer);
       this.drawnCard = null;
+      this.skyjoAction = null;
       this.turnAction = "turn_end_delay";
     }
     completeTurnEnd() {
@@ -319,6 +464,7 @@
         this.pendingTransition = null;
         return;
       }
+      this.matureActions(this.currentPlayer);
       const p = this.players[this.currentPlayer];
       if (p.board.every((c) => c.cleared || c.revealed) && this.phase === "PLAY") {
         this.phase = "FINAL_TURNS";
@@ -332,16 +478,28 @@
           return;
         }
       }
+      if (this.extraTurnSeat === this.currentPlayer) {
+        this.extraTurnSeat = -1;
+        this.lastAction = { type: "extra_turn", player: this.currentPlayer, t: ++this.actionSeq };
+        return;
+      }
       this.currentPlayer = (this.currentPlayer + 1) % this.players.length;
     }
     calculateScores() {
       for (const p of this.players) {
         for (const c of p.board) if (!c.cleared) c.revealed = true;
         this.checkTriplets(this.players.indexOf(p));
-        p.roundScore = p.board.filter((c) => !c.cleared).reduce((s, c) => s + c.value, 0);
-        if (this.variant === "extreme") {
-          const clearedCols = p.board.filter((c) => c.cleared).length / 3;
-          p.roundScore -= clearedCols * 5;
+        p.roundScore = p.board.filter((c) => !c.cleared).reduce((s, c) => s + scoreValue(c.value), 0);
+        if (this.variant === "action") {
+          p.roundScore += (p.actionHand?.length ?? 0) * 10;
+          for (let col = 0; col < 4; col++) {
+            const cards = [p.board[col], p.board[col + 4], p.board[col + 8]];
+            if (cards.every((c) => !c.cleared && isStar(c.value))) p.roundScore -= 10;
+          }
+          for (let row = 0; row < 3; row++) {
+            const cards = [p.board[row * 4], p.board[row * 4 + 1], p.board[row * 4 + 2], p.board[row * 4 + 3]];
+            if (cards.every((c) => !c.cleared && isStar(c.value))) p.roundScore -= 15;
+          }
         }
       }
       const ender = this.players[this.roundEnder];
@@ -350,8 +508,7 @@
       );
       if (ender.roundScore >= minOther && ender.roundScore > 0) ender.roundScore *= 2;
       for (const p of this.players) p.totalScore += p.roundScore;
-      const targetThreshold = this.variant === "sprint" ? 50 : 100;
-      this.phase = this.players.some((p) => p.totalScore >= targetThreshold) ? "GAME_OVER" : "ROUND_END";
+      this.phase = this.players.some((p) => p.totalScore >= 100) ? "GAME_OVER" : "ROUND_END";
       const min = Math.min(...this.players.map((p) => p.totalScore));
       this.lastAction = {
         type: this.phase === "GAME_OVER" ? "game_over" : "round_end",
@@ -372,11 +529,17 @@
         deckCount: this.deck.length,
         discardTop: this.discard.length ? this.discard[this.discard.length - 1] : null,
         discardCount: this.discard.length,
-        players: this.players.map((p) => ({
+        variant: this.variant,
+        actionDeckCount: this.actionDeck.length,
+        actionDiscardCount: this.actionDiscard.length,
+        actionMarket: [...this.actionMarket],
+        skyjoAction: this.skyjoAction,
+        players: this.players.map((p, pi) => ({
           name: p.name,
           totalScore: p.totalScore,
           roundScore: p.roundScore,
           revealCount: p.revealCount,
+          actionHand: pi === viewerIndex ? (p.actionHand ?? []).map((a) => ({ kind: a.kind, fresh: !!a.fresh })) : (p.actionHand ?? []).map(() => ({ kind: "hidden" })),
           board: p.board.map((c) => ({
             value: c.revealed || c.cleared ? c.value : null,
             revealed: c.revealed,
@@ -406,6 +569,11 @@
     "drawnCard",
     "turnAction",
     "tiebreakerPlayers",
+    "actionDeck",
+    "actionDiscard",
+    "actionMarket",
+    "skyjoAction",
+    "extraTurnSeat",
     "lastAction",
     "pendingTransition",
     "actionSeq",
@@ -422,7 +590,7 @@
     const isTb = isReveal && g.tiebreakerPlayers.length > 0;
     return {
       currentSeat: isTb ? -1 : g.currentPlayer,
-      pendingAction: g.turnAction,
+      pendingAction: g.skyjoAction ? g.skyjoAction.kind : g.turnAction,
       players: g.players.map((p, i) => ({
         seat: i,
         name: p.name,
@@ -442,15 +610,9 @@
     canSpectate: true,
     minDurationSec: 120,
     maxDurationSec: 600,
-    // W6 part 2: variant catalogue. The Skyjo module recognises the variant
-    // string on state.variant (set by the server when launch_game carries it)
-    // but for now both variants play identically — the picker UI is real,
-    // gameplay branching is queued for a future session. Listing "standard"
-    // explicitly so the dropdown has labelled choices instead of a bare
-    // "default vs unknown" toggle.
     variants: [
       { id: "standard", name: "Standard", description: "Classic Skyjo to 100 points." },
-      { id: "sprint", name: "Sprint", description: "Same rules, faster finish line (target 50)." }
+      { id: "action", name: "Skyjo Action", description: "Adds star cards, row clears, and a separate action-card deck." }
     ]
   };
   var Skyjo = {
@@ -463,11 +625,8 @@
       emoji: "\u{1F0CF}",
       icon: "cards",
       features: SkyjoFeatures,
-      variants: [
-        { id: "standard", name: "Standard", description: "Classic Skyjo to 100 points." },
-        { id: "extreme", name: "Skyjo Extreme", description: "Extreme mode with negative wild cards and void redistribution." }
-      ],
-      actionTypes: ["draw_deck", "take_discard", "discard_drawn", "swap", "reveal", "reveal_after_discard", "tiebreaker", "next_round"],
+      variants: [...SkyjoFeatures.variants ?? []],
+      actionTypes: ["draw_deck", "take_discard", "discard_drawn", "swap", "reveal", "reveal_after_discard", "tiebreaker", "take_action", "play_action", "discard_action", "action_cell", "next_round"],
       schemaSpec: { kind: "imperative", paradigm: "reducers", version: 1 }
     },
     parseAction(raw) {
@@ -504,6 +663,18 @@
           break;
         case "reveal_after_discard":
           g.revealAfterDiscard(seat, msg.index);
+          break;
+        case "take_action":
+          g.takeActionCard(seat, msg.source === "market" ? "market" : "deck", msg.index | 0);
+          break;
+        case "play_action":
+          g.playActionCard(seat, msg.hand | 0);
+          break;
+        case "discard_action":
+          g.discardActionCard(seat, msg.hand | 0);
+          break;
+        case "action_cell":
+          g.actionCell(seat, msg.index | 0);
           break;
         case "next_round":
           if (g.phase === "GAME_OVER") g.newGame();
@@ -552,11 +723,24 @@
         if (state.currentPlayer !== seat) return out;
         const me = state.players?.[seat];
         if (!me) return out;
+        if (state.skyjoAction?.player === seat) {
+          (me.board || []).forEach((c, idx) => {
+            if (!c.cleared) out.push({ action: "action_cell", index: idx });
+          });
+          return out;
+        }
         const ta = state.turnAction;
         if (ta === null) {
           out.push({ action: "draw_deck" });
           if (Array.isArray(state.discard) && state.discard.length > 0) {
             out.push({ action: "take_discard" });
+          }
+          if (state.variant === "action") {
+            (state.actionMarket || []).forEach((_, index) => out.push({ action: "take_action", source: "market", index }));
+            out.push({ action: "take_action", source: "deck", index: -1 });
+            (me.actionHand || []).forEach((a, hand) => {
+              if (!a.fresh) out.push({ action: "play_action", hand }, { action: "discard_action", hand });
+            });
           }
         } else if (ta === "deck") {
           out.push({ action: "discard_drawn" });
