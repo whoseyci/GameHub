@@ -164,9 +164,6 @@ const Flip7Bots = (() => {
     if (!others.length) return me;
     
     if (difficulty === 'hard') {
-      // Freeze: target low-live leader
-      // Flip3: target high bust-risk / high live / no-second
-      // Give second: target lowest-threat active opponent
       const pa = gv.pendingAction;
       if (pa?.kind === 'give_second') {
         const elig = others.filter(i => !gv.players[i].second);
@@ -175,28 +172,31 @@ const Flip7Bots = (() => {
           (gv.players[b].banked + gv.players[b].live) < (gv.players[a].banked + gv.players[a].live) ? b : a
         , pool[0]);
       }
-      if (pa?.kind === 'freeze') {
+      if (pa?.kind === 'freeze' || pa?.kind === 'discard' || pa?.kind === 'just1more') {
         return others.reduce((a, b) => {
           const sa = -gv.players[a].live + 0.12 * gv.players[a].banked;
           const sb = -gv.players[b].live + 0.12 * gv.players[b].banked;
           return sb > sa ? b : a;
         }, others[0]);
       }
-      if (pa?.kind === 'flip3') {
+      if (pa?.kind === 'flip3' || pa?.kind === 'flip4') {
         const score = i => {
           const q = gv.players[i];
           const bp = bustProb(gv, i);
-          const bust3 = 1 - Math.pow(1 - bp, 3);
-          return bust3 * (20 + q.live) + 4 * q.unique + (q.second ? -12 : 0) + 0.03 * q.banked;
+          const count = pa.kind === 'flip4' ? 4 : 3;
+          const bustN = 1 - Math.pow(1 - bp, count);
+          return bustN * (20 + q.live) + 4 * q.unique + (q.second ? -12 : 0) + 0.03 * q.banked;
         };
         return others.reduce((a, b) => score(b) > score(a) ? b : a, others[0]);
       }
+      if (pa?.kind === 'steal' || pa?.kind === 'swap') {
+         // Target the player with the best card
+         return others.reduce((a, b) => gv.players[b].live > gv.players[a].live ? b : a, others[0]);
+      }
     }
-    // Medium/Easy targeting
     const pa = gv.pendingAction;
     if (pa?.kind === 'give_second') return others[0];
-    if (pa?.kind === 'freeze') return others.reduce((a, b) => gv.players[b].live > gv.players[a].live ? b : a, others[0]);
-    return others.reduce((a, b) => gv.players[b].unique > gv.players[a].unique ? b : a, others[0]);
+    return others.reduce((a, b) => gv.players[b].live > gv.players[a].live ? b : a, others[0]);
   }
   
   // ---- Main choose function ----

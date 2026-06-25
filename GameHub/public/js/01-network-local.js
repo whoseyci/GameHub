@@ -442,6 +442,8 @@ function maybeContextualEmotes(view){
     const hit = Kit.Emotes.fromEvent(g, ev);
     if(hit && hit.seat != null && hit.seat >= 0 && (hit.prob == null || Math.random() < hit.prob)){
       const seats = window._currentSeats || [];
+      const isBot = seats[hit.seat]?.bot || (window.localSeats && localSeats[hit.seat]?.bot);
+      if(!isBot) continue; 
       const name = (seats[hit.seat] && seats[hit.seat].name) || (window.localSeats && localSeats[hit.seat] && localSeats[hit.seat].name) || '';
       try { Social.emote(hit.mood, name, hit.seat); } catch(e){}
     }
@@ -555,7 +557,18 @@ function startLocalGame(){
   if(g&&(names.length<g.minPlayers||names.length>g.maxPlayers))return toast(`${g.name} needs ${g.minPlayers}–${g.maxPlayers} players.`);
   if(names.length<2)return toast('Need at least 2 players');
   if(!window.LocalEngines[_localPick])return toast('That game is online-only for now.');
+
+  const variants = g?.variants || g?.features?.variants;
+  if(variants && variants.length > 1 && !window._localVariantPick){
+    openVariantPicker(_localPick, variants, (vid) => {
+      window._localVariantPick = vid;
+      startLocalGame();
+    });
+    return;
+  }
+
   mode='local';localGameId=_localPick;localEngine=window.LocalEngines[_localPick](names, window._localVariantPick || 'standard');
+  window._localVariantPick = null; 
   if(window.Social) Social.setActive(false);   // pass-and-play is one device
   // Phase 6: mirror to window for cross-module readers (00-local-seat-editor).
   window.mode = mode; window.localEngine = localEngine; window.localGameId = localGameId;

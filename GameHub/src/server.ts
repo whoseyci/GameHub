@@ -182,6 +182,8 @@ export class Room extends Server<Env> {
     if (live.has(this.hostId)) return;
     const nextConnected = this.members.find((m) => !m.bot && live.has(m.id));
     if (nextConnected) { this.hostId = nextConnected.id; return; }
+    const nextPending = this.pending.find((p) => live.has(p.id));
+    if (nextPending) { this.hostId = nextPending.id; return; }
     if (!this.gameId) this.hostId = this.members.find((m) => !m.bot)?.id ?? this.members[0]?.id ?? null;
   }
 
@@ -584,6 +586,7 @@ export class Room extends Server<Env> {
         }
         this.log({ kind: "join", actor: pid, gameId: this.gameId, detail: { name, seat: this.memberIdx(pid), pending: this.pendingIdx(pid) >= 0 } });
       }
+      this.reassignHostIfGone();
       await this.persistMeta();
       await this.lobbyUpdate();
       this.broadcastState();
@@ -933,7 +936,15 @@ export class Room extends Server<Env> {
     this.broadcastState();
 
     const live = [...this.getConnections()].filter((c) => c.id !== conn.id).length;
-    if (live === 0) this.ctx.storage.setAlarm(Date.now() + EMPTY_GRACE_MS);
+    if (live === 0) {
+      if (this.quickGame) {
+        // Quick play: clear room immediately so next group starts fresh.
+        this.members = []; this.pending = []; this.gameId = null; this.gameState = null;
+        await this.ctx.storage.deleteAll();
+      } else {
+        this.ctx.storage.setAlarm(Date.now() + EMPTY_GRACE_MS);
+      }
+    }
   }
 }
 

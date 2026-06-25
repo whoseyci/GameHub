@@ -22,6 +22,13 @@
     else if(val==='second') spec={ bg:'#dc2626', border:'#ef4444', content:{ text:'♥', color:'#fbcfe8' } };
     else if(val==='freeze') spec={ bg:{gradient:['#bae6fd','#7dd3fc']}, border:'#38bdf8', content:{ text:'❄', color:'#0369a1' } };
     else if(val==='flip3')  spec={ bg:'#eaff00', border:'#d4e600', content:{ text:'F3', color:'#1a1a00', italic:true } };
+    else if(val==='flip4')  spec={ bg:'#eaff00', border:'#d4e600', content:{ text:'F4', color:'#1a1a00', italic:true } };
+    else if(val==='unlucky7') spec={ bg:'#000', border:'#ff0000', content:{ text:'U7', color:'#ff0000' } };
+    else if(val==='lucky13') spec={ bg:'#4ade80', border:'#166534', content:{ text:'L13', color:'#166534' } };
+    else if(val==='steal') spec={ bg:'#7c3aed', border:'#5b21b6', content:{ text:'S', color:'#fff' } };
+    else if(val==='swap') spec={ bg:'#f59e0b', border:'#b45309', content:{ text:'W', color:'#fff' } };
+    else if(val==='discard') spec={ bg:'#4b5563', border:'#1f2937', content:{ text:'D', color:'#fff' } };
+    else if(val==='just1more') spec={ bg:'#ec4899', border:'#9d174d', content:{ text:'+1', color:'#fff' } };
     else spec={ content:{ text:val } };
     spec.zone='f7';
     const st=[]; if(busted)st.push('dim'); if(cause)st.push('shake','highlight');
@@ -30,7 +37,7 @@
   }
   function cardEl(kind,val,opts={}){
     const c=Kit.Cards.el(f7Spec(kind,val,opts));
-    if(kind!=='num'&&val) c.title = val==='second'?'Second Chance':val==='freeze'?'Freeze':val==='flip3'?'Flip Three':'';
+    if(kind!=='num'&&val) c.title = val==='second'?'Second Chance':val==='freeze'?'Freeze':val==='flip3'?'Flip Three':val==='flip4'?'Flip Four':val==='unlucky7'?'Unlucky 7':val==='lucky13'?'Lucky 13':val==='steal'?'Steal':val==='swap'?'Swap':val==='discard'?'Discard':val==='just1more'?'Just One More':'';
     return c;
   }
 
@@ -102,11 +109,20 @@
 
   function actionVfx(kind){
     const o=document.createElement('div');
-    o.className='f7-vfx-overlay '+(kind==='freeze'?'freeze':'flip3');
+    const kinds={
+      freeze: { cls:'freeze', icon:'\u2744' },
+      flip3:  { cls:'flip3',  icon:'F3' },
+      flip4:  { cls:'flip3',  icon:'F4' },
+      steal:  { cls:'steal',  icon:'S' },
+      swap:   { cls:'swap',   icon:'W' },
+      discard: { cls:'discard', icon:'D' },
+      just1more: { cls:'just1more', icon:'+1' }
+    };
+    const info=kinds[kind]||{cls:'flip3',icon:'?'};
+    o.className='f7-vfx-overlay '+info.cls;
     const aura=document.createElement('div');aura.className='f7-vfx-aura';
     const icon=document.createElement('div');icon.className='f7-vfx-icon';
-    if(kind==='freeze'){icon.textContent='\u2744';}
-    else{icon.textContent='F3';}
+    icon.textContent=info.icon;
     aura.appendChild(icon);o.appendChild(aura);document.body.appendChild(o);
     setTimeout(()=>{o.style.transition='opacity .25s';o.style.opacity='0';setTimeout(()=>o.remove(),260);},760);
   }
@@ -387,6 +403,10 @@
       case 'second_pass':return{type:'card.transfer',actor:e.from,target:e.to,card:{kind:'act',v:'second'},actionKind:'second',secondPass:true,auto:!!e.auto,seq:e.seq,legacy:e.type};
       case 'bust':return{type:'effect.bust',actor:e.player,value:e.value,flip3:!!e.flip3,seq:e.seq,legacy:e.type};
       case 'flip7':return{type:'effect.flip7',actor:e.player,seq:e.seq,legacy:e.type};
+      case 'unlucky7':return{type:'effect.unlucky7',actor:e.player,seq:e.seq,legacy:e.type};
+      case 'discarded':return{type:'effect.discarded',actor:e.player,seq:e.seq,legacy:e.type};
+      case 'stolen':return{type:'effect.stolen',from:e.from,to:e.to,card:e.card,seq:e.seq,legacy:e.type};
+      case 'swapped':return{type:'effect.swapped',p1:e.p1,p2:e.p2,c1:e.c1,c2:e.c2,seq:e.seq,legacy:e.type};
       case 'flip3_abandon':return{type:'effect.flip3_abandon',target:e.target,seq:e.seq,legacy:e.type};
       case 'second_used':return{type:'effect.second_used',actor:e.player,value:e.value,flip3:!!e.flip3,seq:e.seq,legacy:e.type};
       case 'second_discard':return{type:'effect.second_discard',actor:e.player,seq:e.seq,legacy:e.type};
@@ -464,6 +484,10 @@
     else if(e.type==='effect.bust'&&p){ p.status='busted'; p.bustCard=e.value; }
     else if(e.type==='effect.second_used'&&p){ p.second=false; }
     else if(e.type==='effect.flip7'&&p){ p.status='stayed'; }
+    else if(e.type==='effect.unlucky7'&&p){ p.nums=[7]; p.mods=[]; p.second=false; p.hasLucky13=false; if(p.cards) p.cards=p.cards.filter(c=>c.id===e.card?.id); }
+    else if(e.type==='effect.discarded'&&p){ removeCard(p,e.card); }
+    else if(e.type==='effect.stolen'){ const fp=lv.flip7.players[e.from]; const tp=lv.flip7.players[e.to]; if(fp) removeCard(fp,e.card); if(tp) addCard(tp,e.card); }
+    else if(e.type==='effect.swapped'){ const p1=lv.flip7.players[e.p1]; const p2=lv.flip7.players[e.p2]; if(p1){ removeCard(p1,e.c1); addCard(p1,e.c2); } if(p2){ removeCard(p2,e.c2); addCard(p2,e.c1); } }
     else if(e.type==='effect.stay'&&p){ p.status='stayed'; }
     else if(e.type==='card.transfer'){
       const fp=lv.flip7.players[e.actor];
@@ -646,11 +670,38 @@
         await sleep(SPEED.beat*0.4); break;
       }
       case 'effect.flip7':{ advanceLiveView(liveView,e); draw(liveView); SFX.win(); Kit.confetti(); Kit.turnBanner('FLIP 7! +15',true); await sleep(SPEED.beat); break; }
-      case 'effect.vengeance_penalty':{
+      case 'effect.unlucky7':{
         advanceLiveView(liveView,e); draw(liveView); SFX.bad();
-        Kit.turnBanner('VENGEANCE! -'+e.points,false);
-        const b=boardOf(e.target); if(b){b.style.animation='shakeX .5s ease';setTimeout(()=>b&&(b.style.animation=''),520);}
+        Kit.turnBanner('UNLUCKY 7! Board wiped!',false);
+        const b=boardOf(e.actor); if(b){b.style.animation='shakeX .5s ease';}
         await sleep(SPEED.beat); break;
+      }
+      case 'effect.discarded':{
+        if(mode==='local')eventFocus=e.actor;
+        advanceLiveView(liveView,e); draw(liveView); SFX.discard();
+        Kit.turnBanner('Card discarded!',false);
+        await sleep(SPEED.beat*0.5); break;
+      }
+      case 'effect.stolen':{
+        if(mode==='local')eventFocus=e.from;
+        draw(liveView);
+        const fromEl=rowOf(e.from); const toEl=rowOf(e.to);
+        if(fromEl&&toEl) await flyF7Card(fromEl,toEl,e.card,{duration:SPEED.actionFly});
+        advanceLiveView(liveView,e); draw(liveView); SFX.good();
+        Kit.turnBanner('Card stolen!',true);
+        await sleep(SPEED.beat*0.5); break;
+      }
+      case 'effect.swapped':{
+        if(mode==='local')eventFocus=e.p1;
+        draw(liveView);
+        const p1El=rowOf(e.p1); const p2El=rowOf(e.p2);
+        if(p1El&&p2El){
+          flyF7Card(p1El,p2El,e.c1,{duration:SPEED.actionFly});
+          await flyF7Card(p2El,p1El,e.c2,{duration:SPEED.actionFly});
+        }
+        advanceLiveView(liveView,e); draw(liveView); SFX.swap();
+        Kit.turnBanner('Cards swapped!',true);
+        await sleep(SPEED.beat*0.5); break;
       }
       case 'effect.stay':{ advanceLiveView(liveView,e); draw(liveView); SFX.good(); break; }
       case 'effect.flip3_abandon':{ Kit.turnBanner('Flip 3 abandoned',false); await sleep(SPEED.beat*0.6); break; }

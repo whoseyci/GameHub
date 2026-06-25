@@ -38,14 +38,18 @@ interface Card { id: string; kind: CardKind; v: number | string; }
 interface Player {
   name: string; nums: number[]; mods: string[]; tableau: Card[]; spentActions?: Card[];
   secondChance: boolean;
+  hasLucky13?: boolean;
+  mustHit?: boolean;
   status: "active" | "stayed" | "busted";
   bustCard: number | null;
   banked: number;
   roundScore: number;
 }
 // pendingAction kinds:
-//   freeze/flip3  -> choose a target to apply to
-//   give_second   -> choose an active opponent to hand a duplicate Second Chance
+//   freeze/flip3/flip4 -> choose a target to apply to
+//   give_second        -> choose an active opponent to hand a duplicate Second Chance
+//   steal/discard/just1more -> choose a target
+//   swap               -> choose two targets (handled as multi-step or separate kind)
 interface State extends RngStateHolder {
   schemaVersion: number;
   players: Player[];
@@ -53,7 +57,7 @@ interface State extends RngStateHolder {
   current: number;
   phase: "PLAY" | "ROUND_END" | "GAME_OVER";
   round: number;
-  pendingAction: null | { kind: "freeze" | "flip3" | "give_second"; from: number; card?: Card };
+  pendingAction: null | { kind: "freeze" | "flip3" | "flip4" | "give_second" | "steal" | "swap" | "discard" | "just1more"; from: number; card?: Card; target1?: number };
   flip3Left: number; flip3Target: number;
   // Stack of suspended Flip-Three frames so nested action cards (freeze / 2nd /
   // another flip3) drawn DURING a flip3 can PAUSE for the target's choice and
@@ -65,14 +69,32 @@ interface State extends RngStateHolder {
   variant: string;
 }
 
-function buildDeck(rng: RngStateHolder): Card[] {
+function buildDeck(rng: RngStateHolder, variant = "standard"): Card[] {
   const d: Card[] = [];
   let seq = 0;
   const add = (kind: CardKind, v: number | string) => d.push({ id: `f7c_${seq++}_${kind}_${String(v).replace(/\W/g, "")}`, kind, v });
-  add("num", 0);
-  for (let n = 1; n <= 12; n++) for (let i = 0; i < n; i++) add("num", n);
-  for (const m of ["+2", "+4", "+6", "+8", "+10", "x2"]) add("mod", m);
-  for (const a of ["freeze", "flip3", "second"]) for (let i = 0; i < 3; i++) add("act", a);
+  
+  if (variant === "vengeance") {
+    add("num", 0);
+    for (let n = 1; n <= 13; n++) {
+       for (let i = 0; i < n; i++) {
+         add("num", n);
+       }
+    }
+    // Special Cards
+    add("act", "unlucky7");
+    add("act", "lucky13");
+    
+    for (const m of ["+2", "+4", "+6", "+8", "+10", "div2"]) add("mod", m);
+    for (const a of ["freeze", "flip4", "steal", "swap", "discard", "just1more"]) {
+       for (let i = 0; i < 3; i++) add("act", a);
+    }
+  } else {
+    add("num", 0);
+    for (let n = 1; n <= 12; n++) for (let i = 0; i < n; i++) add("num", n);
+    for (const m of ["+2", "+4", "+6", "+8", "+10", "x2"]) add("mod", m);
+    for (const a of ["freeze", "flip3", "second"]) for (let i = 0; i < 3; i++) add("act", a);
+  }
   shuffleInPlace(d, rng);
   return d;
 }
@@ -119,7 +141,7 @@ function dealOpeningHands(s: State) {
 // creation and when restarting after GAME_OVER.
 function fresh(names: string[], banked: number[], rngState = makeSeed(), variant = "standard"): State {
   const rng = { rngState };
-  const deck = buildDeck(rng);
+  const deck = buildDeck(rng, variant);
   const players = names.map((n, i) => newPlayer(n, banked[i] ?? 0));
   const s: State = {
     schemaVersion: 1,
@@ -196,7 +218,19 @@ function applyDrawnCard(s: State, pi: number, card: Card, opts: { flip3?: boolea
   const p = s.players[pi];
   if (card.kind === "num") {
     const n = card.v as number;
+    if (n === 0 && s.variant === "vengeance") {
+       p.mustHit = true;
+       p.nums.push(n); p.tableau.push(card);
+       emit(s, { type: "card", player: pi, card });
+       return "ok";
+    }
     if (p.nums.includes(n)) {
+      if (n === 13 && p.hasLucky13) {
+         // Second 13 is okay!
+         p.nums.push(n); p.tableau.push(card);
+         emit(s, { type: "card", player: pi, card, flip3: !!opts.flip3 });
+         return "ok";
+      }
       if (p.secondChance) {
         p.secondChance = false; s.discard.push(card);
         const used = removeTableauCard(p, (c) => c.kind === "act" && c.v === "second");
@@ -210,12 +244,33 @@ function applyDrawnCard(s: State, pi: number, card: Card, opts: { flip3?: boolea
     }
     p.nums.push(n); p.nums.sort((a, b) => a - b); p.tableau.push(card);
     emit(s, { type: "card", player: pi, card, flip3: !!opts.flip3 });
-    if (uniqueCount(p) >= 7) { p.status = "stayed"; emit(s, { type: "flip7", player: pi }); return "flip7"; }
+    if (uniqueCount(p) >= 7) { 
+       p.status = "stayed"; 
+       emit(s, { type: "flip7", player: pi }); 
+       if (p.mustHit) p.mustHit = false;
+       return "flip7"; 
+    }
     return "ok";
   }
-  if (card.kind === "mod") { p.mods.push(card.v as string); p.tableau.push(card); emit(s, { type: "card", player: pi, card, flip3: !!opts.flip3 }); return "ok"; }
+  if (card.kind === "mod") { 
+     p.mods.push(card.v as string); p.tableau.push(card); 
+     emit(s, { type: "card", player: pi, card, flip3: !!opts.flip3 }); 
+     return "ok"; 
+  }
   // action card
   const a = card.v as string;
+  if (a === "unlucky7" && s.variant === "vengeance") {
+     // Wipe board except this card
+     for (const c of p.tableau) s.discard.push(c);
+     p.nums = [7]; p.mods = []; p.tableau = [card]; p.secondChance = false; p.hasLucky13 = false;
+     emit(s, { type: "effect.unlucky7", player: pi, card });
+     return "ok";
+  }
+  if (a === "lucky13" && s.variant === "vengeance") {
+     p.hasLucky13 = true; p.tableau.push(card);
+     emit(s, { type: "card", player: pi, card });
+     return "ok";
+  }
   if (a === "second") {
     if (!p.secondChance) { p.secondChance = true; p.tableau.push(card); emit(s, { type: "card", player: pi, card }); return "ok"; }
     // already holding one: must give to an active opponent.
@@ -226,9 +281,8 @@ function applyDrawnCard(s: State, pi: number, card: Card, opts: { flip3?: boolea
     emit(s, { type: "await_target", kind: "give_second", from: pi });
     return "action";
   }
-  // freeze / flip3
-  p.tableau.push(card); emit(s, { type: "action_card", player: pi, kind: a, card }); // the action card appears on the drawer
-  // If the drawer is the ONLY active player, it must target themselves — auto after a beat.
+  // freeze / flip3 / flip4 / steal / swap / discard / just1more
+  p.tableau.push(card); emit(s, { type: "action_card", player: pi, kind: a, card }); 
   const others = activeOthers(s, pi);
   if (others.length === 0) {
     resolveAction(s, pi, a as any, pi, true);
@@ -239,27 +293,68 @@ function applyDrawnCard(s: State, pi: number, card: Card, opts: { flip3?: boolea
   return "action";
 }
 
-function resolveAction(s: State, from: number, kind: "freeze" | "flip3", target: number, auto = false): string {
+function resolveAction(s: State, from: number, kind: "freeze" | "flip3" | "flip4" | "steal" | "swap" | "discard" | "just1more", target: number, auto = false): string {
   const actionCard = s.pendingAction?.card ?? removeTableauCard(s.players[from], (c) => c.kind === "act" && c.v === kind) ?? undefined;
   s.pendingAction = null;
   const tp = s.players[target];
-  // Keep a SPENT marker of the played action card on the TARGET so it stays visible
-  // on their board (which card was used on them). Consumed otherwise.
+  const fp = s.players[from];
+  
   if (actionCard) (tp.spentActions ??= []).push({ ...actionCard, id: `spent_${actionCard.id ?? kind}_${s.seq}` });
+
   if (kind === "freeze") {
     emit(s, { type: "play_action", kind: "freeze", from, target, card: actionCard, auto });
-    if (s.variant === "vengeance") {
-      tp.banked = Math.max(0, tp.banked - 10);
-      emit(s, { type: "effect.vengeance_penalty", target, points: 10 });
-    }
     if (tp.status === "active") { tp.status = "stayed"; emit(s, { type: "freeze_done", target }); }
     return "ok";
   }
-  emit(s, { type: "play_action", kind: "flip3", from, target, card: actionCard, auto });
-  // Push a new Flip-Three frame. Nested flip3s stack so the outer one resumes
-  // after the inner finishes; the runner processes the top frame.
-  const count = s.variant === "vengeance" ? 4 : 3;
-  (s.flip3Stack ??= []).push({ left: count, target });
+  if (kind === "discard") {
+     emit(s, { type: "play_action", kind: "discard", from, target, card: actionCard, auto });
+     const c = tp.tableau.pop();
+     if (c) {
+        s.discard.push(c);
+        if (c.kind === "num") removeOne(tp.nums, c.v as number);
+        else if (c.kind === "mod") removeOne(tp.mods, c.v as string);
+        emit(s, { type: "effect.discarded", player: target, card: c });
+     }
+     return "ok";
+  }
+  if (kind === "steal") {
+     emit(s, { type: "play_action", kind: "steal", from, target, card: actionCard, auto });
+     const c = tp.tableau.pop();
+     if (c) {
+        if (c.kind === "num") removeOne(tp.nums, c.v as number);
+        else if (c.kind === "mod") removeOne(tp.mods, c.v as string);
+        placeCard(s, from, c);
+        emit(s, { type: "effect.stolen", from: target, to: from, card: c });
+     }
+     return "ok";
+  }
+  if (kind === "swap") {
+     emit(s, { type: "play_action", kind: "swap", from, target, card: actionCard, auto });
+     const tc = tp.tableau.pop();
+     const fc = fp.tableau.pop();
+     if (tc) {
+        if (tc.kind === "num") removeOne(tp.nums, tc.v as number);
+        else if (tc.kind === "mod") removeOne(tp.mods, tc.v as string);
+        placeCard(s, from, tc);
+     }
+     if (fc) {
+        if (fc.kind === "num") removeOne(fp.nums, fc.v as number);
+        else if (fc.kind === "mod") removeOne(fp.mods, fc.v as string);
+        placeCard(s, target, fc);
+     }
+     emit(s, { type: "effect.swapped", p1: from, p2: target, c1: fc, c2: tc });
+     return "ok";
+  }
+  if (kind === "just1more") {
+     emit(s, { type: "play_action", kind: "just1more", from, target, card: actionCard, auto });
+     applyDrawnCard(s, target, draw(s));
+     if (tp.status === "active") { tp.status = "stayed"; emit(s, { type: "stay", player: target, forced: true }); }
+     return "ok";
+  }
+
+  const isF4 = kind === "flip4";
+  emit(s, { type: "play_action", kind, from, target, card: actionCard, auto });
+  (s.flip3Stack ??= []).push({ left: isF4 ? 4 : 3, target });
   runFlip3(s);
   return "ok";
 }
@@ -320,10 +415,6 @@ function forceEndRoundOnFlip7(s: State, flip7Seat: number): boolean {
       s.players[i].status = "stayed";
       emit(s, { type: "stay", player: i, forced: true });
     }
-    if (s.variant === "vengeance" && i !== flip7Seat) {
-      s.players[i].banked = Math.max(0, s.players[i].banked - 15);
-      emit(s, { type: "effect.vengeance_penalty", target: i, points: 15 });
-    }
   }
   s.pendingAction = null; s.flip3Left = 0; s.flip3Target = -1; s.flip3Stack = [];
   scoreRound(s);
@@ -338,6 +429,7 @@ function scoreRound(s: State) {
     const u = uniqueCount(p);
     let base = p.nums.reduce((a, b) => a + b, 0);
     if (p.mods.includes("x2")) base *= 2;
+    if (p.mods.includes("div2")) base = Math.floor(base / 2);
     for (const m of p.mods) if (m.startsWith("+")) base += parseInt(m.slice(1));
     if (u >= 7) { base += 15; flip7Bonus = i; }
     p.roundScore = base; p.banked += base;
@@ -407,7 +499,7 @@ export const Flip7: GameModule = {
       const pa = state.pendingAction;
       if (msg.action === "target" && pa.from === seat) {
         const t = Math.max(0, Math.min(state.players.length - 1, msg.target | 0));
-        if (state.players[t].status !== "active") return; // only active targets
+        if (state.players[t].status === "busted") return; // can target stayed players
         // Are we resolving an action that was drawn DURING a flip3? If so, after
         // the choice we resume the remaining flip3 draws instead of ending the turn.
         const midFlip3 = !!(state.flip3Stack && state.flip3Stack.length);
@@ -464,16 +556,21 @@ export const Flip7: GameModule = {
     if (state.pendingAction) {
       if (state.pendingAction.from !== seat) return [];
       const out: any[] = [];
-      const isSecond = state.pendingAction.kind === "give_second";
+      const kind = state.pendingAction.kind;
+      const isSecond = kind === "give_second";
+      const isSwap = kind === "swap";
       for (let t = 0; t < state.players.length; t++) {
-        if (state.players[t].status !== "active") continue;
-        if (isSecond && t === seat) continue; // can't give a Second Chance to yourself
+        if (state.players[t].status === "busted") continue;
+        if (isSecond && t === seat) continue; 
+        if (isSwap && t === seat) continue;
         out.push({ action: "target", target: t });
       }
       return out;
     }
+    const p = state.players[seat];
     if (seat !== state.current) return [];
-    if (state.players[seat]?.status !== "active") return [];
+    if (p?.status !== "active") return [];
+    if (p.mustHit) return [{ action: "hit" }];
     return [{ action: "hit" }, { action: "stay" }];
   },
   summarize(state: State) { return { round: state.round, current: state.current, pendingAction: state.pendingAction }; },
