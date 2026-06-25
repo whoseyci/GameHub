@@ -26,8 +26,8 @@ import type { GameModule } from "./games/types";
  * deferred resolution (e.g. Skyjo's "turn_end_delay") auto-advance offline exactly
  * as they do online — without each client re-implementing that timer.
  */
-function makeLocalEngine(module: GameModule, names: string[]) {
-  let state = module.create(names);
+function makeLocalEngine(module: GameModule, names: string[], variant?: string) {
+  let state = module.create(names, variant);
 
   function currentSeat(): number {
     try {
@@ -136,7 +136,7 @@ window.makeLocalEngine = makeLocalEngine;
 // offline behaviour, but the default now comes straight from the shared rules.
 window.LocalEngines = window.LocalEngines || {};
 for (const id of Object.keys(GAMES)) {
-  window.LocalEngines[id] = (names: string[]) => makeLocalEngine(GAMES[id], names);
+  window.LocalEngines[id] = (names: string[], variant?: string) => makeLocalEngine(GAMES[id], names, variant);
 }
 
 export { makeLocalEngine };

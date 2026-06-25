@@ -82,6 +82,20 @@
   function commit() {
     if (typeof window.startLocalGame !== 'function') return;
     const isPre = !!window._pendingLocalGame;
+    const gid = isPre ? window._pendingLocalGame : (window.localGameId || 'skyjo');
+    const g = (window.GameCatalogue||[]).find(x => x.id === gid);
+    const variants = g?.variants || g?.features?.variants;
+    if (variants && variants.length > 0 && !window._localVariantPickSelected) {
+      if (typeof window.openVariantPicker === 'function') {
+        window.openVariantPicker(gid, variants, (vid) => {
+          window._localVariantPick = vid;
+          window._localVariantPickSelected = true;
+          commit();
+        });
+        return;
+      }
+    }
+    window._localVariantPickSelected = false;
     if (isPre) {
       // Set the game id the start helper reads. setLocalPick is the
       // public setter exposed by 01-network-local.js.

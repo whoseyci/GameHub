@@ -278,7 +278,7 @@ function hostLaunchGame(gameId){
   openVariantPicker(gameId, variants);
 }
 
-function openVariantPicker(gameId, variants){
+function openVariantPicker(gameId, variants, onPick){
   const overlay = $('rulesOverlay');
   const box = $('rulesBox');
   if(!overlay || !box) return;
@@ -296,7 +296,11 @@ function openVariantPicker(gameId, variants){
     </div>
     <button class="btn secondary" style="margin-top:6px" onclick="$('rulesOverlay').classList.add('hidden')">Cancel</button>`;
   box.querySelectorAll('.variant-choice-chip').forEach(btn => {
-    btn.onclick = () => pickVariantAndLaunch(btn.dataset.gid, btn.dataset.vid);
+    btn.onclick = () => {
+      $('rulesOverlay').classList.add('hidden');
+      if (typeof onPick === 'function') onPick(btn.dataset.vid);
+      else pickVariantAndLaunch(btn.dataset.gid, btn.dataset.vid);
+    };
   });
   overlay.classList.remove('hidden');
 }
@@ -540,7 +544,7 @@ function startLocalGame(){
   if(g&&(names.length<g.minPlayers||names.length>g.maxPlayers))return toast(`${g.name} needs ${g.minPlayers}–${g.maxPlayers} players.`);
   if(names.length<2)return toast('Need at least 2 players');
   if(!window.LocalEngines[_localPick])return toast('That game is online-only for now.');
-  mode='local';localGameId=_localPick;localEngine=window.LocalEngines[_localPick](names);
+  mode='local';localGameId=_localPick;localEngine=window.LocalEngines[_localPick](names, window._localVariantPick || 'standard');
   if(window.Social) Social.setActive(false);   // pass-and-play is one device
   // Phase 6: mirror to window for cross-module readers (00-local-seat-editor).
   window.mode = mode; window.localEngine = localEngine; window.localGameId = localGameId;

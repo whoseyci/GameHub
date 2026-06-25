@@ -942,7 +942,9 @@ const GameShell=(()=>{
 catalogue = (window.GameCatalogue || []).map(g => ({
   id: g.id, name: g.name, minPlayers: g.minPlayers, maxPlayers: g.maxPlayers,
   description: g.description, emoji: g.emoji, icon: g.icon, features: g.features,
+  variants: g.variants,
 }));
+window.catalogue = catalogue;
 
 /* ---- Rulebooks (accessible from menu, pickers, and inside a game) ---- */
 function openRules(gameId){

@@ -2654,8 +2654,8 @@
   }));
 
   // src/client-games.ts
-  function makeLocalEngine(module, names) {
-    let state = module.create(names);
+  function makeLocalEngine(module, names, variant) {
+    let state = module.create(names, variant);
     function currentSeat() {
       try {
         const v = module.viewFor(state, -1);
@@ -2730,6 +2730,6 @@
   window.makeLocalEngine = makeLocalEngine;
   window.LocalEngines = window.LocalEngines || {};
   for (const id of Object.keys(GAMES)) {
-    window.LocalEngines[id] = (names) => makeLocalEngine(GAMES[id], names);
+    window.LocalEngines[id] = (names, variant) => makeLocalEngine(GAMES[id], names, variant);
   }
 })();

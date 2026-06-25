@@ -77,10 +77,8 @@ export class Room extends Server<Env> {
   pending: Pending[] = [];  // late joiners spectating until next game/round
   hostId: string | null = null;
   isPublic = false;
-  quickGame: string | null = null; // if set, this is a quick-play room for that game
-  // W6: a group is a persistent multi-game room hosted by one player. Group
-  // rooms (public) appear in the lobby as "join the group" tiles rather than
-  // "join the game" tiles. Variants pass through launch_game.
+  quickGame: string | null = null;
+  quickVariant: string | null = null;
   isGroup = false;
   maxPlayers = 8;
   lastActivity = Date.now();
@@ -574,6 +572,7 @@ export class Room extends Server<Env> {
             this.isPublic = !!msg.isPublic;
             this.isGroup = !!msg.isGroup;
             this.quickGame = msg.quickGame ?? null;
+            this.quickVariant = msg.variant ?? null;
             this.maxPlayers = Math.max(2, Math.min(8, msg.maxPlayers || 8));
           }
           if (this.members.length >= this.maxPlayers) { conn.send(JSON.stringify({ type: "room_full", message: "Room is full." })); return; }
@@ -670,7 +669,7 @@ export class Room extends Server<Env> {
       if ((this.quickGame || this.isGroup) && this.canAllReadyStart(msg.gameId)) {
         const launchGameId = this.quickGame || msg.gameId;
         if (launchGameId) {
-          const err = this.startGame(launchGameId);
+          const err = this.startGame(launchGameId, this.quickVariant || msg.variant || undefined);
           if (!err) {
             void this.persistRoom(); void this.lobbyUpdate();
             this.broadcastState();
@@ -907,7 +906,7 @@ export class Room extends Server<Env> {
 
   private async maybeQuickStart() {
     if (!this.canAllReadyStart()) return;
-    this.startGame(this.quickGame!);
+    this.startGame(this.quickGame!, this.quickVariant || undefined);
     void this.persistRoom(); void this.lobbyUpdate(); this.broadcastState();
   }
 

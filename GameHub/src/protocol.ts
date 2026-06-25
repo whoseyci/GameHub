@@ -101,11 +101,13 @@ export function parseClientMessage(raw: string, gameModule?: GameModule | null):
       const name = cleanName(msg.name);
       const seats = cleanSeats(msg.seats, pid, name);
       const token = typeof msg.token === "string" ? cleanId(msg.token) || undefined : undefined;
+      const variant = typeof msg.variant === "string" ? cleanId(msg.variant) || undefined : undefined;
       return {
         type: "join",
         pid,
         name,
         token,
+        variant,
         seats,
         isPublic: cleanBool(msg.isPublic),
         // W6 part 2: group flag travels with the very first join (creates the
