@@ -192,7 +192,7 @@ describe("Qwixx client regressions", () => {
 describe("client cross-game cleanup regressions", () => {
   it("has a shared Qwixx UI cleanup helper", () => {
     expect(networkLocal).toContain("function removeQwixxUi()");
-    expect(networkLocal).toContain(".qwixx-dice-zone,.qwixx-top-mini-strip");
+    expect(networkLocal).toContain(".qwixx-dice-zone,.qwixx-top-mini-strip,.skyjo-action-zone");
   });
 
   it("uses shell cleanup/lifecycle before game switches", () => {

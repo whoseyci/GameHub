@@ -783,7 +783,7 @@ const GameShell=(()=>{
   function clearGlobal(){
     const mini=$('miniBoardsContainer');if(mini){mini.innerHTML='';mini.className='mini-boards-container';}
     const main=$('mainBoardsContainer');if(main)main.innerHTML='';
-    const top=$('topArea');if(top){top.querySelectorAll('.game-shell-center,.qwixx-dice-zone,.qwixx-top-mini-strip').forEach(n=>n.remove());}
+    const top=$('topArea');if(top){top.querySelectorAll('.game-shell-center,.qwixx-dice-zone,.qwixx-top-mini-strip,.skyjo-action-zone').forEach(n=>n.remove());}
     const f7=$('f7Controls');if(f7)f7.remove();
     const dw=$('f7DealerWrap');if(dw)dw.remove();
     if(typeof Kit!=='undefined'&&Kit.CardManager)Kit.CardManager.clear();
@@ -901,7 +901,7 @@ const GameShell=(()=>{
     if(typeof Kit!=='undefined'&&Kit.Fit&&main){main.querySelectorAll('[data-kit-fit-scale]').forEach(n=>Kit.Fit.release(n));}
     if(mini){mini.innerHTML='';mini.className='mini-boards-container '+opponentClass;const node=el(opponents);if(node)mini.appendChild(node);mountPersistedSlots(mini);}
     if(top){
-      top.querySelectorAll('.game-shell-center,.qwixx-dice-zone,.qwixx-top-mini-strip').forEach(n=>n.remove());
+      top.querySelectorAll('.game-shell-center,.qwixx-dice-zone,.qwixx-top-mini-strip,.skyjo-action-zone').forEach(n=>n.remove());
       const piles=top.querySelector('.piles'),held=$('heldCardWrapper');
       if(topMode==='piles'){top.style.display='';if(piles)piles.style.display='flex';if(held)held.style.display='';}
       else if(topMode==='hidden'){top.style.display='none';}

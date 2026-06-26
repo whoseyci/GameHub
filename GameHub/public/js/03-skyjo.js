@@ -135,6 +135,7 @@
     const hints = (typeof Kit !== 'undefined' && Kit.Cards?.legalHints) ? Kit.Cards.legalHints(view) : { byAction:{}, has:()=>false };
     drawPiles(s,viewer,myTurn,ta,hints);
     drawBoards(s,viewer,hints);
+    drawActionMarket(s);
 
     if(s.phase==='REVEAL'&&(!prevForAnim||prevForAnim.phase!=='REVEAL'||prevForAnim.round!==s.round))Kit.dealCascade();
     if(newAction)runAnim(s,viewer);
@@ -143,6 +144,23 @@
     else{summaryShown=false;hideOverlay();}
 
     prevView=view;curView=view;
+  }
+
+  function drawActionMarket(s){
+    document.querySelectorAll('.skyjo-action-zone').forEach(n=>n.remove());
+    if(s.variant==='action'){
+      const zone=document.createElement('div');zone.className='skyjo-action-zone';
+      const legalTake=skyjoLegal('take_action');
+      const market=(s.actionMarket||[]).map((k,i)=>{
+        const can=legalTake.some(a=>a.source==='market'&&a.index===i);
+        return `<button class="skyjo-action-card ${can?'can':''}" data-action-kind="${esc(k)}" data-act-market="${i}" ${can?'':'disabled'}><span class="skyjo-action-icon">${esc(actionIcon(k))}</span><b>${esc(actionLabel(k))}</b><small>action</small></button>`;
+      }).join('');
+      const deckCan=legalTake.some(a=>a.source==='deck');
+      zone.innerHTML=`<div class="skyjo-action-title">Action cards</div><div class="skyjo-action-market">${market}<button class="skyjo-action-card deck ${deckCan?'can':''}" data-act-deck="1" ${deckCan?'':'disabled'}><span class="skyjo-action-icon">?</span><b>Deck</b><small>${esc(s.actionDeckCount||0)} left</small></button></div>`;
+      const top=$('topArea'); if(top)top.appendChild(zone);
+      zone.querySelectorAll('[data-act-market]').forEach(btn=>btn.onclick=()=>act(s.currentPlayer,{action:'take_action',source:'market',index:Number(btn.dataset.actMarket)}));
+      zone.querySelector('[data-act-deck]')?.addEventListener('click',()=>act(s.currentPlayer,{action:'take_action',source:'deck',index:-1}));
+    }
   }
 
   function drawPiles(s,viewer,myTurn,ta,hints){
@@ -197,20 +215,7 @@
       }
     }
 
-    document.querySelectorAll('.skyjo-action-zone').forEach(n=>n.remove());
-    if(s.variant==='action'){
-      const zone=document.createElement('div');zone.className='skyjo-action-zone';
-      const legalTake=skyjoLegal('take_action');
-      const market=(s.actionMarket||[]).map((k,i)=>{
-        const can=legalTake.some(a=>a.source==='market'&&a.index===i);
-        return `<button class="skyjo-action-card ${can?'can':''}" data-action-kind="${esc(k)}" data-act-market="${i}" ${can?'':'disabled'}><span class="skyjo-action-icon">${esc(actionIcon(k))}</span><b>${esc(actionLabel(k))}</b><small>action</small></button>`;
-      }).join('');
-      const deckCan=legalTake.some(a=>a.source==='deck');
-      zone.innerHTML=`<div class="skyjo-action-title">Action cards</div><div class="skyjo-action-market">${market}<button class="skyjo-action-card deck ${deckCan?'can':''}" data-act-deck="1" ${deckCan?'':'disabled'}><span class="skyjo-action-icon">?</span><b>Deck</b><small>${esc(s.actionDeckCount||0)} left</small></button></div>`;
-      const top=$('topArea'); if(top)top.appendChild(zone);
-      zone.querySelectorAll('[data-act-market]').forEach(btn=>btn.onclick=()=>act(s.currentPlayer,{action:'take_action',source:'market',index:Number(btn.dataset.actMarket)}));
-      zone.querySelector('[data-act-deck]')?.addEventListener('click',()=>act(s.currentPlayer,{action:'take_action',source:'deck',index:-1}));
-    }
+
 
     Kit.Controls.clear('skyjoActionControls');
     if(s.skyjoAction){

@@ -469,7 +469,7 @@ function dispatchView(view){
   maybeRunBot(view); // drive bot seats if we're responsible
 }
 function flushView(){if(pendingView){const v=pendingView;pendingView=null;dispatchView(v);}}
-function removeQwixxUi(){const top=$('topArea');if(!top)return;top.querySelectorAll('.qwixx-dice-zone,.qwixx-top-mini-strip').forEach(el=>el.remove());}
+function removeQwixxUi(){const top=$('topArea');if(!top)return;top.querySelectorAll('.qwixx-dice-zone,.qwixx-top-mini-strip,.skyjo-action-zone').forEach(el=>el.remove());}
 function resetGameUi(){curView=null;prevView=null;animating=false;pendingView=null;summaryShown=false;lastRoundShown=false;_lastDisplaySeat=null;_lastDisplayGame=null;_emoteSeqSeen={};$('overlay').classList.add('hidden');$('overlay').style.opacity='';GameShell.unmount();$('topArea').style.display='';const piles=$('topArea').querySelector('.piles');if(piles)piles.style.display='flex';$('heldCardWrapper').style.display='';if(window._flip7ResetSeq)window._flip7ResetSeq();}
 function hideOverlay(){const o=$('overlay');if(o.classList.contains('hidden'))return;o.style.opacity='0';setTimeout(()=>{o.classList.add('hidden');o.style.opacity='';},220);}
 function bumpStatus(){const sb=$('statusBar');sb.classList.remove('bump');void sb.offsetWidth;sb.classList.add('bump');}
