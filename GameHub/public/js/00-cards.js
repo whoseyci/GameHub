@@ -78,6 +78,7 @@
   function el(spec){
     spec = spec || {};
     const card = document.createElement('div');
+    try { card.dataset.kcSpec = encodeSpec(spec); } catch {}
     // 'md' is the implicit default size (no class) so board-context --kc-w wins by
     // normal specificity. Only non-md sizes add a class.
     const cls = ['kc'];
@@ -574,5 +575,82 @@
     }
   }
 
-  Kit.Cards = { el, anchor, board, snapshot, hand, grid, deck, discard, drop, slot, deal, move, toPile, paint, legalHints, markHints, _decodeSpec:decodeSpec };
+  // ─── Universal card inspection / zoom ─────────────────────────────────
+  // Reusable for every face-up card-ish element. Single tap opens inspection for
+  // non-actionable cards; double-click, context-menu, or long-press opens it even
+  // for cards that also have gameplay click handlers. Tapping the zoom closes it.
+  let inspectOverlay = null;
+  function isFaceUpInspectable(node){
+    if (!node || !node.classList) return false;
+    if (node.closest('.kit-card-inspect-overlay')) return false;
+    const kc = node.closest('.kc');
+    if (kc) {
+      const spec = decodeSpec(kc.dataset.kcSpec || '');
+      if (spec.faceDown || kc.classList.contains('kc-back') || kc.classList.contains('kc-cleared')) return false;
+      return true;
+    }
+    const legacy = node.closest('.card-slot.revealed');
+    return !!legacy && legacy.textContent && legacy.textContent.trim() && legacy.textContent.trim() !== 'Empty';
+  }
+  function inspectEl(source){
+    const src = source?.closest?.('.kc') || source?.closest?.('.card-slot.revealed') || source;
+    if (!isFaceUpInspectable(src)) return false;
+    closeInspect();
+    inspectOverlay = document.createElement('div');
+    inspectOverlay.className = 'kit-card-inspect-overlay';
+    const stage = document.createElement('div');
+    stage.className = 'kit-card-inspect-stage';
+    let card;
+    const spec = src.classList.contains('kc') ? decodeSpec(src.dataset.kcSpec || '') : null;
+    if (spec && Object.keys(spec).length && !spec.faceDown) card = el(spec);
+    else card = src.cloneNode(true);
+    card.classList.add('kit-card-inspect-card');
+    card.style.pointerEvents = 'none';
+    stage.appendChild(card);
+    inspectOverlay.appendChild(stage);
+    document.body.appendChild(inspectOverlay);
+    const close = (e) => { e.preventDefault(); e.stopPropagation(); closeInspect(); };
+    inspectOverlay.addEventListener('click', close, { once:true });
+    return true;
+  }
+  function closeInspect(){
+    if (inspectOverlay) { inspectOverlay.remove(); inspectOverlay = null; }
+  }
+  function mountInspect(root){
+    root = root || document;
+    if (document._kitCardInspectMounted) return;
+    document._kitCardInspectMounted = true;
+    let pressTimer = null;
+    let pressTarget = null;
+    document.addEventListener('dblclick', (e) => {
+      const t = e.target.closest?.('.kc,.card-slot.revealed');
+      if (t && isFaceUpInspectable(t) && inspectEl(t)) { e.preventDefault(); e.stopPropagation(); }
+    }, true);
+    document.addEventListener('contextmenu', (e) => {
+      const t = e.target.closest?.('.kc,.card-slot.revealed');
+      if (t && isFaceUpInspectable(t) && inspectEl(t)) { e.preventDefault(); e.stopPropagation(); }
+    }, true);
+    document.addEventListener('pointerdown', (e) => {
+      const t = e.target.closest?.('.kc,.card-slot.revealed');
+      if (!t || !isFaceUpInspectable(t)) return;
+      pressTarget = t;
+      clearTimeout(pressTimer);
+      pressTimer = setTimeout(() => {
+        if (pressTarget === t && inspectEl(t)) { try { navigator.vibrate?.(12); } catch {} }
+      }, 520);
+    }, true);
+    document.addEventListener('pointerup', () => { clearTimeout(pressTimer); pressTarget = null; }, true);
+    document.addEventListener('pointercancel', () => { clearTimeout(pressTimer); pressTarget = null; }, true);
+    document.addEventListener('click', (e) => {
+      const t = e.target.closest?.('.kc,.card-slot.revealed');
+      if (!t || !isFaceUpInspectable(t)) return;
+      // Do not steal the primary tap from game-action cards/cells.
+      if (t.classList.contains('clickable') || t.closest('.clickable,[onclick],button,a')) return;
+      if (inspectEl(t)) { e.preventDefault(); e.stopPropagation(); }
+    }, true);
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeInspect(); });
+  }
+  mountInspect(document);
+
+  Kit.Cards = { el, anchor, board, snapshot, hand, grid, deck, discard, drop, slot, deal, move, toPile, paint, legalHints, markHints, inspect: inspectEl, closeInspect, mountInspect, _decodeSpec:decodeSpec };
 })();

@@ -150,6 +150,16 @@ describe("shared game shell", () => {
     expect(localSeatEditor).toContain("window._localVariantPick = variants.length ? selectedVariantId");
     expect(landingCss).toContain(".seat-variant-block");
   });
+
+  it("provides a reusable face-up card inspection API", () => {
+    const cards = readFileSync(new URL("../public/js/00-cards.js", import.meta.url), "utf8");
+    const css = readFileSync(new URL("../public/styles/main.css", import.meta.url), "utf8");
+    expect(cards).toContain("function inspectEl");
+    expect(cards).toContain("Kit.Cards = { el, anchor");
+    expect(cards).toContain("inspect: inspectEl");
+    expect(css).toContain(".kit-card-inspect-overlay");
+    expect(css).toContain(".kit-card-inspect-card.kc");
+  });
 });
 
 describe("Qwixx client regressions", () => {
