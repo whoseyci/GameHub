@@ -119,7 +119,8 @@
         board: Array.from({ length: 12 }, () => ({ value: 0, revealed: false, cleared: false })),
         roundScore: 0,
         totalScore: 0,
-        revealCount: 0
+        revealCount: 0,
+        peeks: {}
       }));
     }
     // Rehydrate from a stored plain object.
@@ -154,6 +155,7 @@
         p.revealCount = 0;
         p.roundScore = 0;
         p.actionHand = [];
+        p.peeks = {};
       }
       this.discard = [this.deck.pop()];
       this.actionDeck = this.variant === "action" ? createActionDeck(this) : [];
@@ -456,7 +458,6 @@
       this.endTurn();
     }
     useActionKind(pi, kind) {
-      var _a;
       if (kind === "swap_own") {
         this.skyjoAction = { kind, player: pi };
         return true;
@@ -473,70 +474,136 @@
           this.finishAction(pi, kind);
           return true;
         }
-        drawn.sort((a, b) => scoreValue(a) - scoreValue(b));
-        const keep = drawn.shift();
-        for (const v of drawn) this.discard.push(v);
-        this.drawnCard = keep;
-        this.turnAction = "deck";
-        this.lastAction = { type: "play_action", player: pi, kind, drawn: [keep, ...drawn], t: ++this.actionSeq };
+        this.skyjoAction = { kind: "draw_three", player: pi, cards: drawn };
+        this.lastAction = { type: "play_action", player: pi, kind, drawn, t: ++this.actionSeq };
         return true;
       }
-      if (kind === "reveal" || kind === "enlightenment") {
+      if (kind === "reveal") {
         const idx = this.revealFirstHidden(pi);
         this.finishAction(pi, kind);
         if (this.lastAction) this.lastAction.index = idx;
         return true;
       }
+      if (kind === "enlightenment") {
+        this.skyjoAction = { kind: "enlightenment", player: pi };
+        this.lastAction = { type: "play_action", player: pi, kind, t: ++this.actionSeq };
+        return true;
+      }
       if (kind === "reactivation") {
-        const idx = [...this.actionDiscard].reverse().findIndex((k) => k !== "reactivation");
-        if (idx >= 0) {
-          const real = this.actionDiscard.length - 1 - idx;
-          const [again] = this.actionDiscard.splice(real, 1);
-          this.lastAction = { type: "reactivation", player: pi, kind: again, t: ++this.actionSeq };
-          return this.useActionKind(pi, again);
+        const choices = this.actionDiscard.filter((k) => k !== "reactivation");
+        if (choices.length) {
+          this.skyjoAction = { kind: "reactivation", player: pi, cards: choices };
+          this.lastAction = { type: "reactivation", player: pi, choices, t: ++this.actionSeq };
+          return true;
         }
         this.finishAction(pi, kind);
         return true;
       }
       if (kind === "swap_other") {
-        const target = this.players.map((_, i) => i).filter((i) => i !== pi && !this.consumeDefense(i)).sort((a, b) => this.bestVisibleIndex(b) - this.bestVisibleIndex(a))[0];
-        if (target == null) {
-          this.finishAction(pi, kind);
-          return true;
-        }
-        const own = this.bestVisibleIndex(pi);
-        const other = this.bestVisibleIndex(target);
-        if (own >= 0 && other >= 0) [this.players[pi].board[own], this.players[target].board[other]] = [this.players[target].board[other], this.players[pi].board[own]];
-        this.finishAction(pi, kind);
+        this.skyjoAction = { kind, player: pi };
         return true;
       }
       if (kind === "action_thief") {
-        const target = this.players.map((p, i) => ({ i, n: i === pi ? -1 : p.actionHand?.length ?? 0 })).sort((a, b) => b.n - a.n)[0];
-        if (target && target.n > 0 && !this.consumeDefense(target.i)) {
-          const stolen = this.players[target.i].actionHand.shift();
-          stolen.fresh = true;
-          ((_a = this.players[pi]).actionHand ?? (_a.actionHand = [])).push(stolen);
-          this.extraTurnSeat = pi;
-        }
-        this.finishAction(pi, kind);
+        this.skyjoAction = { kind, player: pi };
         return true;
       }
       if (kind === "meteor") {
-        for (let i = 0; i < this.players.length; i++) {
-          if (i === pi) continue;
-          if (this.consumeDefense(i)) continue;
-          const idx = this.bestVisibleIndex(i, true);
-          if (idx < 0) continue;
-          const old = this.players[i].board[idx];
-          if (!old.cleared) this.discard.unshift(old.value);
-          if (!this.deck.length) break;
-          this.players[i].board[idx] = { value: this.deck.pop(), revealed: true, cleared: false };
-        }
-        this.finishAction(pi, kind);
+        this.skyjoAction = { kind, player: pi, target: 0 };
         return true;
       }
       this.finishAction(pi, kind);
       return true;
+    }
+    chooseDrawThree(pi, choice, boardIndex) {
+      const a = this.skyjoAction;
+      if (!a || a.kind !== "draw_three" || a.player !== pi || !Array.isArray(a.cards)) return false;
+      const cards = a.cards;
+      if (choice < 0) {
+        for (const v of cards) this.discard.push(v);
+        this.skyjoAction = null;
+        this.drawnCard = null;
+        this.turnAction = "must_reveal";
+        this.lastAction = { type: "draw_three_discard", player: pi, cards, t: ++this.actionSeq };
+        return true;
+      }
+      const keep = cards[choice];
+      if (keep == null) return false;
+      cards.forEach((v, i) => {
+        if (i !== choice) this.discard.push(v);
+      });
+      this.skyjoAction = null;
+      this.drawnCard = keep;
+      this.turnAction = "deck";
+      this.lastAction = { type: "draw_three_keep", player: pi, value: keep, t: ++this.actionSeq };
+      return true;
+    }
+    chooseReactivation(pi, index) {
+      const a = this.skyjoAction;
+      if (!a || a.kind !== "reactivation" || a.player !== pi || !Array.isArray(a.cards)) return false;
+      const kind = a.cards[index];
+      if (!kind) return false;
+      const discardIndex = this.actionDiscard.lastIndexOf(kind);
+      if (discardIndex >= 0) this.actionDiscard.splice(discardIndex, 1);
+      this.skyjoAction = null;
+      this.lastAction = { type: "reactivation_choice", player: pi, kind, t: ++this.actionSeq };
+      return this.useActionKind(pi, kind);
+    }
+    chooseLine(pi, line) {
+      const a = this.skyjoAction;
+      if (!a || a.kind !== "enlightenment" || a.player !== pi) return false;
+      const p = this.players[pi];
+      const idxs = line.startsWith("r") ? [0, 1, 2, 3].map((x) => Number(line.slice(1)) * 4 + x) : [0, 1, 2].map((x) => Number(line.slice(1)) + x * 4);
+      p.peeks ?? (p.peeks = {});
+      for (const i of idxs) if (p.board[i] && !p.board[i].revealed && !p.board[i].cleared) p.peeks[i] = p.board[i].value;
+      this.skyjoAction = null;
+      this.lastAction = { type: "enlightenment", player: pi, line, indices: idxs, t: ++this.actionSeq };
+      this.endTurn();
+      return true;
+    }
+    choosePlayer(pi, target) {
+      var _a;
+      const a = this.skyjoAction;
+      if (!a || a.player !== pi) return false;
+      if (a.kind === "action_thief") {
+        if (target !== pi && this.players[target] && !this.consumeDefense(target) && (this.players[target].actionHand?.length ?? 0) > 0) {
+          const stolen = this.players[target].actionHand.shift();
+          stolen.fresh = true;
+          ((_a = this.players[pi]).actionHand ?? (_a.actionHand = [])).push(stolen);
+          this.extraTurnSeat = pi;
+        }
+        this.skyjoAction = null;
+        this.finishAction(pi, a.kind);
+        return true;
+      }
+      if (a.kind === "swap_other") {
+        if (target !== pi && this.players[target] && !this.consumeDefense(target)) {
+          const own = a.first ?? this.bestVisibleIndex(pi);
+          const other = this.bestVisibleIndex(target);
+          if (own >= 0 && other >= 0) [this.players[pi].board[own], this.players[target].board[other]] = [this.players[target].board[other], this.players[pi].board[own]];
+        }
+        this.skyjoAction = null;
+        this.finishAction(pi, a.kind);
+        return true;
+      }
+      if (a.kind === "meteor") {
+        if (target !== pi && this.players[target] && !this.consumeDefense(target)) {
+          const idx = this.bestVisibleIndex(target, true);
+          if (idx >= 0) {
+            const old = this.players[target].board[idx];
+            if (!old.cleared) this.discard.unshift(old.value);
+            if (this.deck.length) this.players[target].board[idx] = { value: this.deck.pop(), revealed: true, cleared: false };
+          }
+        }
+        const next = this.players.findIndex((_, i) => i !== pi && i > target);
+        if (next >= 0) {
+          this.skyjoAction = { kind: "meteor", player: pi, target: next };
+          return true;
+        }
+        this.skyjoAction = null;
+        this.finishAction(pi, a.kind);
+        return true;
+      }
+      return false;
     }
     playActionCard(pi, handIndex) {
       if (this.variant !== "action") return false;
@@ -564,6 +631,11 @@
         this.skyjoAction = null;
         this.lastAction = { type: "play_action", player: pi, kind: a.kind, indices: [j, index], t: ++this.actionSeq };
         this.endTurn();
+        return true;
+      }
+      if (a.kind === "swap_other") {
+        a.first = index;
+        this.lastAction = { type: "action_select", player: pi, kind: a.kind, index, t: ++this.actionSeq };
         return true;
       }
       return false;
@@ -722,10 +794,11 @@
           roundScore: p.roundScore,
           revealCount: p.revealCount,
           actionHand: pi === viewerIndex ? (p.actionHand ?? []).map((a) => ({ kind: a.kind, fresh: !!a.fresh })) : (p.actionHand ?? []).map(() => ({ kind: "hidden" })),
-          board: p.board.map((c) => ({
-            value: c.revealed || c.cleared ? c.value : null,
+          board: p.board.map((c, idx) => ({
+            value: c.revealed || c.cleared ? c.value : pi === viewerIndex && p.peeks && p.peeks[idx] != null ? p.peeks[idx] : null,
             revealed: c.revealed,
-            cleared: c.cleared
+            cleared: c.cleared,
+            peeked: !(c.revealed || c.cleared) && pi === viewerIndex && p.peeks && p.peeks[idx] != null
           }))
         }))
       };
@@ -808,7 +881,7 @@
       icon: "cards",
       features: SkyjoFeatures,
       variants: [...SkyjoFeatures.variants ?? []],
-      actionTypes: ["draw_deck", "take_discard", "discard_drawn", "swap", "take_free_action", "reveal_after_discard", "tiebreaker", "take_action", "play_action", "discard_action", "action_cell", "clear_group", "skip_clear_group", "reveal", "skip_free_action", "next_round"],
+      actionTypes: ["draw_deck", "take_discard", "discard_drawn", "swap", "take_free_action", "reveal_after_discard", "tiebreaker", "take_action", "play_action", "discard_action", "action_cell", "choose_draw_three", "choose_reactivation", "choose_line", "choose_player", "clear_group", "skip_clear_group", "reveal", "skip_free_action", "next_round"],
       schemaSpec: { kind: "imperative", paradigm: "reducers", version: 1 }
     },
     parseAction(raw) {
@@ -870,6 +943,18 @@
         case "skip_free_action":
           g.skipFreeActionCard(seat);
           break;
+        case "choose_draw_three":
+          g.chooseDrawThree(seat, msg.choice | 0, msg.index | 0);
+          break;
+        case "choose_reactivation":
+          g.chooseReactivation(seat, msg.choice | 0);
+          break;
+        case "choose_line":
+          g.chooseLine(seat, typeof msg.line === "string" ? msg.line : "r0");
+          break;
+        case "choose_player":
+          g.choosePlayer(seat, msg.target | 0);
+          break;
         case "next_round":
           if (g.phase === "GAME_OVER") g.newGame();
           else if (g.phase === "ROUND_END") g.nextRound();
@@ -904,15 +989,39 @@
       const out = [];
       const meAny = state.players?.[seat];
       if (state.skyjoAction?.player === seat) {
-        if (state.skyjoAction.kind === "star_action") {
+        const a = state.skyjoAction;
+        if (a.kind === "star_action") {
           out.push({ action: "take_free_action" }, { action: "skip_free_action" });
           return out;
         }
-        if (state.skyjoAction.kind === "star_clear") {
-          if ((state.skyjoAction.groups || []).length) {
+        if (a.kind === "star_clear") {
+          if ((a.groups || []).length) {
             out.push({ action: "clear_group", group: 0, starOnTop: false }, { action: "clear_group", group: 0, starOnTop: true });
           }
           out.push({ action: "skip_clear_group" });
+          return out;
+        }
+        if (a.kind === "draw_three") {
+          (a.cards || []).forEach((_, choice) => out.push({ action: "choose_draw_three", choice }));
+          out.push({ action: "choose_draw_three", choice: -1 });
+          return out;
+        }
+        if (a.kind === "reactivation") {
+          (a.cards || []).forEach((_, choice) => out.push({ action: "choose_reactivation", choice }));
+          return out;
+        }
+        if (a.kind === "enlightenment") {
+          for (let r = 0; r < 3; r++) out.push({ action: "choose_line", line: `r${r}` });
+          for (let c = 0; c < 4; c++) out.push({ action: "choose_line", line: `c${c}` });
+          return out;
+        }
+        if (a.kind === "action_thief" || a.kind === "swap_other" || a.kind === "meteor") {
+          (state.players || []).forEach((_, target) => {
+            if (target !== seat) out.push({ action: "choose_player", target });
+          });
+          if (a.kind === "swap_other") (meAny?.board || []).forEach((c, idx) => {
+            if (!c.cleared) out.push({ action: "action_cell", index: idx });
+          });
           return out;
         }
         (meAny?.board || []).forEach((c, idx) => {

@@ -73,7 +73,7 @@ export const Skyjo: GameModule = {
     icon: "cards",
     features: SkyjoFeatures,
     variants: [...(SkyjoFeatures.variants ?? [])],
-    actionTypes: ["draw_deck","take_discard","discard_drawn","swap","take_free_action","reveal_after_discard","tiebreaker","take_action","play_action","discard_action","action_cell","clear_group","skip_clear_group","reveal","skip_free_action","next_round"] as const,
+    actionTypes: ["draw_deck","take_discard","discard_drawn","swap","take_free_action","reveal_after_discard","tiebreaker","take_action","play_action","discard_action","action_cell","choose_draw_three","choose_reactivation","choose_line","choose_player","clear_group","skip_clear_group","reveal","skip_free_action","next_round"] as const,
     schemaSpec: { kind: "imperative", paradigm: "reducers", version: 1 },
   },
 
@@ -138,6 +138,18 @@ export const Skyjo: GameModule = {
       case "skip_free_action":
         g.skipFreeActionCard(seat);
         break;
+      case "choose_draw_three":
+        g.chooseDrawThree(seat, msg.choice | 0, msg.index | 0);
+        break;
+      case "choose_reactivation":
+        g.chooseReactivation(seat, msg.choice | 0);
+        break;
+      case "choose_line":
+        g.chooseLine(seat, typeof msg.line === "string" ? msg.line : "r0");
+        break;
+      case "choose_player":
+        g.choosePlayer(seat, msg.target | 0);
+        break;
       case "next_round": // host-only; hub gates this
         if (g.phase === "GAME_OVER") g.newGame();
         else if (g.phase === "ROUND_END") g.nextRound();
@@ -184,15 +196,35 @@ export const Skyjo: GameModule = {
     const out: any[] = [];
     const meAny: any = state.players?.[seat];
     if (state.skyjoAction?.player === seat) {
-      if (state.skyjoAction.kind === "star_action") {
+      const a = state.skyjoAction;
+      if (a.kind === "star_action") {
         out.push({ action: "take_free_action" }, { action: "skip_free_action" });
         return out;
       }
-      if (state.skyjoAction.kind === "star_clear") {
-        if ((state.skyjoAction.groups || []).length) {
+      if (a.kind === "star_clear") {
+        if ((a.groups || []).length) {
           out.push({ action: "clear_group", group: 0, starOnTop: false }, { action: "clear_group", group: 0, starOnTop: true });
         }
         out.push({ action: "skip_clear_group" });
+        return out;
+      }
+      if (a.kind === "draw_three") {
+        (a.cards || []).forEach((_: any, choice: number) => out.push({ action: "choose_draw_three", choice }));
+        out.push({ action: "choose_draw_three", choice: -1 });
+        return out;
+      }
+      if (a.kind === "reactivation") {
+        (a.cards || []).forEach((_: any, choice: number) => out.push({ action: "choose_reactivation", choice }));
+        return out;
+      }
+      if (a.kind === "enlightenment") {
+        for (let r = 0; r < 3; r++) out.push({ action: "choose_line", line: `r${r}` });
+        for (let c = 0; c < 4; c++) out.push({ action: "choose_line", line: `c${c}` });
+        return out;
+      }
+      if (a.kind === "action_thief" || a.kind === "swap_other" || a.kind === "meteor") {
+        (state.players || []).forEach((_: any, target: number) => { if (target !== seat) out.push({ action: "choose_player", target }); });
+        if (a.kind === "swap_other") (meAny?.board || []).forEach((c: any, idx: number) => { if (!c.cleared) out.push({ action: "action_cell", index: idx }); });
         return out;
       }
       (meAny?.board || []).forEach((c: any, idx: number) => {

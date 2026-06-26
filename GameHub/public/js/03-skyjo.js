@@ -14,7 +14,7 @@
   function skyjoValueColor(v){ return v===SKYJO_STAR ? '#f59e0b' : C(v); }
   function skyjoSpec(c){
     if(c.cleared) return { zone:'skyjo', state:'cleared' };
-    if(c.revealed) return { zone:'skyjo', bg:'#fff', border:'#fff', content:{ text:skyjoValueText(c.value), color:skyjoValueColor(c.value) } };
+    if(c.revealed || c.peeked) return { zone:'skyjo', bg:c.peeked?'#f8fafc':'#fff', border:c.peeked?'#93c5fd':'#fff', content:{ text:skyjoValueText(c.value), color:skyjoValueColor(c.value) }, state:c.peeked?'highlight':undefined };
     return { zone:'skyjo', faceDown:true };
   }
   function skyjoVisual(c){ return Kit.Cards.el(skyjoSpec(c)); }
@@ -213,17 +213,27 @@
     }
 
     Kit.Controls.clear('skyjoActionControls');
-    if(s.skyjoAction&&s.skyjoAction.kind==='star_clear'){
+    if(s.skyjoAction){
       const legal=window._renderView?.state?.legal||[];
       const buttons=[];
-      legal.filter(a=>a.action==='clear_group').forEach((a)=>buttons.push({label:`Clear group${a.starOnTop?' ★ top':''}`,kind:'secondary',onClick:()=>act(s.skyjoAction.player,a)}));
-      if(legal.some(a=>a.action==='skip_clear_group'))buttons.push({label:'Keep stars',kind:'green',onClick:()=>act(s.skyjoAction.player,{action:'skip_clear_group'})});
-      if(buttons.length)Kit.Controls.set(buttons,{id:'skyjoActionControls'});
-    } else if(s.skyjoAction&&s.skyjoAction.kind==='star_action'){
-      const legal=window._renderView?.state?.legal||[];
-      const buttons=[];
-      if(legal.some(a=>a.action==='take_free_action'))buttons.push({label:'Free action card',kind:'green',onClick:()=>act(s.skyjoAction.player,{action:'take_free_action'})});
-      if(legal.some(a=>a.action==='skip_free_action'))buttons.push({label:'Skip free card',kind:'secondary',onClick:()=>act(s.skyjoAction.player,{action:'skip_free_action'})});
+      const actor=s.skyjoAction.player;
+      if(s.skyjoAction.kind==='star_clear'){
+        legal.filter(a=>a.action==='clear_group').forEach((a)=>buttons.push({label:`Clear group${a.starOnTop?' ★ top':''}`,kind:'secondary',onClick:()=>act(actor,a)}));
+        if(legal.some(a=>a.action==='skip_clear_group'))buttons.push({label:'Keep stars',kind:'green',onClick:()=>act(actor,{action:'skip_clear_group'})});
+      } else if(s.skyjoAction.kind==='star_action'){
+        if(legal.some(a=>a.action==='take_free_action'))buttons.push({label:'Free action card',kind:'green',onClick:()=>act(actor,{action:'take_free_action'})});
+        if(legal.some(a=>a.action==='skip_free_action'))buttons.push({label:'Skip free card',kind:'secondary',onClick:()=>act(actor,{action:'skip_free_action'})});
+      } else if(s.skyjoAction.kind==='draw_three'){
+        (s.skyjoAction.cards||[]).forEach((v,i)=>buttons.push({label:`Keep ${skyjoValueText(v)}`,kind:'green',onClick:()=>act(actor,{action:'choose_draw_three',choice:i})}));
+        buttons.push({label:'Keep none',kind:'secondary',onClick:()=>act(actor,{action:'choose_draw_three',choice:-1})});
+      } else if(s.skyjoAction.kind==='reactivation'){
+        (s.skyjoAction.cards||[]).slice(-6).forEach((k,i)=>buttons.push({label:actionLabel(k),kind:'secondary',onClick:()=>act(actor,{action:'choose_reactivation',choice:i})}));
+      } else if(s.skyjoAction.kind==='enlightenment'){
+        for(let r=0;r<3;r++)buttons.push({label:`Peek row ${r+1}`,kind:'secondary',onClick:()=>act(actor,{action:'choose_line',line:'r'+r})});
+        for(let c=0;c<4;c++)buttons.push({label:`Peek col ${c+1}`,kind:'secondary',onClick:()=>act(actor,{action:'choose_line',line:'c'+c})});
+      } else if(s.skyjoAction.kind==='action_thief'||s.skyjoAction.kind==='swap_other'||s.skyjoAction.kind==='meteor'){
+        legal.filter(a=>a.action==='choose_player').forEach(a=>buttons.push({label:`Target ${s.players[a.target]?.name||('P'+(a.target+1))}`,kind:'secondary',onClick:()=>act(actor,a)}));
+      }
       if(buttons.length)Kit.Controls.set(buttons,{id:'skyjoActionControls'});
     }
 

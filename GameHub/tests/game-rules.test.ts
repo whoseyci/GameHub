@@ -119,6 +119,43 @@ describe("Skyjo rule regressions", () => {
     expect(legal).not.toContain("discard_action");
     expect(legal).not.toContain("take_action");
   });
+
+  it("Skyjo Action Draw 3 lets the player choose which drawn card to keep", () => {
+    const state: any = Skyjo.create(["A", "B"], "action");
+    state.phase = "PLAY"; state.currentPlayer = 0; state.turnAction = null;
+    state.players[0].actionHand = [{ kind: "draw_three", fresh: false }];
+    state.deck = [9, -2, 7];
+    Skyjo.applyAction(state, 0, { action: "play_action", hand: 0 });
+    expect(state.skyjoAction?.kind).toBe("draw_three");
+    expect(Skyjo.legalActions!(state, 0).filter((a: any) => a.action === "choose_draw_three")).toHaveLength(4);
+    Skyjo.applyAction(state, 0, { action: "choose_draw_three", choice: 1 });
+    expect(state.turnAction).toBe("deck");
+    expect(state.drawnCard).toBe(-2);
+  });
+
+  it("Skyjo Action Reactivation lets the player choose an action discard", () => {
+    const state: any = Skyjo.create(["A", "B"], "action");
+    state.phase = "PLAY"; state.currentPlayer = 0; state.turnAction = null;
+    state.players[0].actionHand = [{ kind: "reactivation", fresh: false }];
+    state.actionDiscard = ["double", "meteor"];
+    Skyjo.applyAction(state, 0, { action: "play_action", hand: 0 });
+    expect(state.skyjoAction?.kind).toBe("reactivation");
+    Skyjo.applyAction(state, 0, { action: "choose_reactivation", choice: 0 });
+    expect(state.extraTurnSeat).toBe(0);
+  });
+
+  it("Skyjo Action Enlightenment peeks hidden cards without revealing them", () => {
+    const state: any = Skyjo.create(["A", "B"], "action");
+    state.phase = "PLAY"; state.currentPlayer = 0; state.turnAction = null;
+    state.players[0].actionHand = [{ kind: "enlightenment", fresh: false }];
+    const secret = state.players[0].board[0].value;
+    Skyjo.applyAction(state, 0, { action: "play_action", hand: 0 });
+    Skyjo.applyAction(state, 0, { action: "choose_line", line: "r0" });
+    expect(state.players[0].board[0].revealed).toBe(false);
+    const view: any = Skyjo.viewFor(state, 0);
+    expect(view.skyjo.players[0].board[0].value).toBe(secret);
+    expect(view.skyjo.players[0].board[0].peeked).toBe(true);
+  });
 });
 
 describe("Flip7 rule regressions", () => {

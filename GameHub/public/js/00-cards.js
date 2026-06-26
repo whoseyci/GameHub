@@ -589,11 +589,13 @@
       if (spec.faceDown || kc.classList.contains('kc-back') || kc.classList.contains('kc-cleared')) return false;
       return true;
     }
-    const legacy = node.closest('.card-slot.revealed');
-    return !!legacy && legacy.textContent && legacy.textContent.trim() && legacy.textContent.trim() !== 'Empty';
+    const legacy = node.closest('.card-slot');
+    if (!legacy || legacy.classList.contains('face-down')) return false;
+    const txt = (legacy.textContent || '').replace(/deck\s*\d+/i, '').trim();
+    return !!txt && txt !== 'Empty' && txt !== '?';
   }
   function inspectEl(source){
-    const src = source?.closest?.('.kc') || source?.closest?.('.card-slot.revealed') || source;
+    const src = source?.closest?.('.kc') || source?.closest?.('.card-slot') || source;
     if (!isFaceUpInspectable(src)) return false;
     closeInspect();
     inspectOverlay = document.createElement('div');
@@ -604,7 +606,14 @@
     const spec = src.classList.contains('kc') ? decodeSpec(src.dataset.kcSpec || '') : null;
     if (spec && Object.keys(spec).length && !spec.faceDown) card = el(spec);
     else card = src.cloneNode(true);
+    if (card.classList) {
+      card.classList.remove('held-card-mini','pile-hint','clickable','kc-clickable','kit-drop-target');
+      if (card.classList.contains('card-slot')) card.classList.add('revealed');
+    }
+    if (card.id) card.removeAttribute('id');
     card.classList.add('kit-card-inspect-card');
+    card.style.visibility = '';
+    card.style.display = '';
     card.style.pointerEvents = 'none';
     stage.appendChild(card);
     inspectOverlay.appendChild(stage);
@@ -623,15 +632,15 @@
     let pressTimer = null;
     let pressTarget = null;
     document.addEventListener('dblclick', (e) => {
-      const t = e.target.closest?.('.kc,.card-slot.revealed');
+      const t = e.target.closest?.('.kc,.card-slot');
       if (t && isFaceUpInspectable(t) && inspectEl(t)) { e.preventDefault(); e.stopPropagation(); }
     }, true);
     document.addEventListener('contextmenu', (e) => {
-      const t = e.target.closest?.('.kc,.card-slot.revealed');
+      const t = e.target.closest?.('.kc,.card-slot');
       if (t && isFaceUpInspectable(t) && inspectEl(t)) { e.preventDefault(); e.stopPropagation(); }
     }, true);
     document.addEventListener('pointerdown', (e) => {
-      const t = e.target.closest?.('.kc,.card-slot.revealed');
+      const t = e.target.closest?.('.kc,.card-slot');
       if (!t || !isFaceUpInspectable(t)) return;
       pressTarget = t;
       clearTimeout(pressTimer);
@@ -642,10 +651,10 @@
     document.addEventListener('pointerup', () => { clearTimeout(pressTimer); pressTarget = null; }, true);
     document.addEventListener('pointercancel', () => { clearTimeout(pressTimer); pressTarget = null; }, true);
     document.addEventListener('click', (e) => {
-      const t = e.target.closest?.('.kc,.card-slot.revealed');
+      const t = e.target.closest?.('.kc,.card-slot');
       if (!t || !isFaceUpInspectable(t)) return;
-      // Do not steal the primary tap from game-action cards/cells.
-      if (t.classList.contains('clickable') || t.closest('.clickable,[onclick],button,a')) return;
+      // Do not steal the primary tap from game-action cards/cells/piles.
+      if (t.classList.contains('clickable') || t.classList.contains('pile-hint') || t.classList.contains('kc-clickable') || t.classList.contains('kit-drop-target') || typeof t.onclick === 'function' || t.closest('.clickable,button,a')) return;
       if (inspectEl(t)) { e.preventDefault(); e.stopPropagation(); }
     }, true);
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeInspect(); });
