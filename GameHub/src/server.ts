@@ -41,6 +41,10 @@ export interface Env {
   Lobby: DurableObjectNamespace<Lobby>;
   ASSETS: Fetcher;
   DEBUG_TOKEN?: string;
+  /** GitHub fine-grained token with Issues write permission (Worker secret). */
+  GITHUB_ISSUE_TOKEN?: string;
+  /** owner/repo, defaults to whoseyci/GameHub. */
+  GITHUB_REPO?: string;
   [key: string]: unknown;
 }
 
@@ -1041,6 +1045,97 @@ export class Lobby extends Server<Env> {
 // Shared room-code validator (used by debug + public replay routes).
 const VALID_CODE = /^[A-Za-z0-9_-]{1,64}$/;
 
+
+function truncateText(value: unknown, max = 6000): string {
+  const raw = typeof value === "string" ? value : JSON.stringify(value ?? "", null, 2);
+  return raw.length > max ? raw.slice(0, max) + "\n…[truncated]" : raw;
+}
+function reportText(value: unknown, max = 12000): string {
+  try { return truncateText(JSON.stringify(value ?? null, null, 2), max); }
+  catch { return String(value).slice(0, max); }
+}
+function cleanIssueTitle(value: unknown): string {
+  const s = typeof value === "string" ? value.replace(/[\u0000-\u001f\u007f]/g, "").trim() : "";
+  return (s || "Untitled bug report").slice(0, 120);
+}
+function buildBugIssueBody(report: any): string {
+  const snap = report?.snapshot ?? {};
+  const activity = Array.isArray(report?.activity) ? report.activity.slice(-120) : [];
+  const body = [
+    "## User report",
+    report?.details ? truncateText(report.details, 4500) : "_No details provided._",
+    "",
+    "## Steps to reproduce",
+    report?.steps ? truncateText(report.steps, 2600) : "_No steps provided._",
+    "",
+    "## Context",
+    "```json",
+    reportText({
+      createdAt: report?.createdAt,
+      userAgent: report?.userAgent,
+      url: snap?.url,
+      build: snap?.build,
+      mode: snap?.mode,
+      room: snap?.room,
+      isHost: snap?.isHost,
+      currentReplay: snap?.currentReplay,
+      controlledSeats: snap?.controlledSeats,
+      currentView: snap?.currentView,
+      localState: snap?.localState,
+    }, 18000),
+    "```",
+    "",
+    "## Activity log (latest first in client ring order)",
+    "```json",
+    reportText(activity, 18000),
+    "```",
+  ].join("\n");
+  return body.slice(0, 62000);
+}
+async function createGitHubIssue(env: Env, report: any): Promise<{ url: string; number: number }> {
+  const token = env.GITHUB_ISSUE_TOKEN;
+  if (!token) throw new Error("Bug reporting is not configured: missing GITHUB_ISSUE_TOKEN Worker secret.");
+  const repo = String(env.GITHUB_REPO || "whoseyci/GameHub");
+  if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repo)) throw new Error("Invalid GITHUB_REPO setting.");
+  const title = `[Bug report] ${cleanIssueTitle(report?.summary)}`;
+  const body = buildBugIssueBody(report);
+  const headers = {
+    "authorization": `Bearer ${token}`,
+    "accept": "application/vnd.github+json",
+    "content-type": "application/json",
+    "user-agent": "GameHub-BugReporter/1.0",
+    "x-github-api-version": "2022-11-28",
+  };
+  const issueRes = await fetch(`https://api.github.com/repos/${repo}/issues`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ title, body, labels: ["bug", "from-app"] }),
+  });
+  const issue: any = await issueRes.json().catch(() => ({}));
+  if (!issueRes.ok) throw new Error(`GitHub issue create failed: ${issue?.message || issueRes.status}`);
+  const screenshot = typeof report?.screenshot === "string" && report.screenshot.startsWith("data:image/") ? report.screenshot : "";
+  if (screenshot) {
+    const trimmed = screenshot.length > 60000 ? screenshot.slice(0, 60000) + "…[truncated]" : screenshot;
+    const commentBody = [
+      "## Screenshot",
+      screenshot.length <= 60000 ? `![screenshot](${screenshot})` : `_Screenshot was too large for one GitHub comment (${screenshot.length} chars); base64 data was truncated._`,
+      "",
+      "<details><summary>Screenshot data URL</summary>",
+      "",
+      "```text",
+      trimmed,
+      "```",
+      "</details>",
+    ].join("\n").slice(0, 64000);
+    await fetch(`https://api.github.com/repos/${repo}/issues/${issue.number}/comments`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ body: commentBody }),
+    }).catch(() => undefined);
+  }
+  return { url: issue.html_url, number: issue.number };
+}
+
 // CORS headers for the public replay API — replays are read-only, public, and
 // designed to be embedded/shared, so we allow cross-origin reads.
 const REPLAY_CORS = {
@@ -1052,6 +1147,21 @@ const REPLAY_CORS = {
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
+
+    // ─── In-app bug reports → GitHub Issues ───────────────────────────
+    if (url.pathname === "/api/bug-report") {
+      if (request.method !== "POST") return Response.json({ ok: false, message: "Method Not Allowed" }, { status: 405 });
+      const raw = await request.text();
+      if (raw.length > 420_000) return Response.json({ ok: false, message: "Bug report payload too large." }, { status: 413 });
+      let report: any;
+      try { report = JSON.parse(raw); } catch { return Response.json({ ok: false, message: "Invalid JSON." }, { status: 400 }); }
+      try {
+        const issue = await createGitHubIssue(env, report);
+        return Response.json({ ok: true, url: issue.url, number: issue.number });
+      } catch (e: any) {
+        return Response.json({ ok: false, message: e?.message || "Could not create GitHub issue." }, { status: env.GITHUB_ISSUE_TOKEN ? 502 : 501 });
+      }
+    }
 
     // ─── Debug endpoint (token-gated) ─────────────────────────────────
     if (url.pathname.startsWith("/debug/room/")) {

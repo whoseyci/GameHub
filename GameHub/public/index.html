@@ -223,6 +223,7 @@
       <div id="spectateTag" class="spectate-tag hidden" data-icon="eye">Spectating</div>
       <button id="reactBtn" class="icon-btn hidden" onclick="Social.toggleReactions()" title="Send a reaction">😄</button>
       <button id="chatBtn" class="icon-btn hidden" onclick="Social.toggleChat()" title="Chat" data-icon="chat" data-icon-mode="replace" data-icon-size="20"></button>
+      <button id="bugBtn" class="icon-btn" onclick="BugReport.open()" title="Report a bug" data-icon="warning" data-icon-mode="replace" data-icon-size="20"></button>
       <button id="rulesBtn" class="icon-btn" onclick="openRules(curView&&curView.game)" title="Rules" data-icon="book" data-icon-mode="replace" data-icon-size="20"></button>
       <button id="soundBtn" class="icon-btn" onclick="toggleSound()" title="Sound" data-icon="sound-on" data-icon-mode="replace" data-icon-size="20"></button>
     </div>
@@ -293,6 +294,7 @@
 <script src="/js/00-dice3d.js"></script>
 <script src="/js/00-roller.js"></script>
 <script src="/js/01-network-local.js"></script>
+<script src="/js/00-bug-report.js"></script>
 <script src="/js/00-identity-ui.js"></script>
 <script src="/js/00-landing.js"></script>
 <script src="/js/02-qwixx.js"></script>

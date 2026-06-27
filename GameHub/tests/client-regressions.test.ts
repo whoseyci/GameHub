@@ -4,6 +4,8 @@ import { readFileSync } from "node:fs";
 const html = readFileSync(new URL("../public/index.html", import.meta.url), "utf8");
 const core = readFileSync(new URL("../public/js/00-core.js", import.meta.url), "utf8");
 const networkLocal = readFileSync(new URL("../public/js/01-network-local.js", import.meta.url), "utf8");
+const bugReport = readFileSync(new URL("../public/js/00-bug-report.js", import.meta.url), "utf8");
+const server = readFileSync(new URL("../src/server.ts", import.meta.url), "utf8");
 const localSeatEditor = readFileSync(new URL("../public/js/00-local-seat-editor.js", import.meta.url), "utf8");
 const landingCss = readFileSync(new URL("../public/styles/landing.css", import.meta.url), "utf8");
 const skyjo = readFileSync(new URL("../public/js/03-skyjo.js", import.meta.url), "utf8");
@@ -142,6 +144,17 @@ describe("shared game shell", () => {
     expect(flip7).toContain("window.GameRules['flip7']");
     expect(templateClient).toContain('window.GameRules[ID]');
     expect(scaffold).toContain('window.GameRules[ID]');
+  });
+
+  it("has an in-game GitHub bug report flow with logs and screenshot capture", () => {
+    expect(html).toContain('id="bugBtn"');
+    expect(html).toContain('/js/00-bug-report.js');
+    expect(bugReport).toContain('const MAX_LOG = 160');
+    expect(bugReport).toContain('captureScreenshot');
+    expect(bugReport).toContain("fetch('/api/bug-report'");
+    expect(bugReport).toContain('GameActions.send');
+    expect(server).toContain('GITHUB_ISSUE_TOKEN');
+    expect(server).toContain('https://api.github.com/repos/${repo}/issues');
   });
 
   it("shows game variants directly in the local seat setup flow", () => {
