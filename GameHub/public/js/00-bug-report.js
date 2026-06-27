@@ -18,6 +18,8 @@
   let overlay = null;
   let patched = false;
   let lastScreenshotError = null;
+  let lastScreenshotMeta = null;
+  let screenshotFallbackUsed = false;
 
   function $(id) { return document.getElementById(id); }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
@@ -50,19 +52,60 @@
     catch { return { message: String(e).slice(0, 1000) }; }
   }
 
+  function viewportInfo() {
+    return { width: innerWidth, height: innerHeight, dpr: devicePixelRatio || 1, scrollX, scrollY };
+  }
+  function cardLocationFromId(id) {
+    if (!id) return null;
+    let m = /^skyjo:table:r(\d+):p(\d+):c(\d+)/.exec(id);
+    if (m) return { game: 'skyjo', round: Number(m[1]), seat: Number(m[2]), index: Number(m[3]) };
+    m = /^flip7:table:p(\d+):(.+)/.exec(id);
+    if (m) return { game: 'flip7', seat: Number(m[1]), key: m[2] };
+    m = /^schotten:/.exec(id);
+    if (m) return { game: 'schotten', id };
+    return { id };
+  }
+  function elementSummary(el) {
+    const out = {
+      tag: el.tagName,
+      id: el.id || undefined,
+      cls: el.className && String(el.className).slice(0, 160),
+      text: (el.textContent || el.title || el.getAttribute('aria-label') || '').trim().slice(0, 220),
+      action: el.dataset && (el.dataset.action || el.dataset.g || el.dataset.vid || el.dataset.mode),
+    };
+    const card = el.closest && el.closest('.kc,.card-slot');
+    if (card) {
+      const reg = card.dataset?.cardReg || card.dataset?.cmId || card.closest('[data-card-reg]')?.dataset?.cardReg;
+      out.card = {
+        id: reg,
+        location: cardLocationFromId(reg),
+        value: card.dataset?.value || card.dataset?.act || undefined,
+        kind: card.dataset?.kind || undefined,
+        title: card.title || undefined,
+        classes: String(card.className || '').slice(0, 180),
+        text: (card.textContent || '').trim().slice(0, 120),
+        data: safeClone(card.dataset || {}, 1600),
+      };
+    }
+    const btn = el.closest && el.closest('button,[role="button"],[onclick]');
+    if (btn && btn !== el) {
+      out.control = {
+        tag: btn.tagName,
+        id: btn.id || undefined,
+        text: (btn.textContent || btn.title || btn.getAttribute('aria-label') || '').trim().slice(0, 160),
+        disabled: !!btn.disabled,
+      };
+    }
+    return out;
+  }
+
   window.addEventListener('error', (e) => record('error', { message: e.message, source: e.filename, line: e.lineno, col: e.colno }));
   window.addEventListener('unhandledrejection', (e) => record('unhandledrejection', { reason: String(e.reason && (e.reason.stack || e.reason.message || e.reason)) }));
   document.addEventListener('click', (e) => {
     if (e.target.closest && e.target.closest('.bug-report-overlay')) return;
     const el = e.target.closest && e.target.closest('button,a,[role="button"],.game-tile,.landing-tile,.card-slot,.kc');
     if (!el) return;
-    record('ui.click', {
-      tag: el.tagName,
-      id: el.id || undefined,
-      cls: el.className && String(el.className).slice(0, 120),
-      text: (el.textContent || el.title || el.getAttribute('aria-label') || '').trim().slice(0, 160),
-      action: el.dataset && (el.dataset.action || el.dataset.g || el.dataset.vid || el.dataset.mode),
-    });
+    record('ui.click', elementSummary(el));
   }, true);
 
   function patchRuntime() {
@@ -115,7 +158,8 @@
         currentSeat: view.state.currentSeat,
         pendingAction: view.state.pendingAction,
         actingCount: view.state.actingCount,
-        players: (view.state.players || []).map(p => ({ seat: p.seat, name: p.name, status: p.status, score: p.score, banked: p.banked }))
+        players: (view.state.players || []).map(p => ({ seat: p.seat, name: p.name, status: p.status, score: p.score, banked: p.banked })),
+        legal: Array.isArray(view.state.legal) ? view.state.legal.slice(0, 80) : undefined
       } : null,
       gameSummary: summarizeGameBag(view.game, bag),
     };
@@ -137,6 +181,9 @@
       isHost: (typeof net !== 'undefined' && net) ? net.isHost : null,
       currentReplay: window._currentReplay || null,
       controlledSeats: window._controlledSeats || [],
+      viewport: viewportInfo(),
+      activeScreen: document.querySelector('.screen.active')?.id || null,
+      currentLegalActions: Array.isArray(window._renderView?.state?.legal) ? window._renderView.state.legal.slice(0, 160) : [],
       currentView: summarizeView(window._renderView),
       localState: null,
     };
@@ -149,21 +196,31 @@
   }
 
   async function captureScreenshot() {
+    let stage = 'init';
+    let svgLength = 0;
     try {
+      screenshotFallbackUsed = false;
+      lastScreenshotError = null;
+      lastScreenshotMeta = { stage, viewport: viewportInfo(), fallbackUsed: false };
+      stage = 'collect-css';
       const css = collectCss();
+      stage = 'clone-dom';
       const body = document.body.cloneNode(true);
       body.querySelectorAll('script,.bug-report-overlay,.social-chat-panel,.social-react-bar').forEach(n => n.remove());
       body.setAttribute('xmlns', 'http://www.w3.org/1999/xhtml');
       const style = document.createElement('style');
       style.textContent = css + '\n*{animation:none!important;transition:none!important;}';
       body.prepend(style);
-      lastScreenshotError = null;
       const vw = Math.max(320, window.innerWidth);
       const vh = Math.max(240, window.innerHeight);
+      stage = 'serialize-svg';
       const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${vw}" height="${vh}" viewBox="0 0 ${vw} ${vh}"><foreignObject width="100%" height="100%">${new XMLSerializer().serializeToString(body)}</foreignObject></svg>`;
+      svgLength = svg.length;
+      stage = 'load-foreignobject-image';
       const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml;charset=utf-8' }));
       const img = await loadImage(url);
       URL.revokeObjectURL(url);
+      stage = 'draw-canvas';
       const maxW = 720;
       const scale = Math.min(1, maxW / vw);
       const canvas = document.createElement('canvas');
@@ -173,9 +230,12 @@
       ctx.fillStyle = '#0f172a';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-      return canvas.toDataURL('image/jpeg', 0.48);
+      stage = 'encode-jpeg';
+      const out = canvas.toDataURL('image/jpeg', 0.48);
+      lastScreenshotMeta = { stage: 'success', viewport: viewportInfo(), svgLength, outputLength: out.length, fallbackUsed: false };
+      return out;
     } catch (e) {
-      lastScreenshotError = describeError(e);
+      lastScreenshotError = { ...describeError(e), stage, viewport: viewportInfo(), svgLength };
       record('screenshot.error', lastScreenshotError);
       return fallbackScreenshot(lastScreenshotError);
     }
@@ -198,6 +258,8 @@
   }
   function fallbackScreenshot(error) {
     try {
+      screenshotFallbackUsed = true;
+      lastScreenshotMeta = { ...(lastScreenshotMeta || {}), fallbackUsed: true, fallbackReason: error?.message || 'unknown error' };
       const snap = stateSnapshot();
       const dom = domSnapshot();
       const canvas = document.createElement('canvas');
@@ -302,6 +364,8 @@
       steps: overlay.querySelector('#bugSteps').value.trim(),
       screenshot: includeScreenshot ? await captureScreenshot() : null,
       screenshotError: lastScreenshotError,
+      screenshotMeta: lastScreenshotMeta,
+      screenshotFallbackUsed,
       activity: activity.slice(-MAX_LOG),
       snapshot: stateSnapshot(),
       domSnapshot: domSnapshot(),
@@ -336,6 +400,6 @@
     } catch {}
   }
 
-  window.BugReport = { open, close, record, activity: () => activity.slice(), captureScreenshot };
+  window.BugReport = { open, close, record, activity: () => activity.slice(), captureScreenshot, stateSnapshot, domSnapshot };
   record('boot', { url: location.href, build: (typeof BUILD_VERSION !== 'undefined') ? BUILD_VERSION : undefined });
 })();

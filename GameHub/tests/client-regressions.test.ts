@@ -153,11 +153,16 @@ describe("shared game shell", () => {
     expect(bugReport).toContain('const MAX_LOG = 160');
     expect(bugReport).toContain('captureScreenshot');
     expect(bugReport).toContain('domSnapshot');
+    expect(bugReport).toContain('currentLegalActions');
+    expect(bugReport).toContain('cardLocationFromId');
+    expect(bugReport).toContain('screenshotMeta');
+    expect(bugReport).toContain('screenshotFallbackUsed');
     expect(bugReport).toContain('screenshotError');
     expect(bugReport).toContain("fetch('/api/bug-report'");
     expect(bugReport).toContain('GameActions.send');
     expect(server).toContain('GITHUB_ISSUE_TOKEN');
     expect(server).toContain('https://api.github.com/repos/${repo}/issues');
+    expect(server).toContain('Activity log (oldest → newest)');
   });
 
   it("shows game variants directly in the local seat setup flow", () => {
