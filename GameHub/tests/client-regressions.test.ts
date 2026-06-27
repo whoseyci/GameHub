@@ -148,9 +148,12 @@ describe("shared game shell", () => {
 
   it("has an in-game GitHub bug report flow with logs and screenshot capture", () => {
     expect(html).toContain('id="bugBtn"');
+    expect(html).toContain('id="globalBugBtn"');
     expect(html).toContain('/js/00-bug-report.js');
     expect(bugReport).toContain('const MAX_LOG = 160');
     expect(bugReport).toContain('captureScreenshot');
+    expect(bugReport).toContain('domSnapshot');
+    expect(bugReport).toContain('screenshotError');
     expect(bugReport).toContain("fetch('/api/bug-report'");
     expect(bugReport).toContain('GameActions.send');
     expect(server).toContain('GITHUB_ISSUE_TOKEN');

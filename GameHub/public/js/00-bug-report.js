@@ -17,6 +17,7 @@
   const activity = [];
   let overlay = null;
   let patched = false;
+  let lastScreenshotError = null;
 
   function $(id) { return document.getElementById(id); }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
@@ -40,6 +41,13 @@
       });
       return JSON.parse(s.length > max ? s.slice(0, max) + '…[truncated]' : s);
     } catch { return String(value).slice(0, max); }
+  }
+  function describeError(e) {
+    if (!e) return { message: 'Unknown error' };
+    if (e instanceof Error) return { message: e.message, stack: e.stack };
+    if (e.type) return { message: `Event:${e.type}`, type: e.type };
+    try { return { message: JSON.stringify(e).slice(0, 1000) }; }
+    catch { return { message: String(e).slice(0, 1000) }; }
   }
 
   window.addEventListener('error', (e) => record('error', { message: e.message, source: e.filename, line: e.lineno, col: e.colno }));
@@ -149,6 +157,7 @@
       const style = document.createElement('style');
       style.textContent = css + '\n*{animation:none!important;transition:none!important;}';
       body.prepend(style);
+      lastScreenshotError = null;
       const vw = Math.max(320, window.innerWidth);
       const vh = Math.max(240, window.innerHeight);
       const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${vw}" height="${vh}" viewBox="0 0 ${vw} ${vh}"><foreignObject width="100%" height="100%">${new XMLSerializer().serializeToString(body)}</foreignObject></svg>`;
@@ -166,8 +175,9 @@
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
       return canvas.toDataURL('image/jpeg', 0.48);
     } catch (e) {
-      record('screenshot.error', { message: e.message });
-      return null;
+      lastScreenshotError = describeError(e);
+      record('screenshot.error', lastScreenshotError);
+      return fallbackScreenshot(lastScreenshotError);
     }
   }
   function collectCss() {
@@ -185,6 +195,69 @@
       img.onerror = reject;
       img.src = url;
     });
+  }
+  function fallbackScreenshot(error) {
+    try {
+      const snap = stateSnapshot();
+      const dom = domSnapshot();
+      const canvas = document.createElement('canvas');
+      canvas.width = 900; canvas.height = 620;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#0f172a'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = '#22c55e'; ctx.font = '700 26px system-ui, sans-serif'; ctx.fillText('GameHub Bug Report Snapshot', 32, 48);
+      ctx.fillStyle = '#cbd5e1'; ctx.font = '16px ui-monospace, monospace';
+      const lines = [
+        `DOM screenshot unavailable: ${error?.message || 'unknown error'}`,
+        `URL: ${snap.url}`,
+        `Build: ${snap.build || 'unknown'}   Mode: ${snap.mode || 'unknown'}   Room: ${snap.room || '-'}`,
+        `Game: ${snap.currentView?.game || '-'}   Phase: ${snap.currentView?.phase || '-'}   Seat: ${snap.currentView?.yourSeat ?? '-'}`,
+        `Active screen: ${dom.activeScreen || '-'}`,
+        '',
+        'Visible text:',
+        ...(dom.visibleText || '').split('\n').slice(0, 18),
+        '',
+        'Recent activity:',
+        ...activity.slice(-10).map((a) => `${a.t.slice(11, 19)} ${a.type} ${JSON.stringify(a.data).slice(0, 90)}`),
+      ];
+      let y = 84;
+      for (const line of lines) { ctx.fillText(String(line).slice(0, 108), 32, y); y += 22; if (y > 592) break; }
+      return canvas.toDataURL('image/jpeg', 0.72);
+    } catch {
+      return null;
+    }
+  }
+  function domSnapshot() {
+    const active = document.querySelector('.screen.active');
+    const top = document.querySelector('.game-topbar') || document.querySelector('.mode-header');
+    const main = active || document.body;
+    const visibleText = (main.innerText || document.body.innerText || '').replace(/\s+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim().slice(0, 8000);
+    const buttons = Array.from(document.querySelectorAll('button')).filter(isVisible).slice(0, 80).map((b) => ({
+      id: b.id || undefined,
+      text: (b.textContent || b.title || b.getAttribute('aria-label') || '').trim().slice(0, 120),
+      disabled: !!b.disabled,
+      classes: String(b.className || '').slice(0, 120),
+    }));
+    const cards = Array.from(document.querySelectorAll('.kc,.card-slot')).filter(isVisible).slice(0, 80).map((c) => ({
+      text: (c.textContent || '').trim().slice(0, 60),
+      classes: String(c.className || '').slice(0, 120),
+      title: c.title || undefined,
+      data: safeClone(c.dataset || {}, 1000),
+    }));
+    return {
+      activeScreen: active?.id || null,
+      bodyClasses: document.body.className,
+      viewport: { width: innerWidth, height: innerHeight, dpr: devicePixelRatio || 1 },
+      scroll: { x: scrollX, y: scrollY },
+      topbarText: (top?.textContent || '').trim().slice(0, 1000),
+      visibleText,
+      buttons,
+      visibleCards: cards,
+    };
+  }
+  function isVisible(el) {
+    const r = el.getBoundingClientRect();
+    const cs = getComputedStyle(el);
+    return r.width > 0 && r.height > 0 && cs.visibility !== 'hidden' && cs.display !== 'none';
   }
 
   function open() {
@@ -228,8 +301,10 @@
       details: overlay.querySelector('#bugDetails').value.trim(),
       steps: overlay.querySelector('#bugSteps').value.trim(),
       screenshot: includeScreenshot ? await captureScreenshot() : null,
+      screenshotError: lastScreenshotError,
       activity: activity.slice(-MAX_LOG),
       snapshot: stateSnapshot(),
+      domSnapshot: domSnapshot(),
       userAgent: navigator.userAgent,
       createdAt: nowIso(),
     };

@@ -40,6 +40,9 @@
         </button>
       </div>
       <div class="mode-header-actions">
+        <button id="globalBugBtn" class="mode-header-action bug-report-btn" onclick="BugReport.open()" title="Report a bug">
+          <span data-icon="warning" data-icon-size="16" class="mode-toggle-icon"></span>Bug
+        </button>
         <button id="groupBtn" class="mode-header-action" onclick="GroupPicker.toggle()" title="Groups">
           <span data-icon="users" data-icon-size="16" class="mode-toggle-icon"></span>Group
         </button>
@@ -223,7 +226,7 @@
       <div id="spectateTag" class="spectate-tag hidden" data-icon="eye">Spectating</div>
       <button id="reactBtn" class="icon-btn hidden" onclick="Social.toggleReactions()" title="Send a reaction">😄</button>
       <button id="chatBtn" class="icon-btn hidden" onclick="Social.toggleChat()" title="Chat" data-icon="chat" data-icon-mode="replace" data-icon-size="20"></button>
-      <button id="bugBtn" class="icon-btn" onclick="BugReport.open()" title="Report a bug" data-icon="warning" data-icon-mode="replace" data-icon-size="20"></button>
+      <button id="bugBtn" class="icon-btn bug-report-btn" onclick="BugReport.open()" title="Report a bug" data-icon="warning" data-icon-mode="replace" data-icon-size="20"></button>
       <button id="rulesBtn" class="icon-btn" onclick="openRules(curView&&curView.game)" title="Rules" data-icon="book" data-icon-mode="replace" data-icon-size="20"></button>
       <button id="soundBtn" class="icon-btn" onclick="toggleSound()" title="Sound" data-icon="sound-on" data-icon-mode="replace" data-icon-size="20"></button>
     </div>
