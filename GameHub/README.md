@@ -30,7 +30,7 @@ GitHub → Cloudflare auto-builds and deploys. No `wrangler login`, no CLI requi
 
 ## Step 1 — Push this folder to GitHub
 
-You said the repo already exists. From inside the `skyjo/` folder:
+You said the repo already exists. From inside the `GameHub/` folder:
 
 ```bash
 git init                      # if not already a repo
@@ -48,8 +48,8 @@ Make sure these are committed: `src/`, `public/`, `wrangler.jsonc`, `package.jso
 
 ## Step 2 — Create the Worker from Git in the Cloudflare dashboard
 
-> ⚠️ **MOST COMMON MISTAKE:** if `wrangler.jsonc` lives in a `skyjo/` subfolder of
-> your repo (it does, in this project), you **must** set **Root directory = `skyjo`**.
+> ⚠️ **MOST COMMON MISTAKE:** if `wrangler.jsonc` lives in a `GameHub/` subfolder of
+> your repo (it does, in this project), you **must** set **Root directory = `GameHub`**.
 > Otherwise the build runs at the repo root, can't find `wrangler.jsonc` or `public/`,
 > and fails with *"Could not detect a directory containing static files."*
 
@@ -59,7 +59,7 @@ Make sure these are committed: `src/`, `public/`, `wrangler.jsonc`, `package.jso
 3. On the build settings screen set:
    - **Project / Worker name:** `gamehub`
      *(must match `name` in `wrangler.jsonc`)*
-   - **Root directory:** **`skyjo`**  ← the folder that contains `wrangler.jsonc`
+   - **Root directory:** **`GameHub`**  ← the folder that contains `wrangler.jsonc`
      *(leave as `/` only if you committed `wrangler.jsonc` at the repo root)*
    - **Build command:** `npm install`
    - **Deploy command:** `npx wrangler deploy`
@@ -67,14 +67,14 @@ Make sure these are committed: `src/`, `public/`, `wrangler.jsonc`, `package.jso
 
 ### Already created the Worker and it failed?
 Don't recreate it. Go to your Worker → **Settings → Build → Build configuration →
-Edit**, set **Root directory = `skyjo`**, **Build command = `npm install`**,
+Edit**, set **Root directory = `GameHub`**, **Build command = `npm install`**,
 **Deploy command = `npx wrangler deploy`**, save, then **Retry deployment**.
 
 **Alternative** (if you can't/won't change Root directory): keep root `/` and set the
 **Deploy command** to run from the subfolder instead:
 
 ```
-cd skyjo && npm install && npx wrangler deploy
+cd GameHub && npm install && npx wrangler deploy
 ```
 
 Either way, `npm install` must run so your pinned wrangler from `package-lock.json` is
@@ -222,5 +222,5 @@ npm run validate:ci   # CI-equivalent gate, including the smoke pass
   happen. If you *do* see it, you're probably still opening an old standalone HTML file instead of the deployed `*.workers.dev` URL.
 - **Public rooms don't show:** the lister drops rooms after 30 s of no host activity;
   make sure the host still has the tab open and that they chose **Public**.
-- **Root directory:** if your GitHub repo root is the *workspace* (with `skyjo/` inside),
-  set **Root directory = `skyjo`** in the dashboard build settings.
+- **Root directory:** if your GitHub repo root is the *workspace* (with `GameHub/` inside),
+  set **Root directory = `GameHub`** in the dashboard build settings.
