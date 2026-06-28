@@ -181,6 +181,14 @@ describe("shared game shell", () => {
     expect(gameModules).toContain('icon: "seven"');
   });
 
+  it("keeps Flip 7 special-card styling through live deal animation", () => {
+    expect(flip7).toContain("caption:'THE ZERO'");
+    expect(flip7).toContain("caption:'UNLUCKY'");
+    expect(flip7).toContain("caption:'LUCKY'");
+    expect(flip7).toContain("special:card.special");
+    expect(flip7).toContain("const primary=topNote||bottomNote");
+  });
+
   it("shows game variants directly in the local seat setup flow", () => {
     expect(localSeatEditor).toContain("function renderVariantPicker");
     expect(localSeatEditor).toContain("seat-variant-block");

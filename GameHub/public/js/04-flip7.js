@@ -25,13 +25,18 @@
   function f7NumberSpec(val,{special=null}={}){
     const n=Number(val)||0;
     const color=numFace(n);
-    if(special==='zero') return f7Art({bg:{gradient:['#fff7ad','#7dd3fc','#c084fc','#f0abfc'],angle:135},border:'#0891b2',accent:'#a855f7',emblem:'0',content:'0',caption:'RAINBOW ZERO',bottomNote:'UNLESS YOU FLIP 7',contentColor:'#7c3aed',contentSize:'.58',captionColor:'#0f766e',captionBg:'rgba(255,255,255,.75)'});
-    if(special==='unlucky7') return f7Art({bg:{gradient:['#d1d5db','#9ca3af'],angle:155},border:'#374151',accent:'#4b5563',emblem:'7',content:'7',caption:'UNLUCKY SEVEN',bottomNote:'DISCARD ALL OTHER CARDS',contentColor:'#1f2937',contentSize:'.58',captionColor:'#111827',captionBg:'rgba(229,231,235,.82)',muted:'rgba(31,41,55,.55)'});
-    if(special==='lucky13') return f7Art({bg:{gradient:['#fff7ad','#86efac','#7dd3fc','#c084fc','#f0abfc'],angle:135},border:'#16a34a',accent:'#a855f7',emblem:'13',content:'13',caption:'LUCKY THIRTEEN',bottomNote:'MAY HAVE ONE OTHER 13',contentColor:'#7c3aed',contentSize:'.52',captionColor:'#15803d',captionBg:'rgba(255,255,255,.78)'});
+    if(special==='zero') return f7Art({bg:{gradient:['#fff7ad','#7dd3fc','#c084fc','#f0abfc'],angle:135},border:'#0891b2',accent:'#a855f7',emblem:'0',content:'0',caption:'THE ZERO',bottomNote:'UNLESS YOU FLIP 7',contentColor:'#7c3aed',contentSize:'.58',captionColor:'#0f766e',captionBg:'rgba(255,255,255,.75)'});
+    if(special==='unlucky7') return f7Art({bg:{gradient:['#d1d5db','#9ca3af'],angle:155},border:'#374151',accent:'#4b5563',emblem:'7',content:'7',caption:'UNLUCKY',bottomNote:'DISCARD ALL OTHER CARDS',contentColor:'#1f2937',contentSize:'.58',captionColor:'#111827',captionBg:'rgba(229,231,235,.82)',muted:'rgba(31,41,55,.55)'});
+    if(special==='lucky13') return f7Art({bg:{gradient:['#fff7ad','#86efac','#7dd3fc','#c084fc','#f0abfc'],angle:135},border:'#16a34a',accent:'#a855f7',emblem:'13',content:'13',caption:'LUCKY',bottomNote:'MAY HAVE ONE OTHER 13',contentColor:'#7c3aed',contentSize:'.52',captionColor:'#15803d',captionBg:'rgba(255,255,255,.78)'});
     return f7Art({bg:F7_CREAM,border:'#1e1b4b',accent:color,emblem:String(val),content:val,caption:F7_WORDS[n]||String(val),contentColor:color,contentSize:n>=10?'.52':'.62'});
   }
-  function f7Action(title,{bg=F7_CREAM,border='#1e1b4b',accent='#c2410c',emblem='',topNote='PLAY ON ANY PLAYER',bottomNote=''}){
-    return f7Art({bg,border,accent,emblem,topNote,bottomNote,content:'',caption:title,captionPos:'center',captionSize:`calc(var(--kc-w,56px)*${title.length>9?'.15':'.18'})`,captionBg:'rgba(255,249,223,.88)',captionColor:'#1e1b4b',muted:'rgba(30,27,75,.36)'});
+  function f7Action(title,{bg=F7_CREAM,border='#1e1b4b',accent='#c2410c',emblem='',topNote='',bottomNote=''}){
+    // Put the actionable instruction at the TOP of action cards so it is visible
+    // before the centre title/illustration. The bottom line becomes a secondary
+    // category/qualifier instead of hiding the most useful text there.
+    const primary=topNote||bottomNote;
+    const secondary=topNote&&bottomNote?bottomNote:'ACTION CARD';
+    return f7Art({bg,border,accent,emblem,topNote:primary,bottomNote:secondary,content:'',caption:title,captionPos:'center',captionSize:`calc(var(--kc-w,56px)*${title.length>9?'.15':'.18'})`,captionBg:'rgba(255,249,223,.88)',captionColor:'#1e1b4b',muted:'rgba(30,27,75,.36)'});
   }
   function f7Spec(kind,val,{busted=false,cause=false,special=null}={}){
     let spec;
@@ -516,7 +521,7 @@
     else if(card.v==='second') p.second=true;
     else p.actionCards.push(card.v);
     if(Array.isArray(p.cards) && card.id){
-      if(!p.cards.some(c=>c.id===card.id)) p.cards=orderCards([...p.cards,{id:card.id,kind:card.kind,v:card.v}]);
+      if(!p.cards.some(c=>c.id===card.id)) p.cards=orderCards([...p.cards,{id:card.id,kind:card.kind,v:card.v,special:card.special}]);
     }
   }
   function removeCard(p,card){
