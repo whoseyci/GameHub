@@ -407,6 +407,28 @@ describe("Flip7 rule regressions", () => {
     expect(state.pendingAction).toBeNull();
   });
 
+  it("Vengeance Flip Four lets an action drawn early target cards revealed later in the chain", () => {
+    const state: any = Flip7.create(["A", "B"], "vengeance");
+    state.current = 0;
+    state.players.forEach((p: any) => { p.nums = []; p.mods = []; p.tableau = []; p.status = "active"; p.secondChance = false; });
+    state.pendingAction = { kind: "flip4", from: 0, card: { id: "f4", kind: "act", v: "flip4" } };
+    // pop() order: discard action first, then 3/4/5. The discard action should
+    // not fizzle before those later cards exist; B chooses after Flip Four ends.
+    state.deck = [
+      { id: "n5", kind: "num", v: 5 },
+      { id: "n4", kind: "num", v: 4 },
+      { id: "n3", kind: "num", v: 3 },
+      { id: "discard", kind: "act", v: "discard" },
+    ];
+
+    Flip7.applyAction(state, 0, { action: "target", target: 1 });
+
+    expect(state.players[1].nums).toEqual([3, 4, 5]);
+    expect(state.pendingAction?.kind).toBe("discard");
+    expect(state.pendingAction?.from).toBe(1);
+    expect(Flip7.legalActions!(state, 1)).toContainEqual({ action: "target", target: 1, cardId: "n3" });
+  });
+
   it("Vengeance Zero forces hit while active and scores zero unless Flip 7", () => {
     const state: any = Flip7.create(["A", "B"], "vengeance");
     state.current = 0;

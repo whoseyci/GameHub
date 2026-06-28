@@ -1556,7 +1556,7 @@
     }
     p.tableau.push(card);
     emit(s, { type: "action_card", player: pi, kind: a, card });
-    if (isVengeance(s) && !actionHasRequiredCards(s, pi, a)) return fizzleAction(s, pi, a, card);
+    if (isVengeance(s) && !opts.flip3 && !actionHasRequiredCards(s, pi, a)) return fizzleAction(s, pi, a, card);
     const targets = isVengeance(s) ? targetableSeats(s, pi, true) : activeOthers(s, pi);
     if (targets.length === 0 || targets.length === 1 && targets[0] === pi && !(a === "discard" || a === "steal")) {
       resolveAction(s, pi, a, targets[0] ?? pi, true);
@@ -1711,6 +1711,10 @@
   function popDeferredAction(s) {
     const next = s.deferredActions?.shift();
     if (!next) return false;
+    if (isVengeance(s) && next.card && !actionHasRequiredCards(s, next.from, next.kind)) {
+      fizzleAction(s, next.from, next.kind, next.card);
+      return popDeferredAction(s);
+    }
     s.pendingAction = next;
     emit(s, { type: "await_target", kind: next.kind, from: next.from });
     return true;

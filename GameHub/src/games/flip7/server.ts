@@ -396,7 +396,10 @@ function applyDrawnCard(s: State, pi: number, card: Card, opts: { flip3?: boolea
   }
   // freeze / flip3 / flip4 / steal / swap / discard / just1more
   p.tableau.push(card); emit(s, { type: "action_card", player: pi, kind: a, card });
-  if (isVengeance(s) && !actionHasRequiredCards(s, pi, a)) return fizzleAction(s, pi, a, card);
+  // If an action is revealed during Flip Four, defer the decision until all
+  // four cards finish resolving. Later flipped number/mod cards can themselves
+  // become valid targets, so checking target availability here is premature.
+  if (isVengeance(s) && !opts.flip3 && !actionHasRequiredCards(s, pi, a)) return fizzleAction(s, pi, a, card);
   const targets = isVengeance(s) ? targetableSeats(s, pi, true) : activeOthers(s, pi);
   if (targets.length === 0 || (targets.length === 1 && targets[0] === pi && !(a === "discard" || a === "steal"))) {
     resolveAction(s, pi, a as any, targets[0] ?? pi, true);
@@ -548,6 +551,10 @@ function resumeFlip3(s: State) {
 function popDeferredAction(s: State): boolean {
   const next = s.deferredActions?.shift();
   if (!next) return false;
+  if (isVengeance(s) && next.card && !actionHasRequiredCards(s, next.from, next.kind)) {
+    fizzleAction(s, next.from, next.kind, next.card);
+    return popDeferredAction(s);
+  }
   s.pendingAction = next;
   emit(s, { type: "await_target", kind: next.kind, from: next.from });
   return true;
