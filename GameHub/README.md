@@ -14,9 +14,9 @@ GitHub → Cloudflare auto-builds and deploys. No `wrangler login`, no CLI requi
 | `wrangler.jsonc` | Worker config (DO bindings, migrations, static assets). **Source of truth.** |
 | `package.json` / `package-lock.json` / `tsconfig.json` | Tooling (commit the lockfile). |
 
-> **Folder vs Worker name:** this project folder is `GameHub`, but the deployed Cloudflare
-> Worker is still named **`skyjo-pro`** (keeping the existing Git-connected deploy & room
-> URLs). Don't rename the Worker unless you also update `wrangler.jsonc` + the dashboard.
+> **Folder vs Worker name:** this project folder is `GameHub`, and the deployed
+> Cloudflare Worker is named **`gamehub`** to match the public workers.dev URL.
+> Don't rename the Worker unless you also update `wrangler.jsonc` + the dashboard.
 >
 > **Bots:** Easy/Medium are heuristics; **Hard uses policies trained by self-play** in
 > `/training` (Cross-Entropy Method). Run `node training/train_flip7.mjs` /
@@ -57,7 +57,7 @@ Make sure these are committed: `src/`, `public/`, `wrangler.jsonc`, `package.jso
 2. Click **Create application** → **Workers** tab → **Import a repository**
    (a.k.a. *Connect to Git*). Authorize GitHub if prompted and pick your repo.
 3. On the build settings screen set:
-   - **Project / Worker name:** `skyjo-pro`
+   - **Project / Worker name:** `gamehub`
      *(must match `name` in `wrangler.jsonc`)*
    - **Root directory:** **`skyjo`**  ← the folder that contains `wrangler.jsonc`
      *(leave as `/` only if you committed `wrangler.jsonc` at the repo root)*
@@ -84,7 +84,7 @@ Cloudflare runs the build, reads `wrangler.jsonc`, creates the two Durable Objec
 namespaces (`Room`, `Lobby`) with the SQLite migration, uploads `public/` as static
 assets, and deploys. First build takes ~1–2 min.
 
-When it finishes you get a URL like **`https://skyjo-pro.<your-subdomain>.workers.dev`**.
+When it finishes you get a URL like **`https://gamehub.<your-subdomain>.workers.dev`**.
 Open it — that's the game. Because the client uses `location.host`, websockets and the
 page share that origin automatically; **nothing to configure**.
 
@@ -214,13 +214,12 @@ npm run validate:ci   # CI-equivalent gate, including the smoke pass
 ## Troubleshooting
 
 - **Build fails "name mismatch":** the dashboard Worker name must equal `name` in
-  `wrangler.jsonc` (`skyjo-pro`). Rename one to match.
+  `wrangler.jsonc` (`gamehub`). Rename one to match.
 - **"Cannot create Durable Object … migration":** ensure the `migrations` block in
   `wrangler.jsonc` is committed; it's required to create `Room`/`Lobby` the first time.
 - **Two people with the same code land in different rooms (the old bug):** that was the
   MQTT version. With this setup a code maps to exactly one Durable Object, so it can't
-  happen. If you *do* see it, you're probably still opening the old `skyjo-pro.html`
-  standalone file instead of the deployed `*.workers.dev` URL.
+  happen. If you *do* see it, you're probably still opening an old standalone HTML file instead of the deployed `*.workers.dev` URL.
 - **Public rooms don't show:** the lister drops rooms after 30 s of no host activity;
   make sure the host still has the tab open and that they chose **Public**.
 - **Root directory:** if your GitHub repo root is the *workspace* (with `skyjo/` inside),
