@@ -70,6 +70,19 @@
     ? window.matchMedia('(prefers-reduced-motion: reduce)').matches : false;
   const DEFAULT_SYMBOLS = ['1', '2', '3', '4', '5', '6'];
 
+  function faceColor(face, fallback) {
+    if (face && typeof face === 'object' && face.color) return norm(face.color);
+    return norm(fallback);
+  }
+  function faceSymbol(face) {
+    if (face && typeof face === 'object') {
+      if (face.icon) return { icon: face.icon };
+      if (Object.prototype.hasOwnProperty.call(face, 'symbol')) return face.symbol;
+      if (Object.prototype.hasOwnProperty.call(face, 'value')) return face.value;
+    }
+    return face;
+  }
+
   // Render one symbol's inner HTML — text or a Kit.Icon glyph.
   function symbolHTML(sym, color) {
     if (sym && typeof sym === 'object' && sym.icon) {
@@ -77,6 +90,12 @@
       try { return Kit.Icon.html(sym.icon, { size: '60%', color: c.text }); } catch { return ''; }
     }
     return `<span class="kit-reel-glyph">${sym == null ? '' : String(sym)}</span>`;
+  }
+  function cellHTML(face, fallbackColor) {
+    const color = faceColor(face, fallbackColor);
+    const pal = PALETTE[color];
+    const sym = faceSymbol(face);
+    return `<div class="kit-reel-cell" style="--reel-face:${pal.face};--reel-text:${pal.text}">${symbolHTML(sym, color)}</div>`;
   }
 
   // Build the DOM for one reel: a viewport that masks a vertical strip of cells.
@@ -104,7 +123,8 @@
     // animator (in spin()) translates the strip upward by N full strip-heights
     // for the "streaming" effect, then settles on this last cell. Cell 0 (shown
     // at rest) is a random face so the result isn't visible before the pull.
-    const landed = spec.icon ? { icon: spec.icon } : (spec.symbol != null ? spec.symbol : spec.value);
+    const landedColor = spec.resultColor || spec.color;
+    const landed = spec.icon ? { icon: spec.icon, color: landedColor } : { symbol: (spec.symbol != null ? spec.symbol : spec.value), color: landedColor };
     // Pick the spinning-strip faces. Priority: explicit per-reel symbols, then
     // global opts.symbols. If neither is given, INFER from what this reel lands
     // on so a COLOUR reel (a plain coloured swatch, or one that lands on an icon/
@@ -113,8 +133,9 @@
     // because they fell through to DEFAULT_SYMBOLS.)
     let faces = spec.symbols || opts.symbols;
     if (!faces) {
-      const s = typeof landed === 'string' ? landed : null;
-      if (spec.icon) faces = [{ icon: spec.icon }];          // icon reel → stream that icon
+      const landedSym = faceSymbol(landed);
+      const s = typeof landedSym === 'string' ? landedSym : null;
+      if (spec.icon) faces = [{ icon: spec.icon, color }];  // icon reel → stream that icon
       else if (s === '') faces = [''];                       // pure colour swatch → stream blanks
       else if (s != null && /^[0-9]$/.test(s)) faces = DEFAULT_SYMBOLS;       // number reel → 1-6 strip
       else if (s === '?') faces = DEFAULT_SYMBOLS.concat('?');                // wild number → numbers + ?
@@ -127,9 +148,7 @@
       cells.push(faces[Math.floor(Math.random() * faces.length)]);
     }
     cells.push(landed);                                    // last cell = the result
-    strip.innerHTML = cells
-      .map(s => `<div class="kit-reel-cell">${symbolHTML(s, color)}</div>`)
-      .join('');
+    strip.innerHTML = cells.map((face) => cellHTML(face, color)).join('');
 
     window_.appendChild(strip);
     reel.appendChild(window_);
@@ -486,7 +505,7 @@
   // Map a {color,value} (dice API) OR a {color,symbol/icon} (generic) to a reel.
   function toReel(d) {
     if (!d || typeof d !== 'object') return { color: 'white', symbol: '' };
-    return { color: d.color, value: d.value, symbol: d.symbol, icon: d.icon, symbols: d.symbols };
+    return { color: d.color, resultColor: d.resultColor, value: d.value, symbol: d.symbol, icon: d.icon, symbols: d.symbols };
   }
 
   // ── Dice-compatible adapter (drop-in for Kit.Dice3D.roll) ───────────────

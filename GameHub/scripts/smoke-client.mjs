@@ -483,6 +483,22 @@ async function smokeBotFlows(window, document) {
   window.quitLocal();
   await sleep(50);
 
+  // Encore schema bot smoke: after the human marks/skips in the simultaneous
+  // MARK phase, a pending bot must resolve its own mark/skip and advance the roll.
+  setLocalConfig(window, 'encore', [
+    { name: 'Human', bot: false },
+    { name: 'Bot', bot: true, difficulty: 'easy' },
+  ]);
+  window.startLocalGame();
+  await sleep(250);
+  const encoreBefore = window.eval('localEngine._state().turnNo');
+  window.GameClients['encore'].act('skip');
+  await sleep(2400);
+  const encoreAfter = window.eval('localEngine._state().turnNo');
+  assert(encoreAfter > encoreBefore, 'Encore bot did not resolve its pending MARK action after the human skipped');
+  window.quitLocal();
+  await sleep(50);
+
   // Schotten bot turn smoke: after the human places + ends, the bot must take its
   // turn (place a card, hand still 6 after it draws) — drives the shared engine + bot.
   setLocalConfig(window, 'schotten', [

@@ -3327,26 +3327,6 @@
     throw new Error(`Unsupported GameSpec kind: ${spec?.kind}`);
   }
 
-  // src/games/schema/specs/septet.ts
-  var Septet = {
-    kind: "pressYourLuck",
-    meta: {
-      id: "septet",
-      name: "Septet",
-      description: "Push your luck \u2014 flip number cards, don't repeat, race to 200.",
-      emoji: "\u{1F3B4}",
-      icon: "cards",
-      minPlayers: 2,
-      maxPlayers: 8
-    },
-    // One 0, two 1s, three 2s, … thirteen 12s (higher = more copies = riskier).
-    deck: Array.from({ length: 13 }, (_, v) => ({ value: v, count: v + 1 })),
-    bust: "duplicate",
-    bonus: { uniqueCount: 7, points: 15 },
-    scoring: "sum",
-    win: { target: 200 }
-  };
-
   // src/games/schema/specs/encore.ts
   var COLORS3 = { B: "#2f6df0", O: "#f97316", Y: "#eab308", G: "#22c55e", R: "#ef4444" };
   var ROWS = [
@@ -3409,14 +3389,12 @@
   };
 
   // src/games/registry.ts
-  var SeptetGame = makeSchemaGame(Septet);
   var EncoreGame = makeSchemaGame(Encore);
   var GAMES = {
     [Skyjo.meta.id]: Skyjo,
     [Flip7.meta.id]: Flip7,
     [Qwixx.meta.id]: Qwixx,
     [Schotten.meta.id]: Schotten,
-    [SeptetGame.meta.id]: SeptetGame,
     [EncoreGame.meta.id]: EncoreGame
   };
   var GAME_CATALOGUE = Object.values(GAMES).map((g) => ({

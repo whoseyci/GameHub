@@ -9,10 +9,8 @@ import { Schotten } from "./schotten/server";
 // Schema-defined games (data → GameModule via the interpreter). The foundation
 // for the visual game creator: a brand-new game with NO custom code.
 import { makeSchemaGame } from "./schema/engine";
-import { Septet } from "./schema/specs/septet";
 import { Encore } from "./schema/specs/encore";
 
-const SeptetGame = makeSchemaGame(Septet);
 const EncoreGame = makeSchemaGame(Encore);
 
 export const GAMES: Record<string, GameModule> = {
@@ -20,7 +18,6 @@ export const GAMES: Record<string, GameModule> = {
   [Flip7.meta.id]: Flip7,
   [Qwixx.meta.id]: Qwixx,
   [Schotten.meta.id]: Schotten,
-  [SeptetGame.meta.id]: SeptetGame,
   [EncoreGame.meta.id]: EncoreGame,
 };
 

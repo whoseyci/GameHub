@@ -309,8 +309,13 @@
 
     // Build the reels: colour dice (coloured faces / ★ wild) + number dice.
     const COLMAP = { B: 'blue', O: 'orange', Y: 'yellow', G: 'green', R: 'red' };
+    const COLOR_STRIP = ['B', 'O', 'Y', 'G', 'R', '*'].map((cf) => cf === '*'
+      ? { color: 'purple', symbol: '\u2605' }
+      : { color: COLMAP[cf] || 'white', symbol: '' });
     const reels = []
-      .concat(sc.roll.colors.map((cf) => cf === '*' ? { color: 'purple', symbol: '\u2605' } : { color: COLMAP[cf] || 'white', symbol: '' }))
+      .concat(sc.roll.colors.map((cf) => cf === '*'
+        ? { color: 'white', resultColor: 'purple', symbol: '\u2605', symbols: COLOR_STRIP }
+        : { color: 'white', resultColor: COLMAP[cf] || 'white', symbol: '', symbols: COLOR_STRIP }))
       .concat(sc.roll.numbers.map((nf) => ({ color: 'white', symbol: nf === 0 ? '?' : String(nf) })));
     const nC = sc.roll.colors.length;
     const sig = sc.round + ':' + sc.roll.colors.join('') + '|' + sc.roll.numbers.join('');
@@ -324,8 +329,12 @@
     const focusedOnRoller = seat === sc.active;
     const useLever = rollerIsMine && focusedOnRoller && !view.over;
 
-    // Reset my MARK-phase pick when a fresh roll arrives.
-    if (rwPick.sig !== sig) rwPickReset(sig);
+    // Reset my MARK-phase pick when the fresh roll, focused seat, or allowed
+    // dice set changes. Pass-and-play previously leaked the roller's selected
+    // pair into the next human's board, forcing them to tap "Change dice" before
+    // they could use their own allowed dice.
+    const pickSig = sig + ':seat=' + seat + ':c=' + (faces.colors || []).join('') + ':n=' + (faces.numbers || []).join(',');
+    if (rwPick.sig !== pickSig) rwPickReset(pickSig);
 
     // Am I in a SELECT phase (choosing my dice)? Either the roller drafting, or a
     // pending player who hasn't picked their colour+number yet.
@@ -452,15 +461,15 @@
     else if (amPending && !pickDone) {
       // Must pick dice first — no Mark yet; just a Skip escape.
       Kit.Controls.set([
-        { label: 'Skip turn', kind: 'secondary', onClick: () => { rwSel = []; rwSelColor = null; rwPickReset(sig); GameActions.send('skip', {}, seat); } },
+        { label: 'Skip turn', kind: 'secondary', onClick: () => { rwSel = []; rwSelColor = null; rwPickReset(pickSig); GameActions.send('skip', {}, seat); } },
       ], { id: 'schemaControls' });
     }
     else if (amPending) {
       const valid = rwSelValid(sc, me, faces);
       Kit.Controls.set([
-        { label: rwSel.length ? `Mark ${rwSel.length}` : 'Mark', kind: 'green', disabled: !valid, onClick: () => { rwSubmit(view, sc, seat, faces); rwPickReset(sig); } },
-        { label: 'Change dice', kind: 'secondary', onClick: () => { rwSel = []; rwSelColor = null; rwPick.colorFace = null; rwPick.numberFace = null; dispatchView(window._renderView); } },
-        { label: 'Skip', kind: 'ghost', onClick: () => { rwSel = []; rwSelColor = null; rwPickReset(sig); GameActions.send('skip', {}, seat); } },
+        { label: rwSel.length ? `Mark ${rwSel.length}` : 'Mark', kind: 'green', disabled: !valid, onClick: () => { rwSubmit(view, sc, seat, faces); rwPickReset(pickSig); } },
+        { label: 'Change dice', kind: 'secondary', onClick: () => { rwSel = []; rwSelColor = null; rwPickReset(pickSig); dispatchView(window._renderView); } },
+        { label: 'Skip', kind: 'ghost', onClick: () => { rwSel = []; rwSelColor = null; rwPickReset(pickSig); GameActions.send('skip', {}, seat); } },
       ], { id: 'schemaControls' });
     }
   }
@@ -835,5 +844,38 @@
       };
     }
   });
+  if (typeof BotDriver !== 'undefined') {
+    (window.GameCatalogue || []).forEach((g) => {
+      if (!g.__schema) return;
+      BotDriver.register(g.id, {
+        needsBot(view) {
+          const sc = view && view[g.id];
+          return !!sc && !view.over && (sc.phase === 'DRAFT' || (Array.isArray(sc.pending) && sc.pending.length > 0));
+        },
+        getActingSeat(view) {
+          const sc = view && view[g.id];
+          if (!sc || view.over) return -1;
+          if (sc.kind === 'rollAndWrite') {
+            if (sc.phase === 'DRAFT') return sc.active;
+            if (sc.phase === 'MARK' && Array.isArray(sc.pending)) return sc.pending[0] ?? -1;
+            return -1;
+          }
+          const st = view.state || {};
+          return typeof st.currentSeat === 'number' ? st.currentSeat : -1;
+        },
+        choose(view) {
+          const legal = (view && view.state && Array.isArray(view.state.legal)) ? view.state.legal : [];
+          if (!legal.length) return null;
+          const marks = legal.filter((a) => a && a.action === 'mark')
+            .sort((a, b) => ((b.cells && b.cells.length) || 0) - ((a.cells && a.cells.length) || 0));
+          if (marks.length) return JSON.parse(JSON.stringify(marks[0]));
+          const active = legal.filter((a) => a && a.action !== 'skip' && a.action !== 'stay');
+          const pool = active.length ? active : legal;
+          return JSON.parse(JSON.stringify(pool[Math.floor(Math.random() * pool.length)]));
+        },
+      });
+    });
+  }
+
   window.__schemaClient = client;
 })();

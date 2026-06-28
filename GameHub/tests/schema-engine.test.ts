@@ -22,16 +22,10 @@ describe("GameSpec validation", () => {
   });
 });
 
-describe("Septet is registered as a normal GameModule", () => {
-  it("appears in the registry + getGame", () => {
-    expect(GAMES["septet"]).toBeDefined();
-    expect(getGame("septet")?.meta.name).toBe("Septet");
-  });
-  it("exposes the standard contract", () => {
-    const g = getGame("septet")!;
-    for (const k of ["create", "applyAction", "viewFor", "isOver", "legalActions"] as const) {
-      expect(typeof (g as any)[k]).toBe("function");
-    }
+describe("Septet sample is not shipped in the public catalogue", () => {
+  it("stays available as an engine fixture but is not registered as a playable GameHub tile", () => {
+    expect(GAMES["septet"]).toBeUndefined();
+    expect(getGame("septet")).toBe(null);
   });
 });
 

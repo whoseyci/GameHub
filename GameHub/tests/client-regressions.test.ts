@@ -18,6 +18,7 @@ const botQwixx = readFileSync(new URL("../public/js/bots/qwixx.js", import.meta.
 const botSkyjo = readFileSync(new URL("../public/js/bots/skyjo.js", import.meta.url), "utf8");
 const templateClient = readFileSync(new URL("../public/js/games/_template-game-client.js", import.meta.url), "utf8");
 const schemaClient = readFileSync(new URL("../public/js/games/schema-game.js", import.meta.url), "utf8");
+const gameModules = readFileSync(new URL("../public/js/00-game-modules.js", import.meta.url), "utf8");
 const scaffold = readFileSync(new URL("../scripts/scaffold-game.mjs", import.meta.url), "utf8");
 
 describe("client module split", () => {
@@ -165,6 +166,12 @@ describe("shared game shell", () => {
     expect(server).toContain('/api/bug-report/status');
     expect(server).toContain('https://api.github.com/repos/${repo}/issues');
     expect(server).toContain('Activity log (oldest → newest)');
+  });
+
+  it("does not ship the Septet schema sample as a public game tile", () => {
+    const registry = readFileSync(new URL("../src/games/registry.ts", import.meta.url), "utf8");
+    expect(registry).not.toContain("SeptetGame");
+    expect(gameModules).not.toContain('id: "septet"');
   });
 
   it("shows game variants directly in the local seat setup flow", () => {
