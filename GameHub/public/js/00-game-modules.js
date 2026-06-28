@@ -878,7 +878,7 @@
       maxPlayers: 8,
       description: "Flip, swap and dump cards to get the lowest score.",
       emoji: "\u{1F0CF}",
-      icon: "cards",
+      icon: "cloud",
       features: SkyjoFeatures,
       variants: [...SkyjoFeatures.variants ?? []],
       actionTypes: ["draw_deck", "take_discard", "discard_drawn", "swap", "take_free_action", "reveal_after_discard", "tiebreaker", "take_action", "play_action", "discard_action", "action_cell", "choose_draw_three", "choose_reactivation", "choose_line", "choose_player", "clear_group", "skip_clear_group", "reveal", "skip_free_action", "next_round"],
@@ -1289,8 +1289,22 @@
   function pNotBusted(p) {
     return !!p && p.status !== "busted";
   }
+  function uniqueKey(c) {
+    if (c.kind !== "num") return null;
+    if (c.special === "lucky13") return "lucky13";
+    if (c.special === "zero") return "zero";
+    return `n:${c.v}`;
+  }
   function uniqueCount(p) {
-    return new Set(p.nums).size;
+    const keys = /* @__PURE__ */ new Set();
+    for (const c of p.tableau) {
+      const k = uniqueKey(c);
+      if (k) keys.add(k);
+    }
+    return keys.size;
+  }
+  function faceUpCards(p) {
+    return (p?.tableau || []).filter((c) => c.kind === "num" || c.kind === "mod");
   }
   function removeOne(arr, val) {
     const i = arr.indexOf(val);
@@ -1341,7 +1355,13 @@
     const p = s.players[pi];
     const total = s.deck.length || 1;
     let dupes = 0;
-    for (const c of s.deck) if (c.kind === "num" && p.nums.includes(c.v)) dupes++;
+    for (const c of s.deck) {
+      if (c.kind !== "num") continue;
+      const n = c.v;
+      if (!p.nums.includes(n)) continue;
+      if (isVengeance(s) && n === 13 && p.hasLucky13 && countNumber(p, 13) < 2 && c.special !== "lucky13") continue;
+      dupes++;
+    }
     return dupes / total;
   }
   function placeCard(s, pi, card) {
@@ -1440,6 +1460,11 @@
           p.nums.sort((a2, b) => a2 - b);
           p.tableau.push(card);
           emit(s, { type: "card", player: pi, card, flip3: !!opts.flip3 });
+          if (uniqueCount(p) >= 7) {
+            p.status = "stayed";
+            emit(s, { type: "flip7", player: pi });
+            return "flip7";
+          }
           return "ok";
         }
         if (!isVengeance(s) && p.secondChance) {
@@ -1531,22 +1556,30 @@
     }
     p.tableau.push(card);
     emit(s, { type: "action_card", player: pi, kind: a, card });
+    if (isVengeance(s) && !actionHasRequiredCards(s, pi, a)) return fizzleAction(s, pi, a, card);
     const targets = isVengeance(s) ? targetableSeats(s, pi, true) : activeOthers(s, pi);
-    const needsFaceUpCard = a === "steal" || a === "swap" || a === "discard";
-    const hasFaceUpTarget = targets.some((t) => s.players[t].tableau.some((c) => c.kind === "num" || c.kind === "mod"));
-    if (isVengeance(s) && needsFaceUpCard && !hasFaceUpTarget) {
-      removeCardFromPlayer(p, card);
-      s.discard.push(card);
-      emit(s, { type: "effect.action_fizzle", player: pi, kind: a, card });
-      return "ok";
-    }
-    if (targets.length === 0 || targets.length === 1 && targets[0] === pi) {
+    if (targets.length === 0 || targets.length === 1 && targets[0] === pi && !(a === "discard" || a === "steal")) {
       resolveAction(s, pi, a, targets[0] ?? pi, true);
       return "ok";
     }
     s.pendingAction = { kind: a, from: pi, card };
     emit(s, { type: "await_target", kind: a, from: pi });
     return "action";
+  }
+  function actionHasRequiredCards(s, from, kind) {
+    if (kind === "discard" || kind === "steal") return s.players.some((p) => pNotBusted(p) && faceUpCards(p).length > 0);
+    if (kind === "swap") {
+      if (faceUpCards(s.players[from]).length === 0) return false;
+      return s.players.some((p, i) => i !== from && pNotBusted(p) && faceUpCards(p).length > 0);
+    }
+    return true;
+  }
+  function fizzleAction(s, pi, kind, card) {
+    removeCardFromPlayer(s.players[pi], card);
+    s.discard.push(card);
+    s.pendingAction = null;
+    emit(s, { type: "effect.action_fizzle", player: pi, kind, card });
+    return "ok";
   }
   function resolveModifier(s, from, target, card, auto = false) {
     const fp = s.players[from];
@@ -1601,18 +1634,16 @@
     }
     if (kind === "swap") {
       emit(s, { type: "play_action", kind: "swap", from, target, card: actionCard, auto });
+      if (target === from) return "ok";
       const tc = chooseFaceUpCard(tp, opts.cardId);
       const fc = chooseFaceUpCard(fp, opts.cardId2);
-      if (tc) removeCardFromPlayer(tp, tc);
-      if (fc) removeCardFromPlayer(fp, fc);
-      if (tc) {
-        placeCard(s, from, tc);
-        maybeBustFromTransfer(s, from, tc);
-      }
-      if (fc) {
-        placeCard(s, target, fc);
-        maybeBustFromTransfer(s, target, fc);
-      }
+      if (!tc || !fc) return "ok";
+      removeCardFromPlayer(tp, tc);
+      removeCardFromPlayer(fp, fc);
+      placeCard(s, from, tc);
+      maybeBustFromTransfer(s, from, tc);
+      placeCard(s, target, fc);
+      maybeBustFromTransfer(s, target, fc);
       emit(s, { type: "effect.swapped", p1: from, p2: target, c1: fc, c2: tc });
       return "ok";
     }
@@ -1760,7 +1791,7 @@
       maxPlayers: 8,
       description: "Push your luck \u2014 flip cards, don't repeat a number, race to 200.",
       emoji: "\u{1F3B4}",
-      icon: "target",
+      icon: "seven",
       features: {
         hasBots: true,
         simultaneousTurns: false,
@@ -1870,15 +1901,26 @@
         const out = [];
         const kind = state.pendingAction.kind;
         const isSecond = kind === "give_second";
-        const needsCard = kind === "steal" || kind === "swap" || kind === "discard";
+        if (kind === "swap") {
+          const mine = faceUpCards(state.players[seat]);
+          for (let t = 0; t < state.players.length; t++) {
+            if (t === seat || state.players[t].status === "busted") continue;
+            for (const myCard of mine) for (const theirCard of faceUpCards(state.players[t])) {
+              out.push({ action: "target", target: t, cardId: theirCard.id, cardId2: myCard.id });
+            }
+          }
+          return out;
+        }
+        if (kind === "steal" || kind === "discard") {
+          for (let t = 0; t < state.players.length; t++) {
+            if (state.players[t].status === "busted") continue;
+            for (const c of faceUpCards(state.players[t])) out.push({ action: "target", target: t, cardId: c.id });
+          }
+          return out;
+        }
         for (let t = 0; t < state.players.length; t++) {
           if (state.players[t].status === "busted") continue;
           if (isSecond && t === seat) continue;
-          if (needsCard) {
-            const cards = state.players[t].tableau.filter((c) => c.kind === "num" || c.kind === "mod");
-            for (const c of cards) out.push({ action: "target", target: t, cardId: c.id });
-            continue;
-          }
           out.push({ action: "target", target: t });
         }
         return out;
@@ -1948,7 +1990,7 @@
   };
   function liveScore(p, variant = "standard") {
     if (p.status === "busted") return 0;
-    const u = new Set(p.nums).size;
+    const u = uniqueCount(p);
     let base = p.nums.reduce((a, b) => a + b, 0);
     if (variant === "vengeance" && p.nums.includes(0) && u < 7) return 0;
     if (p.mods.includes("x2")) base *= 2;

@@ -133,9 +133,10 @@ function scheduleBot(view, bot, seat) {
     if (mode === 'local') { localAct(seat, msg); }
     else { net.send({ type: 'action', botSeat: seat, ...msg }); }
     // Personality: bots throw the occasional emote so solo/vs-bot play feels
-    // alive. Game-agnostic — a low base chance plus a bump on a "big" move
-    // (scoring/finishing actions). The mascot pops up just like a human emote.
-    try { maybeBotEmote(seat, msg, bot); } catch (e) { /* never break a bot turn */ }
+    // alive, but defer it until after the visible card/action animation has had
+    // time to land. Otherwise the reaction can appear before a bust/transfer is
+    // shown on the board, making the bot look like it knows the future.
+    setTimeout(() => { try { maybeBotEmote(seat, msg, bot); } catch (e) { /* never break a bot turn */ } }, 1400);
   }, think + Math.random() * 250);
 }
 

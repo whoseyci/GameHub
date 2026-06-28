@@ -187,7 +187,20 @@ function targetableSeats(s: State, exclude: number, includeSelf = true) {
   return s.players.map((p, i) => i).filter((i) => (includeSelf || i !== exclude) && pNotBusted(s.players[i]));
 }
 function pNotBusted(p: Player | undefined) { return !!p && p.status !== "busted"; }
-function uniqueCount(p: Player) { return new Set(p.nums).size; }
+function uniqueKey(c: Card): string | null {
+  if (c.kind !== "num") return null;
+  // Vengeance special number cards have their own identity. In particular,
+  // Lucky 13 + a regular 13 are two distinct Flip-7 uniques (and both score 13).
+  if (c.special === "lucky13") return "lucky13";
+  if (c.special === "zero") return "zero";
+  return `n:${c.v}`;
+}
+function uniqueCount(p: Player) {
+  const keys = new Set<string>();
+  for (const c of p.tableau) { const k = uniqueKey(c); if (k) keys.add(k); }
+  return keys.size;
+}
+function faceUpCards(p: Player | undefined): Card[] { return (p?.tableau || []).filter((c) => c.kind === "num" || c.kind === "mod"); }
 function removeOne<T>(arr: T[], val: T): boolean { const i = arr.indexOf(val); if (i < 0) return false; arr.splice(i, 1); return true; }
 function isVengeance(s: State) { return s.variant === "vengeance"; }
 function countNumber(p: Player, n: number) { return p.nums.filter((x) => x === n).length; }
@@ -232,7 +245,13 @@ function bustProbability(s: State, pi: number): number {
   const p = s.players[pi];
   const total = s.deck.length || 1;
   let dupes = 0;
-  for (const c of s.deck) if (c.kind === "num" && p.nums.includes(c.v as number)) dupes++;
+  for (const c of s.deck) {
+    if (c.kind !== "num") continue;
+    const n = c.v as number;
+    if (!p.nums.includes(n)) continue;
+    if (isVengeance(s) && n === 13 && p.hasLucky13 && countNumber(p, 13) < 2 && c.special !== "lucky13") continue;
+    dupes++;
+  }
   return dupes / total;
 }
 
@@ -307,9 +326,11 @@ function applyDrawnCard(s: State, pi: number, card: Card, opts: { flip3?: boolea
 
     if (p.nums.includes(n)) {
       if (isVengeance(s) && n === 13 && p.hasLucky13 && countNumber(p, 13) < 2) {
-         // Lucky 13 allows exactly one other 13.
+         // Lucky 13 allows exactly one other 13, and the two are distinct
+         // unique cards for the Flip 7 threshold.
          p.nums.push(n); p.nums.sort((a, b) => a - b); p.tableau.push(card);
          emit(s, { type: "card", player: pi, card, flip3: !!opts.flip3 });
+         if (uniqueCount(p) >= 7) { p.status = "stayed"; emit(s, { type: "flip7", player: pi }); return "flip7"; }
          return "ok";
       }
       if (!isVengeance(s) && p.secondChance) {
@@ -374,22 +395,32 @@ function applyDrawnCard(s: State, pi: number, card: Card, opts: { flip3?: boolea
     return "action";
   }
   // freeze / flip3 / flip4 / steal / swap / discard / just1more
-  p.tableau.push(card); emit(s, { type: "action_card", player: pi, kind: a, card }); 
+  p.tableau.push(card); emit(s, { type: "action_card", player: pi, kind: a, card });
+  if (isVengeance(s) && !actionHasRequiredCards(s, pi, a)) return fizzleAction(s, pi, a, card);
   const targets = isVengeance(s) ? targetableSeats(s, pi, true) : activeOthers(s, pi);
-  const needsFaceUpCard = a === "steal" || a === "swap" || a === "discard";
-  const hasFaceUpTarget = targets.some((t) => s.players[t].tableau.some((c) => c.kind === "num" || c.kind === "mod"));
-  if (isVengeance(s) && needsFaceUpCard && !hasFaceUpTarget) {
-    removeCardFromPlayer(p, card); s.discard.push(card);
-    emit(s, { type: "effect.action_fizzle", player: pi, kind: a, card });
-    return "ok";
-  }
-  if (targets.length === 0 || (targets.length === 1 && targets[0] === pi)) {
+  if (targets.length === 0 || (targets.length === 1 && targets[0] === pi && !(a === "discard" || a === "steal"))) {
     resolveAction(s, pi, a as any, targets[0] ?? pi, true);
     return "ok";
   }
   s.pendingAction = { kind: a as any, from: pi, card };
   emit(s, { type: "await_target", kind: a, from: pi });
   return "action";
+}
+
+function actionHasRequiredCards(s: State, from: number, kind: string): boolean {
+  if (kind === "discard" || kind === "steal") return s.players.some((p) => pNotBusted(p) && faceUpCards(p).length > 0);
+  if (kind === "swap") {
+    if (faceUpCards(s.players[from]).length === 0) return false;
+    return s.players.some((p, i) => i !== from && pNotBusted(p) && faceUpCards(p).length > 0);
+  }
+  return true;
+}
+function fizzleAction(s: State, pi: number, kind: string, card: Card): string {
+  removeCardFromPlayer(s.players[pi], card);
+  s.discard.push(card);
+  s.pendingAction = null;
+  emit(s, { type: "effect.action_fizzle", player: pi, kind, card });
+  return "ok";
 }
 
 function resolveModifier(s: State, from: number, target: number, card: Card, auto = false): string {
@@ -443,12 +474,14 @@ function resolveAction(s: State, from: number, kind: "freeze" | "flip3" | "flip4
   }
   if (kind === "swap") {
      emit(s, { type: "play_action", kind: "swap", from, target, card: actionCard, auto });
+     if (target === from) return "ok";
      const tc = chooseFaceUpCard(tp, opts.cardId);
      const fc = chooseFaceUpCard(fp, opts.cardId2);
-     if (tc) removeCardFromPlayer(tp, tc);
-     if (fc) removeCardFromPlayer(fp, fc);
-     if (tc) { placeCard(s, from, tc); maybeBustFromTransfer(s, from, tc); }
-     if (fc) { placeCard(s, target, fc); maybeBustFromTransfer(s, target, fc); }
+     if (!tc || !fc) return "ok";
+     removeCardFromPlayer(tp, tc);
+     removeCardFromPlayer(fp, fc);
+     placeCard(s, from, tc); maybeBustFromTransfer(s, from, tc);
+     placeCard(s, target, fc); maybeBustFromTransfer(s, target, fc);
      emit(s, { type: "effect.swapped", p1: from, p2: target, c1: fc, c2: tc });
      return "ok";
   }
@@ -576,7 +609,7 @@ function scoreRound(s: State) {
 
 export const Flip7: GameModule = {
   meta: { id: "flip7", name: "Flip 7", minPlayers: 2, maxPlayers: 8,
-    description: "Push your luck — flip cards, don't repeat a number, race to 200.", emoji: "🎴", icon: "target",
+    description: "Push your luck — flip cards, don't repeat a number, race to 200.", emoji: "🎴", icon: "seven",
     features: {
       hasBots: true,
       simultaneousTurns: false,
@@ -693,15 +726,26 @@ export const Flip7: GameModule = {
       const out: any[] = [];
       const kind = state.pendingAction.kind;
       const isSecond = kind === "give_second";
-      const needsCard = kind === "steal" || kind === "swap" || kind === "discard";
+      if (kind === "swap") {
+        const mine = faceUpCards(state.players[seat]);
+        for (let t = 0; t < state.players.length; t++) {
+          if (t === seat || state.players[t].status === "busted") continue;
+          for (const myCard of mine) for (const theirCard of faceUpCards(state.players[t])) {
+            out.push({ action: "target", target: t, cardId: theirCard.id, cardId2: myCard.id });
+          }
+        }
+        return out;
+      }
+      if (kind === "steal" || kind === "discard") {
+        for (let t = 0; t < state.players.length; t++) {
+          if (state.players[t].status === "busted") continue;
+          for (const c of faceUpCards(state.players[t])) out.push({ action: "target", target: t, cardId: c.id });
+        }
+        return out;
+      }
       for (let t = 0; t < state.players.length; t++) {
         if (state.players[t].status === "busted") continue;
         if (isSecond && t === seat) continue;
-        if (needsCard) {
-          const cards = state.players[t].tableau.filter((c) => c.kind === "num" || c.kind === "mod");
-          for (const c of cards) out.push({ action: "target", target: t, cardId: c.id });
-          continue;
-        }
         out.push({ action: "target", target: t });
       }
       return out;
@@ -754,7 +798,7 @@ export const Flip7: GameModule = {
 
 function liveScore(p: Player, variant = "standard"): number {
   if (p.status === "busted") return 0;
-  const u = new Set(p.nums).size;
+  const u = uniqueCount(p);
   let base = p.nums.reduce((a, b) => a + b, 0);
   if (variant === "vengeance" && p.nums.includes(0) && u < 7) return 0;
   if (p.mods.includes("x2")) base *= 2;

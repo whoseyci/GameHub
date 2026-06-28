@@ -313,6 +313,7 @@ describe("Flip7 rule regressions", () => {
     state.players.forEach((p: any) => { p.nums = []; p.mods = []; p.tableau = []; p.secondChance = false; p.status = "active"; });
     // P0 already has 6 unique; B and C are mid-round and still active.
     state.players[0].nums = [1, 2, 3, 4, 5, 6];
+    state.players[0].tableau = [1, 2, 3, 4, 5, 6].map((v) => ({ id: `a${v}`, kind: "num", v }));
     state.players[1].nums = [8]; state.players[1].tableau = [{ id: "b8", kind: "num", v: 8 }];
     state.players[2].nums = [9]; state.players[2].tableau = [{ id: "c9", kind: "num", v: 9 }];
     // P0 draws a 7 → 7 unique → Flip 7.
@@ -422,7 +423,7 @@ describe("Flip7 rule regressions", () => {
     expect(Flip7.viewFor(state, 0).flip7.players[0].live).toBe(0);
   });
 
-  it("Vengeance Lucky 13 allows exactly one other 13", () => {
+  it("Vengeance Lucky 13 allows exactly one other 13 and counts as its own Flip-7 unique", () => {
     const state: any = Flip7.create(["A", "B"], "vengeance");
     state.current = 0;
     state.players.forEach((p: any) => { p.nums = []; p.mods = []; p.tableau = []; p.status = "active"; p.secondChance = false; p.hasLucky13 = false; });
@@ -439,9 +440,81 @@ describe("Flip7 rule regressions", () => {
     Flip7.applyAction(state, 0, { action: "hit" });
     expect(state.players[0].status).toBe("active");
     expect(state.players[0].nums).toEqual([13, 13]);
+    expect(Flip7.viewFor(state, 0).flip7.players[0].unique).toBe(2);
     state.current = 0;
     Flip7.applyAction(state, 0, { action: "hit" });
     expect(state.players[0].status).toBe("busted");
+  });
+
+  it("Vengeance Lucky 13 plus a regular 13 can complete Flip 7", () => {
+    const state: any = Flip7.create(["A", "B"], "vengeance");
+    state.current = 0;
+    state.players.forEach((p: any) => { p.nums = []; p.mods = []; p.tableau = []; p.status = "active"; p.secondChance = false; p.hasLucky13 = false; });
+    state.players[0].nums = [2, 5, 9, 11, 12, 13];
+    state.players[0].hasLucky13 = true;
+    state.players[0].tableau = [
+      { id: "lucky", kind: "num", v: 13, special: "lucky13" },
+      { id: "n9", kind: "num", v: 9 },
+      { id: "n11", kind: "num", v: 11 },
+      { id: "n5", kind: "num", v: 5 },
+      { id: "n2", kind: "num", v: 2 },
+      { id: "n12", kind: "num", v: 12 },
+    ];
+    state.deck = [{ id: "plain13", kind: "num", v: 13 }];
+
+    Flip7.applyAction(state, 0, { action: "hit" });
+
+    expect(state.players[0].status).toBe("stayed");
+    expect(state.phase === "ROUND_END" || state.phase === "GAME_OVER").toBe(true);
+    expect(state.players[0].banked).toBe(2 + 5 + 9 + 11 + 12 + 13 + 13 + 15);
+  });
+
+  it("Vengeance card actions fizzle if no required face-up cards exist", () => {
+    for (const kind of ["swap", "steal", "discard"]) {
+      const state: any = Flip7.create(["A", "B"], "vengeance");
+      state.current = 0;
+      state.players.forEach((p: any) => { p.nums = []; p.mods = []; p.tableau = []; p.status = "active"; p.secondChance = false; });
+      state.deck = [{ id: kind, kind: "act", v: kind }];
+      state.discard = [];
+
+      Flip7.applyAction(state, 0, { action: "hit" });
+
+      expect(state.pendingAction, kind).toBeNull();
+      expect(state.discard.some((c: any) => c.id === kind), kind).toBe(true);
+    }
+  });
+
+  it("Vengeance steal/discard choose the exact face-up target card", () => {
+    const state: any = Flip7.create(["A", "B"], "vengeance");
+    state.players.forEach((p: any) => { p.nums = []; p.mods = []; p.tableau = []; p.status = "active"; p.secondChance = false; });
+    state.players[1].nums = [5, 9];
+    state.players[1].tableau = [{ id: "b5", kind: "num", v: 5 }, { id: "b9", kind: "num", v: 9 }];
+    state.pendingAction = { kind: "discard", from: 0, card: { id: "discard", kind: "act", v: "discard" } };
+
+    expect(Flip7.legalActions!(state, 0)).toContainEqual({ action: "target", target: 1, cardId: "b5" });
+    Flip7.applyAction(state, 0, { action: "target", target: 1, cardId: "b5" });
+
+    expect(state.players[1].tableau.map((c: any) => c.id)).toEqual(["b9"]);
+    expect(state.players[1].nums).toEqual([9]);
+  });
+
+  it("Vengeance swap requires exact cards from two different players", () => {
+    const state: any = Flip7.create(["A", "B"], "vengeance");
+    state.players.forEach((p: any) => { p.nums = []; p.mods = []; p.tableau = []; p.status = "active"; p.secondChance = false; });
+    state.players[0].nums = [2, 5];
+    state.players[0].tableau = [{ id: "a2", kind: "num", v: 2 }, { id: "a5", kind: "num", v: 5 }];
+    state.players[1].nums = [8, 9];
+    state.players[1].tableau = [{ id: "b8", kind: "num", v: 8 }, { id: "b9", kind: "num", v: 9 }];
+    state.pendingAction = { kind: "swap", from: 0, card: { id: "swap", kind: "act", v: "swap" } };
+
+    const legal = Flip7.legalActions!(state, 0);
+    expect(legal.some((a: any) => a.target === 0)).toBe(false);
+    expect(legal).toContainEqual({ action: "target", target: 1, cardId: "b8", cardId2: "a5" });
+    Flip7.applyAction(state, 0, { action: "target", target: 1, cardId: "b8", cardId2: "a5" });
+
+    expect(state.players[0].tableau.map((c: any) => c.id).sort()).toEqual(["a2", "b8"]);
+    expect(state.players[1].tableau.map((c: any) => c.id).sort()).toEqual(["a5", "b9"]);
+    expect(state.players[0].status).toBe("active");
   });
 });
 

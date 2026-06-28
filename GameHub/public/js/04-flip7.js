@@ -6,6 +6,7 @@
   function numFace(n){return NUMCOL[Math.max(0,Math.min(13,Number(n)||0))];}
   // Pacing (dramatic).
   const SPEED={cardReveal:560,flip3Gap:780,wiggleMin:350,wiggleMax:1700,actionFly:620,beat:420};
+  let f7SwapPick=null;
   // Flip 7 cards now use the unified framework card (Kit.Cards.el → .kc): one shared
   // geometry/back/sheen + the corner-lock that prevents pointy-edge flights. Flip 7
   // theming (number colours, mod gold, action glyphs) is expressed as a declarative
@@ -24,9 +25,9 @@
   function f7NumberSpec(val,{special=null}={}){
     const n=Number(val)||0;
     const color=numFace(n);
-    if(special==='zero') return f7Art({bg:F7_CREAM,border:'#0891b2',accent:'#0ea5e9',emblem:'0',content:'0',caption:'SCORE ZERO',bottomNote:'UNLESS YOU FLIP 7',contentColor:'#0e7490',contentSize:'.58'});
-    if(special==='unlucky7') return f7Art({bg:F7_CREAM,border:'#991b1b',accent:'#ef4444',emblem:'7',content:'7',caption:'UNLUCKY SEVEN',bottomNote:'DISCARD ALL OTHER CARDS',contentColor:'#b91c1c',contentSize:'.58'});
-    if(special==='lucky13') return f7Art({bg:F7_CREAM,border:'#16a34a',accent:'#22c55e',emblem:'13',content:'13',caption:'LUCKY THIRTEEN',bottomNote:'MAY HAVE ONE OTHER 13',contentColor:'#15803d',contentSize:'.52'});
+    if(special==='zero') return f7Art({bg:{gradient:['#fff7ad','#7dd3fc','#c084fc','#f0abfc'],angle:135},border:'#0891b2',accent:'#a855f7',emblem:'0',content:'0',caption:'RAINBOW ZERO',bottomNote:'UNLESS YOU FLIP 7',contentColor:'#7c3aed',contentSize:'.58',captionColor:'#0f766e',captionBg:'rgba(255,255,255,.75)'});
+    if(special==='unlucky7') return f7Art({bg:{gradient:['#d1d5db','#9ca3af'],angle:155},border:'#374151',accent:'#4b5563',emblem:'7',content:'7',caption:'UNLUCKY SEVEN',bottomNote:'DISCARD ALL OTHER CARDS',contentColor:'#1f2937',contentSize:'.58',captionColor:'#111827',captionBg:'rgba(229,231,235,.82)',muted:'rgba(31,41,55,.55)'});
+    if(special==='lucky13') return f7Art({bg:{gradient:['#fff7ad','#86efac','#7dd3fc','#c084fc','#f0abfc'],angle:135},border:'#16a34a',accent:'#a855f7',emblem:'13',content:'13',caption:'LUCKY THIRTEEN',bottomNote:'MAY HAVE ONE OTHER 13',contentColor:'#7c3aed',contentSize:'.52',captionColor:'#15803d',captionBg:'rgba(255,255,255,.78)'});
     return f7Art({bg:F7_CREAM,border:'#1e1b4b',accent:color,emblem:String(val),content:val,caption:F7_WORDS[n]||String(val),contentColor:color,contentSize:n>=10?'.52':'.62'});
   }
   function f7Action(title,{bg=F7_CREAM,border='#1e1b4b',accent='#c2410c',emblem='',topNote='PLAY ON ANY PLAYER',bottomNote=''}){
@@ -82,6 +83,32 @@
     Kit.Cards.board('flip7:table:',{
       location:(anchor,index)=>({zone:'grid',player:Number(anchor.closest('[data-f7-seat]')?.dataset?.f7Seat)||0,slot:index}),
     });
+  }
+  function wireF7PendingCards(view){
+    const s=view&&view.flip7, viewer=s&&s.viewerSeat;
+    const pa=s&&s.pendingAction;
+    const legal=(view?.yourSeat===viewer&&view?.state?.legal)||[];
+    document.querySelectorAll('.f7-card-target,.f7-card-selected').forEach(el=>el.classList.remove('f7-card-target','f7-card-selected'));
+    if(!pa||pa.from!==viewer||!legal.length){f7SwapPick=null;return;}
+    const kind=pa.kind;
+    const cardIdFor=(seat,id)=>`flip7:table:p${seat}:${id}`;
+    const findAnchor=(seat,id)=>document.querySelector(`[data-card-reg="${cardIdFor(seat,id)}"]`);
+    const mark=(seat,id,cls,handler)=>{
+      const el=findAnchor(seat,id); if(!el)return;
+      const ov=Kit.CardManager?.get?.(cardIdFor(seat,id))?.overlayEl;
+      el.classList.add(cls); if(ov)ov.classList.add(cls);
+      el.onclick=handler;
+    };
+    if(kind==='swap'){
+      const ownIds=new Set(legal.map(a=>a.cardId2).filter(Boolean));
+      if(f7SwapPick&&!ownIds.has(f7SwapPick))f7SwapPick=null;
+      ownIds.forEach(id=>mark(viewer,id,f7SwapPick===id?'f7-card-selected':'f7-card-target',(ev)=>{ev.stopPropagation();f7SwapPick=f7SwapPick===id?null:id;draw(window._renderView);}));
+      legal.forEach(a=>mark(a.target,a.cardId,'f7-card-target',(ev)=>{ev.stopPropagation();let own=f7SwapPick;if(!own&&ownIds.size===1)own=[...ownIds][0];if(!own){if(typeof toast==='function')toast('Pick one of your cards first.');return;}const match=legal.find(x=>x.target===a.target&&x.cardId===a.cardId&&x.cardId2===own);if(match){f7SwapPick=null;act(viewer,{action:'target',target:match.target,cardId:match.cardId,cardId2:match.cardId2});}}));
+      return;
+    }
+    if(kind==='steal'||kind==='discard'){
+      legal.forEach(a=>{if(!a.cardId)return;mark(a.target,a.cardId,'f7-card-target',(ev)=>{ev.stopPropagation();act(viewer,{action:'target',target:a.target,cardId:a.cardId});});});
+    }
   }
   function cmCardSlot(permId){ const c=Kit.CardManager.get(permId); return c&&c.location?c.location.slot:undefined; }
   // Animate a permanent card flying from the deck to its board slot via the
@@ -245,7 +272,8 @@
       // target for the viewer's pending action.
       const viewerLegal=(view?.yourSeat===viewer && view?.state?.legal) ? view.state.legal : [];
       const canTarget=viewerLegal.some(a=>a.action==='target'&&a.target===i);
-      if(canTarget){wrap.style.cursor='pointer';wrap.style.outline='2px dashed #f59e0b';wrap.onclick=()=>net.spectating?null:act(viewer,{action:'target',target:i});}
+      const cardTargetOnly=viewerLegal.some(a=>a.action==='target'&&a.target===i&&a.cardId);
+      if(canTarget){wrap.style.cursor='pointer';wrap.style.outline='2px dashed #f59e0b';if(!cardTargetOnly)wrap.onclick=()=>net.spectating?null:act(viewer,{action:'target',target:i});}
       mainFrag.appendChild(wrap);
     });
     const top=s.discardTop;
@@ -256,6 +284,7 @@
     const center=s.phase==='PLAY'?`<div id="f7DealerWrap" class="f7-dealer"><div class="pile-label">Dealer</div><div class="f7-piles"><div class="f7-pile-col"><div id="f7Deck" class="f7-deck"><span class="cnt">deck ${esc(s.deckCount)}</span></div></div><div class="f7-pile-col"><div id="f7Discard" class="f7-discard${top?'':' empty'}">${discFace}<span class="cnt">discard ${esc(s.discardCount)}</span></div></div></div></div>`:'';
     GameShell.renderTable({game:'flip7',opponents:miniFrag,center,focus:mainFrag,status:'',topMode:s.phase==='PLAY'?'custom':'hidden',opponentClass:'f7-mini-strip'});
     syncF7Cards();
+    wireF7PendingCards(view);
     drawControls(view);
   }
 
@@ -288,7 +317,10 @@
         { label: 'Unique', value: `${p.unique}/7` },
       ],
       body: row,
-      onClick: () => canTarget ? (net.spectating ? null : act(viewer,{action:'target',target:i})) : inspect(i),
+      onClick: () => {
+        const cardTargetOnly=viewerLegal.some(a=>a.action==='target'&&a.target===i&&a.cardId);
+        return canTarget && !cardTargetOnly ? (net.spectating ? null : act(viewer,{action:'target',target:i})) : inspect(i);
+      },
     });
     b.dataset.f7Seat=i;                 // wrapper also carries the seat (board lookups)
     if(canTarget)b.classList.add('targetable');
@@ -510,6 +542,7 @@
     else if(e.type==='effect.flip7'&&p){ p.status='stayed'; }
     else if(e.type==='effect.unlucky7'&&p){ p.nums=[7]; p.mods=[]; p.second=false; p.hasLucky13=false; if(p.cards) p.cards=p.cards.filter(c=>c.id===e.card?.id); }
     else if(e.type==='effect.discarded'&&p){ removeCard(p,e.card); }
+    else if(e.type==='effect.action_fizzle'&&p){ removeCard(p,e.card); }
     else if(e.type==='effect.stolen'){ const fp=lv.flip7.players[e.from]; const tp=lv.flip7.players[e.to]; if(fp) removeCard(fp,e.card); if(tp) addCard(tp,e.card); }
     else if(e.type==='effect.swapped'){ const p1=lv.flip7.players[e.p1]; const p2=lv.flip7.players[e.p2]; if(p1){ removeCard(p1,e.c1); addCard(p1,e.c2); } if(p2){ removeCard(p2,e.c2); addCard(p2,e.c1); } }
     else if(e.type==='effect.stay'&&p){ p.status='stayed'; }
@@ -733,6 +766,7 @@
       case 'effect.stay':{ advanceLiveView(liveView,e); draw(liveView); SFX.good(); break; }
       case 'effect.flip3_abandon':{ Kit.turnBanner('Flip 3 abandoned',false); await sleep(SPEED.beat*0.6); break; }
       case 'effect.second_discard':{ await sleep(SPEED.beat*0.3); break; }
+      case 'effect.action_fizzle':{ advanceLiveView(liveView,e); draw(liveView); Kit.turnBanner('No valid target — discarded',false); await sleep(SPEED.beat*0.4); break; }
       case 'deck.reshuffle':{ Kit.turnBanner('Deck reshuffled',false); await sleep(SPEED.beat); break; }
       case 'target.prompt':{ draw(liveView); await sleep(SPEED.beat*0.2); break; }
       case 'effect.round_end': case 'effect.game_over':{ await sleep(SPEED.beat*0.2); break; }

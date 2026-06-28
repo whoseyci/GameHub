@@ -474,16 +474,17 @@
     container.classList.add('kit-roller');
     const reelsHTML = reels.map((r, i) => {
       const color = norm(r.color);
-      const pal = PALETTE[color];
-      const landed = r.icon ? { icon: r.icon } : (r.symbol != null ? r.symbol : r.value);
+      const landedColor = r.resultColor || r.color;
+      const pal = PALETTE[norm(landedColor)];
+      const landed = r.icon ? { icon: r.icon, color: landedColor } : { symbol: (r.symbol != null ? r.symbol : r.value), color: landedColor };
       const st = reelState(i);
       const cls = ['kit-reel', 'locked'];
       if (pickable) cls.push('kit-reel-pickable');
       if (st === 'chosen') cls.push('kit-reel-chosen');
       else if (st === 'dim') cls.push('kit-reel-dim');
       else if (st === 'pick') cls.push('kit-reel-pick');
-      return `<div class="${cls.join(' ')}" data-reel="${i}" data-color="${color}" style="--reel-size:${size}px;--reel-face:${pal.face};--reel-edge:${pal.edge};--reel-text:${pal.text}">` +
-        `<div class="kit-reel-window"><div class="kit-reel-strip"><div class="kit-reel-cell">${symbolHTML(landed, color)}</div></div></div></div>`;
+      return `<div class="${cls.join(' ')}" data-reel="${i}" data-color="${norm(landedColor)}" style="--reel-size:${size}px;--reel-face:${pal.face};--reel-edge:${pal.edge};--reel-text:${pal.text}">` +
+        `<div class="kit-reel-window"><div class="kit-reel-strip">${cellHTML(landed, landedColor)}</div></div></div>`;
     }).join('');
     const slotCls = 'kit-slot kit-slot-static' + (promptText != null ? ' kit-slot-prompt' : '') + (pickable ? ' kit-slot-pickable' : '');
     // Same cabinet chrome as spin() so the resting readout matches the machine.

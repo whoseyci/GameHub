@@ -174,6 +174,13 @@ describe("shared game shell", () => {
     expect(gameModules).not.toContain('id: "septet"');
   });
 
+  it("removes the hero Rules button and uses clearer game glyphs", () => {
+    expect(html).not.toContain("landing-rules-btn");
+    expect(core).toContain("function showRulesMenu");
+    expect(gameModules).toContain('icon: "cloud"');
+    expect(gameModules).toContain('icon: "seven"');
+  });
+
   it("shows game variants directly in the local seat setup flow", () => {
     expect(localSeatEditor).toContain("function renderVariantPicker");
     expect(localSeatEditor).toContain("seat-variant-block");
