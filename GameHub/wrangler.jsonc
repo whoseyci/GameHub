@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "skyjo-pro",
+  "name": "gamehub",
   "main": "src/server.ts",
   "compatibility_date": "2025-06-06",
   "compatibility_flags": ["nodejs_compat"],
