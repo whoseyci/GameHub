@@ -154,6 +154,27 @@ Anything that isn't `/parties/*` falls through to the `ASSETS` binding → `inde
 
 ---
 
+## Bug reports → GitHub Issues
+
+The in-app **Bug** button posts reports to `/api/bug-report`; the Worker then creates a GitHub issue server-side. GitHub tokens must never be stored in browser code.
+
+Runtime secret setup checklist:
+
+1. Add a **runtime** Worker secret on the exact deployed Worker/environment serving the site URL, not only a build variable.
+   - Preferred name: `GITHUB_ISSUE_TOKEN`
+   - Accepted aliases: `BUG_REPORT_GITHUB_TOKEN`, `GAMEHUB_GITHUB_ISSUE_TOKEN`, `GITHUB_ISSUES_TOKEN`, `GITHUB_PAT`
+2. Optional runtime variable: `GITHUB_REPO=whoseyci/GameHub`.
+3. In the Cloudflare dashboard, make sure the secret change is applied to **Production** and click **Save and deploy** if the dashboard offers a pending deployment/version.
+4. Verify the live Worker can see it at:
+
+```text
+/api/bug-report/status
+```
+
+That status endpoint never returns the token itself; it only reports whether an accepted token binding is visible to the Worker runtime. If it says `tokenConfigured:false`, the secret was added to the wrong Worker, wrong environment, or as a build-time variable instead of a runtime secret.
+
+---
+
 ## Debugging / observability
 
 Every room keeps a capped replay log of recent lifecycle/action events. In production,

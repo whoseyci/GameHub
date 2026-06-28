@@ -41,8 +41,13 @@ export interface Env {
   Lobby: DurableObjectNamespace<Lobby>;
   ASSETS: Fetcher;
   DEBUG_TOKEN?: string;
-  /** GitHub fine-grained token with Issues write permission (Worker secret). */
+  /** GitHub fine-grained token with Issues write permission (Worker runtime secret). */
   GITHUB_ISSUE_TOKEN?: string;
+  /** Optional aliases accepted to make dashboard/runtime secret setup less brittle. */
+  BUG_REPORT_GITHUB_TOKEN?: string;
+  GAMEHUB_GITHUB_ISSUE_TOKEN?: string;
+  GITHUB_PAT?: string;
+  GITHUB_ISSUES_TOKEN?: string;
   /** owner/repo, defaults to whoseyci/GameHub. */
   GITHUB_REPO?: string;
   [key: string]: unknown;
@@ -1058,6 +1063,30 @@ function cleanIssueTitle(value: unknown): string {
   const s = typeof value === "string" ? value.replace(/[\u0000-\u001f\u007f]/g, "").trim() : "";
   return (s || "Untitled bug report").slice(0, 120);
 }
+const GITHUB_ISSUE_TOKEN_BINDINGS = [
+  "GITHUB_ISSUE_TOKEN",
+  "BUG_REPORT_GITHUB_TOKEN",
+  "GAMEHUB_GITHUB_ISSUE_TOKEN",
+  "GITHUB_ISSUES_TOKEN",
+  "GITHUB_PAT",
+] as const;
+
+function githubIssueTokenBinding(env: Env): { token: string; binding: string | null } {
+  for (const binding of GITHUB_ISSUE_TOKEN_BINDINGS) {
+    const token = env[binding];
+    if (typeof token === "string" && token.trim()) return { token: token.trim(), binding };
+  }
+  return { token: "", binding: null };
+}
+
+function bugReportRepo(env: Env): string {
+  return String(env.GITHUB_REPO || "whoseyci/GameHub");
+}
+
+function missingBugTokenMessage(): string {
+  return `Bug reporting is not configured: missing GitHub issue token Worker runtime secret. Expected one of: ${GITHUB_ISSUE_TOKEN_BINDINGS.join(", ")}. Add it to the exact deployed Worker/environment that serves this URL, under runtime Variables/Secrets, then Save and deploy.`;
+}
+
 function buildBugIssueBody(report: any): string {
   const snap = report?.snapshot ?? {};
   const activity = Array.isArray(report?.activity) ? report.activity.slice(-120) : [];
@@ -1101,9 +1130,9 @@ function buildBugIssueBody(report: any): string {
   return body.slice(0, 62000);
 }
 async function createGitHubIssue(env: Env, report: any): Promise<{ url: string; number: number }> {
-  const token = env.GITHUB_ISSUE_TOKEN;
-  if (!token) throw new Error("Bug reporting is not configured: missing GITHUB_ISSUE_TOKEN Worker secret.");
-  const repo = String(env.GITHUB_REPO || "whoseyci/GameHub");
+  const { token } = githubIssueTokenBinding(env);
+  if (!token) throw new Error(missingBugTokenMessage());
+  const repo = bugReportRepo(env);
   if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repo)) throw new Error("Invalid GITHUB_REPO setting.");
   const title = `[Bug report] ${cleanIssueTitle(report?.summary)}`;
   const body = buildBugIssueBody(report);
@@ -1157,6 +1186,26 @@ export default {
     const url = new URL(request.url);
 
     // ─── In-app bug reports → GitHub Issues ───────────────────────────
+    if (url.pathname === "/api/bug-report/status") {
+      if (request.method !== "GET" && request.method !== "HEAD") return Response.json({ ok: false, message: "Method Not Allowed" }, { status: 405 });
+      const tokenInfo = githubIssueTokenBinding(env);
+      const repo = bugReportRepo(env);
+      const repoValid = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repo);
+      return Response.json({
+        ok: true,
+        configured: !!tokenInfo.token && repoValid,
+        tokenConfigured: !!tokenInfo.token,
+        tokenBinding: tokenInfo.binding,
+        acceptedTokenBindings: GITHUB_ISSUE_TOKEN_BINDINGS,
+        repo,
+        repoValid,
+        host: url.host,
+        hint: tokenInfo.token
+          ? (repoValid ? "Bug reports can attempt GitHub issue creation." : "GITHUB_REPO must be owner/repo.")
+          : "No accepted GitHub issue token is visible to this Worker runtime. Check the exact Worker name/environment for this URL and use runtime Variables/Secrets, not build variables.",
+      });
+    }
+
     if (url.pathname === "/api/bug-report") {
       if (request.method !== "POST") return Response.json({ ok: false, message: "Method Not Allowed" }, { status: 405 });
       const raw = await request.text();
@@ -1167,7 +1216,8 @@ export default {
         const issue = await createGitHubIssue(env, report);
         return Response.json({ ok: true, url: issue.url, number: issue.number });
       } catch (e: any) {
-        return Response.json({ ok: false, message: e?.message || "Could not create GitHub issue." }, { status: env.GITHUB_ISSUE_TOKEN ? 502 : 501 });
+        const configured = !!githubIssueTokenBinding(env).token;
+        return Response.json({ ok: false, message: e?.message || "Could not create GitHub issue." }, { status: configured ? 502 : 501 });
       }
     }
 

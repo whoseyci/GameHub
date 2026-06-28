@@ -161,6 +161,8 @@ describe("shared game shell", () => {
     expect(bugReport).toContain("fetch('/api/bug-report'");
     expect(bugReport).toContain('GameActions.send');
     expect(server).toContain('GITHUB_ISSUE_TOKEN');
+    expect(server).toContain('BUG_REPORT_GITHUB_TOKEN');
+    expect(server).toContain('/api/bug-report/status');
     expect(server).toContain('https://api.github.com/repos/${repo}/issues');
     expect(server).toContain('Activity log (oldest → newest)');
   });
