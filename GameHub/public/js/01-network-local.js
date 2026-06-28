@@ -529,8 +529,19 @@ window.localSeats = localSeats;
 // the local game without poking script-scoped lets directly.
 window.setLocalSeats = function(arr){ if(Array.isArray(arr)) { localSeats.length=0; for(const s of arr) localSeats.push(s); renderLocalSeats(); refreshLocalTiles(); } };
 window.setLocalPick = function(id){ _localPick = id; markLocalPick(); };
-window.startLocalForGame = function(gameId){
+function defaultLocalVariant(gameId, requested){
+  const g=catalogue.find(x=>x.id===gameId);
+  const variants=g?.variants || g?.features?.variants || [];
+  if(!variants || variants.length===0) return requested || 'standard';
+  if(requested && variants.some(v=>v.id===requested)) return requested;
+  const saved=window._localVariantByGame?.[gameId];
+  if(saved && variants.some(v=>v.id===saved)) return saved;
+  return variants[0]?.id || 'standard';
+}
+window.startLocalForGame = function(gameId, opts={}){
   if(typeof gameId === 'string') { _localPick = gameId; }
+  const requested = typeof opts === 'string' ? opts : opts?.variant;
+  window._localVariantPick = defaultLocalVariant(_localPick, requested);
   startLocalGame();
 };
 let _localBotDiff='medium';

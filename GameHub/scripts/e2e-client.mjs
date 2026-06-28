@@ -74,7 +74,10 @@ async function configureLocal(page, gameId, seats) {
       if (typeof renderLocalSeats === 'function') renderLocalSeats();
       if (typeof refreshLocalTiles === 'function') refreshLocalTiles();
     }
-    if (typeof window.startLocalForGame === 'function') window.startLocalForGame(gameId);
+    const meta = window.GameCatalogue?.find?.((g) => g.id === gameId) || null;
+    const variants = meta?.variants || meta?.features?.variants || [];
+    const variant = variants[0]?.id || 'standard';
+    if (typeof window.startLocalForGame === 'function') window.startLocalForGame(gameId, { variant });
   }, { gameId, seats });
   await page.waitForSelector('#gameScreen.active');
 }
@@ -155,12 +158,14 @@ async function runMobileSuite(browser, baseUrl) {
   await page.waitForTimeout(1200);
   pending = await readPending();
   assert(pending.includes(1), 'Mobile: Qwixx bot acted before the throw');
-  // force:true bypasses Playwright's "element must be stable" auto-wait. The
-  // throw button intentionally pulses when it's the active seat's turn (UX
-  // affordance — see .qwixx-dice-zone.awaiting-throw.is-active-seat pulse in
-  // main.css). Real users have no trouble hitting it; only stability-checking
-  // automation does.
-  await page.locator('#qwixxThrowBtn').click({ force: true });
+  // Qwixx now uses the shared Kit.Roller slot-machine lever as the visible
+  // throw affordance. Older builds exposed #qwixxThrowBtn for the WebGL dice
+  // renderer, so keep a fallback to make this smoke describe the user action
+  // ("start the throw") instead of pinning one renderer's DOM forever.
+  await page.waitForFunction(() => document.querySelector('.qwixx-kit-dice .kit-slot-lever, #qwixxDiceKit .kit-slot-lever, #qwixxThrowBtn'));
+  const lever = page.locator('.qwixx-kit-dice .kit-slot-lever, #qwixxDiceKit .kit-slot-lever').first();
+  if (await lever.count()) await lever.click({ force: true });
+  else await page.locator('#qwixxThrowBtn').click({ force: true });
   // Poll instead of a fixed timeout — the WebGL dice physics can take 1.5–4s
   // (the hard cap in Kit.Dice3D.roll is 4.2s), and CI is slower than local
   // sandboxes. We wait up to 8s for the bot to act, polling every 200ms.
@@ -183,10 +188,42 @@ async function runMobileSuite(browser, baseUrl) {
     { name: 'H1', bot: false },
     { name: 'Bot', bot: true, difficulty: 'easy' },
   ]);
-  await page.locator('#f7Controls .btn.secondary').click();
-  await page.waitForTimeout(2200);
-  const seq = await page.evaluate(() => localEngine.viewFor(localDisplaySeat()).flip7.seq);
-  assert(seq >= 2, 'Mobile: Flip7 bot did not take its turn');
+  // Flip 7 rounds now start with empty lines, so the first legal human action
+  // is Hit only. One Hit is enough to hand control to the bot (or trigger an
+  // action chain), then the local bot scheduler should advance the event log.
+  await page.waitForFunction(() => [...document.querySelectorAll('#f7Controls .btn')].some((b) => /Hit/.test(b.textContent || '')));
+  const beforeBotSeq = await page.evaluate(() => localEngine.viewFor(localDisplaySeat()).flip7.seq);
+  await page.locator('#f7Controls .btn').filter({ hasText: /^Hit$/ }).first().click({ force: true });
+  const botStart = Date.now();
+  let botSnap = await page.evaluate(() => {
+    const s = localEngine.viewFor(localDisplaySeat()).flip7;
+    const bot = s.players[1];
+    return {
+      seq: s.seq,
+      current: s.current,
+      botCards: bot.cards.length,
+      botSpent: (bot.spentActions || []).length,
+      botStatus: bot.status,
+      botEvent: (s.events || []).some((e) => e.actor === 1 || e.target === 1),
+    };
+  });
+  while (!botSnap.botEvent && botSnap.botCards === 0 && botSnap.botSpent === 0 && botSnap.botStatus === 'active' && botSnap.seq < beforeBotSeq + 4 && Date.now() - botStart < 12000) {
+    await page.waitForTimeout(250);
+    botSnap = await page.evaluate(() => {
+      const s = localEngine.viewFor(localDisplaySeat()).flip7;
+      const bot = s.players[1];
+      return {
+        seq: s.seq,
+        current: s.current,
+        botCards: bot.cards.length,
+        botSpent: (bot.spentActions || []).length,
+        botStatus: bot.status,
+        botEvent: (s.events || []).some((e) => e.actor === 1 || e.target === 1),
+      };
+    });
+  }
+  assert(botSnap.botEvent || botSnap.botCards > 0 || botSnap.botSpent > 0 || botSnap.botStatus !== 'active' || botSnap.seq >= beforeBotSeq + 4,
+    `Mobile: Flip7 bot did not take its turn after human hit (${JSON.stringify(botSnap)})`);
   await screenshot(page, 'mobile-flip7-bot-turn');
 
   if (errors.length) throw new Error(errors.join('\n'));

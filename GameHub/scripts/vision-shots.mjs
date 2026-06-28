@@ -56,7 +56,10 @@ async function startServer() {
 async function configureLocal(page, gameId, seats) {
   await page.evaluate(({ gameId, seats }) => {
     if (typeof window.setLocalSeats === 'function') window.setLocalSeats(seats);
-    if (typeof window.startLocalForGame === 'function') window.startLocalForGame(gameId);
+    const meta = window.GameCatalogue?.find?.((g) => g.id === gameId) || null;
+    const variants = meta?.variants || meta?.features?.variants || [];
+    const variant = variants[0]?.id || 'standard';
+    if (typeof window.startLocalForGame === 'function') window.startLocalForGame(gameId, { variant });
   }, { gameId, seats });
   await page.waitForSelector('#gameScreen.active');
   await page.waitForTimeout(800);

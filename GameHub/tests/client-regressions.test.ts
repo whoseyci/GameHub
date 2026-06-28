@@ -169,6 +169,8 @@ describe("shared game shell", () => {
     expect(localSeatEditor).toContain("function renderVariantPicker");
     expect(localSeatEditor).toContain("seat-variant-block");
     expect(localSeatEditor).toContain("window._localVariantPick = variants.length ? selectedVariantId");
+    expect(networkLocal).toContain("function defaultLocalVariant");
+    expect(networkLocal).toContain("window.startLocalForGame = function(gameId, opts={})");
     expect(landingCss).toContain(".seat-variant-block");
   });
 

@@ -156,9 +156,19 @@ function activeScreen(document) {
   return document.querySelector('.screen.active')?.id || null;
 }
 
-function setLocalConfig(window, gameId, seats) {
-  const seatsJson = JSON.stringify(seats);
-  window.eval(`localSeats = ${seatsJson}; renderLocalSeats(); refreshLocalTiles(); _localPick = ${JSON.stringify(gameId)}; markLocalPick();`);
+function defaultVariantFor(window, gameId) {
+  const meta = window.GameCatalogue?.find?.((g) => g.id === gameId) || null;
+  const variants = meta?.variants || meta?.features?.variants || [];
+  return variants[0]?.id || 'standard';
+}
+
+function setLocalConfig(window, gameId, seats, variant = null) {
+  const pickedVariant = variant || defaultVariantFor(window, gameId);
+  if (typeof window.setLocalSeats === 'function') window.setLocalSeats(seats);
+  else window.eval(`localSeats = ${JSON.stringify(seats)}; renderLocalSeats(); refreshLocalTiles();`);
+  if (typeof window.setLocalPick === 'function') window.setLocalPick(gameId);
+  else window.eval(`_localPick = ${JSON.stringify(gameId)}; markLocalPick();`);
+  window._localVariantPick = pickedVariant;
 }
 
 function localView(window, seat = null) {
@@ -383,7 +393,7 @@ async function smokeFlip7(window, document) {
   assert(!f7src.includes('function flyToDiscard'), 'Flip7: the transient-clone discard helper should be gone (caused a dupe on the board)');
   // The discard pile's top renders as a REAL card (cardEl), so a card's design
   // does not change when it lands on the pile.
-  assert(f7src.includes("cardEl(kind,top.v);el.classList.add('f7-discard-card')"), 'Flip7: discard top should render via cardEl (real card), not a bare span');
+  assert(/cardEl\(kind,top\.v(?:,\{special:top\.special\})?\);el\.classList\.add\('f7-discard-card'\)/.test(f7src), 'Flip7: discard top should render via cardEl (real card), not a bare span');
   // Flip 7 force-ends the round for everyone (active players force-stay & bank).
   // This rule now lives ONCE, in the shared rules engine (server GameModule that
   // is bundled into the browser), not in a duplicated client engine.
@@ -685,7 +695,9 @@ async function main() {
   console.log('Client smoke passed: local games, bot flows, cross-game cleanup, and animation invariants look healthy.');
 }
 
-main().catch((err) => {
+main().then(() => {
+  process.exit(0);
+}).catch((err) => {
   console.error(err.stack || err);
   process.exit(1);
 });

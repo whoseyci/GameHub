@@ -19,20 +19,32 @@ import { Skyjo } from "../src/games/skyjo/server";
 describe("Skyjo: take_discard offered after the first reveal phase", () => {
   it("legalActions returns both draw_deck AND take_discard at PLAY start", () => {
     const state: any = Skyjo.create(["P1", "P2"]);
-    // Drive both seats through REVEAL.
-    Skyjo.applyAction(state, 0, { action: "reveal", index: 0 });
-    Skyjo.applyAction(state, 0, { action: "reveal", index: 1 });
-    Skyjo.applyAction(state, 1, { action: "reveal", index: 0 });
-    Skyjo.applyAction(state, 1, { action: "reveal", index: 1 });
-    // Engine may pause with turn_end_delay; advance via tick if needed.
-    if (typeof (Skyjo as any).tick === "function") {
-      let safety = 50;
-      while (state.phase === "REVEAL" && safety--) {
+    // Drive all seats through REVEAL. If the initial two-card sums tie,
+    // Skyjo intentionally stays in REVEAL for a tiebreaker reveal, so use
+    // legalActions instead of assuming exactly two flips per player.
+    const completeDeferred = () => {
+      if (typeof (Skyjo as any).tick !== "function") return;
+      let safety = 20;
+      while (state.turnAction === "turn_end_delay" && safety--) {
         (Skyjo as any).tick(state);
         if (typeof (Skyjo as any).completeTick === "function") {
           (Skyjo as any).completeTick(state);
         }
       }
+    };
+    let safety = 200;
+    while (state.phase === "REVEAL" && safety--) {
+      let acted = false;
+      for (let seat = 0; seat < state.players.length && state.phase === "REVEAL"; seat++) {
+        const legal = Skyjo.legalActions!(state, seat)
+          .filter((a: any) => a.action === "reveal" || a.action === "tiebreaker");
+        if (!legal.length) continue;
+        Skyjo.applyAction(state, seat, legal[0]);
+        acted = true;
+        completeDeferred();
+      }
+      completeDeferred();
+      if (!acted && state.phase === "REVEAL") break;
     }
     // We expect PLAY (or FINAL_TURNS in tiny edge cases) with turnAction null.
     expect(["PLAY", "FINAL_TURNS"]).toContain(state.phase);
