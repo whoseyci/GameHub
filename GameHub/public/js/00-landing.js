@@ -221,7 +221,7 @@
     try {
       const p = new URLSearchParams(location.search);
       const code = (p.get('join') || '').trim().toUpperCase();
-      if (!/^[A-Z0-9_-]{1,64}$/.test(code)) return;
+      if (!/^[A-Z0-9_-]{1,64}$/.test(code)) return false;
       // Strip the query so refresh doesn't replay this.
       const url = new URL(location.href);
       url.searchParams.delete('join');
@@ -230,7 +230,8 @@
       // flow stay consistent.
       if (typeof window.ensureName === 'function') window.ensureName();
       if (typeof window.connectRoom === 'function') window.connectRoom(code, {});
-    } catch { /* malformed URL — ignore */ }
+      return true;
+    } catch { return false; /* malformed URL — ignore */ }
   }
 
   // ─── Bootstrap ───────────────────────────────────────────────────────
@@ -240,7 +241,9 @@
     renderTiles();
     renderStats();
     subscribeLobby(); // OnlineSession decides when to actually OPEN the socket
-    tryInviteJoin();
+    if (!tryInviteJoin() && typeof window.restoreOnlineSession === 'function') {
+      window.restoreOnlineSession();
+    }
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);

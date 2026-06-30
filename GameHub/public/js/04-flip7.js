@@ -378,6 +378,13 @@
       const labelMap={freeze:'Choose who to Freeze',flip3:'Choose who flips 3',flip4:'Choose who flips 4',give_second:'Give Second Chance to an opponent',modifier:'Choose who receives the modifier',steal:'Choose who to steal from',swap:'Choose who to swap with',discard:'Choose who discards a card',just1more:'Choose who takes Just One More'};
       Kit.Status.set({html: (iconMap[k]||'') + (labelMap[k]||'Choose a target') + ' (tap a player)', tone:'warn'});
     }
+    else if(s.pendingAction){
+      const pa=s.pendingAction;
+      const actor=s.players[pa.from];
+      const label={freeze:'Freeze target',flip3:'Flip 3 target',flip4:'Flip 4 target',give_second:'Second Chance target',modifier:'modifier target',steal:'card to steal',swap:'cards to swap',discard:'card to discard',just1more:'Just One More target'}[pa.kind]||'target';
+      const youStayed=s.players[viewer]?.status==='stayed';
+      Kit.Status.set({text:`Waiting for ${actor?.name||'another player'} to choose ${label}${youStayed?' · stayed players can still be targeted in Vengeance':''}`,tone:'info'});
+    }
     else {
       // Are hit/stay legal for the viewer? (Replaces the old myTurn check.)
       const viewerLegal=f7LegalFor(view, viewer);

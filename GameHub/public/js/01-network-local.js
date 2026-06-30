@@ -1,23 +1,61 @@
 /* ====================== NETWORK ====================== */
 function wsUrl(party,room){const p=location.protocol==='https:'?'wss':'ws';return `${p}://${PARTYKIT_HOST}/parties/${party}/${encodeURIComponent(room)}`;}
 let _joinAttempt=null; // remembers join params so we can roll quick-play shards on "full"
+let _manualOnlineClose=false;
+let _ignoreCloseUntil=0;
+const ONLINE_SESSION_KEY='hub_online_session_v1';
+const _queuedOnlineMessages=[];
 let onlineDevicePlayers=[];
+function saveOnlineSession(extra={}){
+  try{
+    if(!net.room)return;
+    const prev=JSON.parse(localStorage.getItem(ONLINE_SESSION_KEY)||'{}')||{};
+    const next={...prev,...extra,room:net.room,mode:'online',savedAt:Date.now()};
+    localStorage.setItem(ONLINE_SESSION_KEY,JSON.stringify(next));
+  }catch{}
+}
+function clearOnlineSession(){try{localStorage.removeItem(ONLINE_SESSION_KEY);}catch{}}
+function loadOnlineSession(){try{return JSON.parse(localStorage.getItem(ONLINE_SESSION_KEY)||'null');}catch{return null;}}
+function reconnectOnlineSession(){
+  const s=loadOnlineSession();
+  if(!s||!s.room)return false;
+  if(typeof ensureName==='function')ensureName();
+  connectRoom(s.room,{isPublic:!!s.isPublic,isGroup:!!s.isGroup,quickGame:s.quickGame||null,maxPlayers:s.maxPlayers||8,shard:s.shard||null,variant:s.variant||null,restoring:true});
+  return true;
+}
+function flushQueuedOnlineMessages(){
+  if(!net.ws||net.ws.readyState!==1||!_queuedOnlineMessages.length)return;
+  const q=_queuedOnlineMessages.splice(0,_queuedOnlineMessages.length);
+  for(const msg of q){try{net.ws.send(JSON.stringify(msg));}catch(e){_queuedOnlineMessages.unshift(msg);break;}}
+}
+net.send=function(o){
+  if(this.ws&&this.ws.readyState===1){this.ws.send(JSON.stringify(o));return true;}
+  if(o&&o.type==='action'&&_queuedOnlineMessages.some(m=>m&&m.type==='action')){toast('Still reconnecting…',1400);return false;}
+  _queuedOnlineMessages.push(o);
+  toast('Reconnecting…',1600);
+  if(!this.ws||this.ws.readyState===3)reconnectOnlineSession();
+  return false;
+};
 function getSeatPid(i){let p=localStorage.getItem('hub_pid_'+i);if(!p){p='p_'+Math.random().toString(36).slice(2,10)+Date.now().toString(36)+'_'+i;localStorage.setItem('hub_pid_'+i,p);}return p;}
 function syncOnlinePrimaryName(){const n=($('onlineName')?.value||'').trim();if(!onlineDevicePlayers.length)onlineDevicePlayers=[{name:n||'Player'}];else onlineDevicePlayers[0].name=n||onlineDevicePlayers[0].name||'Player';}
 function onlineSeatsPayload(){syncOnlinePrimaryName();return onlineDevicePlayers.map((p,i)=>({pid:getSeatPid(i),name:(p.name||('Player '+(i+1))).slice(0,20)}));}
 function renderOnlineDevicePlayers(){syncOnlinePrimaryName();const box=$('onlineDevicePlayers');if(!box)return;box.innerHTML=onlineDevicePlayers.map((p,i)=>`<div style="display:flex;gap:6px;align-items:center;margin-bottom:5px"><input class="input" style="margin:0;padding:8px" value="${p.name.replace(/"/g,'&quot;')}" ${i===0?'placeholder="Main player"':'placeholder="Same-device player"'} oninput="onlineDevicePlayers[${i}].name=this.value; if(${i}===0)$('onlineName').value=this.value"><button class="icon-btn" ${i===0?'disabled style="opacity:.3"':''} onclick="onlineDevicePlayers.splice(${i},1);renderOnlineDevicePlayers()">${Kit.Icon.html('x',{size:14})}</button></div>`).join('');}
 function addOnlineDevicePlayer(){syncOnlinePrimaryName();if(onlineDevicePlayers.length>=8)return;onlineDevicePlayers.push({name:'Player '+(onlineDevicePlayers.length+1)});renderOnlineDevicePlayers();}
-function connectRoom(code,{isPublic=false,isGroup=false,quickGame=null,maxPlayers=8,shard=null,variant=null}={}){
+function connectRoom(code,{isPublic=false,isGroup=false,quickGame=null,maxPlayers=8,shard=null,variant=null,restoring=false}={}){
   const resolvedGroup = isGroup || String(code||'').toUpperCase().startsWith('GROUP-');
   mode='online';net.room=code;net.isHost=false;net.spectating=false;
   window.mode = mode;
   _joinAttempt={code,isPublic,isGroup:resolvedGroup,quickGame,maxPlayers,shard,variant};
-  if(net.ws){try{net.ws.close();}catch(e){}}
+  saveOnlineSession({isPublic:!!isPublic,isGroup:resolvedGroup,quickGame,maxPlayers,shard,variant});
+  _manualOnlineClose=false;
+  if(net.ws){try{_ignoreCloseUntil=Date.now()+1200;net.ws.close();}catch(e){}}
   resetGameUi();
   const ws=new WebSocket(wsUrl('room',code));net.ws=ws;
-  ws.onopen=()=>ws.send(JSON.stringify({type:'join',pid:getPid(),name:myName,seats:onlineSeatsPayload(),isPublic,isGroup:resolvedGroup,quickGame,maxPlayers,variant}));
+  ws.onopen=()=>{ws.send(JSON.stringify({type:'join',pid:getPid(),name:myName,seats:onlineSeatsPayload(),isPublic,isGroup:resolvedGroup,quickGame,maxPlayers,variant}));};
   ws.onmessage=ev=>{let m;try{m=JSON.parse(ev.data);}catch(e){return;}handleNet(m);};
   ws.onerror=()=>toast('Connection error');
+  ws.onclose=()=>{if(net.ws===ws)net.ws=null;const intentional=_manualOnlineClose||Date.now()<_ignoreCloseUntil;if(!intentional&&net.room){setTimeout(()=>{if(net.room&&(!net.ws||net.ws.readyState===3))reconnectOnlineSession();},900);}};
+  if(restoring)toast('Rejoining '+code+'…',1400);
 }
 function hostRoom(){ensureName();const c=$('hostRoom').value.trim().toUpperCase();if(!c)return toast('Enter a room code');connectRoom(c,{isPublic:_vis==='public',maxPlayers:_maxPlayers});}
 function joinByCode(){ensureName();const c=$('joinRoom').value.trim().toUpperCase();if(!c)return toast('Enter a room code');connectRoom(c,{});}
@@ -98,8 +136,10 @@ function handleNet(m){
   if(m.type==='room'){
     net.isHost=m.isHost;net.spectating=false;
     if(m.catalogue&&m.catalogue.length)catalogue=m.catalogue;
+    if(m.code){net.room=m.code;saveOnlineSession({room:m.code,isPublic:!!m.isPublic,isGroup:!!m.isGroup,quickGame:m.quickGame||null,maxPlayers:m.maxPlayers||8});}
     renderRoom(m);
     showScreen('roomScreen');
+    flushQueuedOnlineMessages();
     return;
   }
   if(m.type==='game'){
@@ -109,6 +149,7 @@ function handleNet(m){
     window._controlledViews=m.views||[];
     // Shareable replay handle (server pushes it with every game broadcast).
     window._currentReplay={ roomCode:m.roomCode||net.room||'', id:m.replayId||null };
+    if(m.roomCode||net.room)saveOnlineSession({room:m.roomCode||net.room,game:m.view?.game||null,inGame:true});
     // Seat → identity map so the client knows who's at the table.
     window._currentSeats=m.seats||[];
     // Identity: record everyone (non-bot) we're playing with as a "recent".
@@ -132,6 +173,7 @@ function handleNet(m){
     // Online play → chat + reactions available (pass-and-play is one device).
     if(window.Social) Social.setActive(true);
     dispatchView(m.view);
+    flushQueuedOnlineMessages();
     return;
   }
 }
@@ -327,7 +369,12 @@ function pickVariantAndLaunch(gameId, variantId){
 function leaveOnline(){
   // UX redesign Phase 4: leaving an online room returns to the landing
   // (menuScreen) — the previous Online Setup screen no longer exists.
+  clearOnlineSession();
+  _queuedOnlineMessages.length=0;
+  _manualOnlineClose=true;
+  _ignoreCloseUntil=Date.now()+1200;
   if(net.ws){try{net.ws.close();}catch(e){}net.ws=null;}
+  setTimeout(()=>{_manualOnlineClose=false;},1300);
   net.room=null;net.isHost=false;net.spectating=false;
   window._currentBots=[];
   if(window.Social) Social.reset();
@@ -670,5 +717,6 @@ window.openVariantPicker = openVariantPicker;
 window.startLocalGame = startLocalGame;
 window.renderLocal = renderLocal;
 window.connectRoom = connectRoom;
+window.restoreOnlineSession = reconnectOnlineSession;
 window.quickPlay = quickPlay;
 window.ensureName = ensureName;

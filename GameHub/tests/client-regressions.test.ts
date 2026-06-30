@@ -8,6 +8,7 @@ const bugReport = readFileSync(new URL("../public/js/00-bug-report.js", import.m
 const server = readFileSync(new URL("../src/server.ts", import.meta.url), "utf8");
 const localSeatEditor = readFileSync(new URL("../public/js/00-local-seat-editor.js", import.meta.url), "utf8");
 const landingCss = readFileSync(new URL("../public/styles/landing.css", import.meta.url), "utf8");
+const landing = readFileSync(new URL("../public/js/00-landing.js", import.meta.url), "utf8");
 const skyjo = readFileSync(new URL("../public/js/03-skyjo.js", import.meta.url), "utf8");
 const qwixx = readFileSync(new URL("../public/js/02-qwixx.js", import.meta.url), "utf8");
 const flip7 = readFileSync(new URL("../public/js/04-flip7.js", import.meta.url), "utf8");
@@ -187,6 +188,19 @@ describe("shared game shell", () => {
     expect(flip7).toContain("caption:'LUCKY'");
     expect(flip7).toContain("special:card.special");
     expect(flip7).toContain("const primary=topNote||bottomNote");
+  });
+
+  it("persists online rooms and reconnects queued actions instead of silently dropping them", () => {
+    expect(networkLocal).toContain("ONLINE_SESSION_KEY");
+    expect(networkLocal).toContain("function reconnectOnlineSession");
+    expect(networkLocal).toContain("_queuedOnlineMessages");
+    expect(networkLocal).toContain("flushQueuedOnlineMessages()");
+    expect(landing).toContain("window.restoreOnlineSession");
+  });
+
+  it("explains remote Flip 7 pending actions instead of looking like the round is over", () => {
+    expect(flip7).toContain("Waiting for ${actor?.name||'another player'} to choose");
+    expect(flip7).toContain("stayed players can still be targeted in Vengeance");
   });
 
   it("shows game variants directly in the local seat setup flow", () => {
