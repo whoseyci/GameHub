@@ -332,7 +332,12 @@ export class Room extends Server<Env> {
 
   async onRequest(req: Request) {
     const url = new URL(req.url);
-    if (url.pathname === "/debug") return Response.json(this.debugSnapshot());
+    if (url.pathname === "/debug") {
+      if (!this.env.DEBUG_TOKEN) return new Response("Debug disabled", { status: 404 });
+      const supplied = url.searchParams.get("token") || req.headers.get("x-debug-token");
+      if (supplied !== this.env.DEBUG_TOKEN) return new Response("Unauthorized", { status: 401 });
+      return Response.json(this.debugSnapshot());
+    }
     if (url.pathname === "/replay") return Response.json({ code: this.name, replay: this.actionLog });
     // ─── Public replay API (mounted by the Worker fetch handler) ───────
     // /replays         → small list { replays: ReplayIndexEntry[] }
@@ -1249,7 +1254,9 @@ export default {
       const code = decodeURIComponent(url.pathname.slice("/debug/room/".length));
       if (!VALID_CODE.test(code)) return new Response("Bad room code", { status: 400 });
       const room = await getServerByName(env.Room, code);
-      return room.fetch("https://room/debug");
+      return room.fetch(new Request("https://room/debug", {
+        headers: { "x-debug-token": env.DEBUG_TOKEN },
+      }));
     }
 
     // ─── Public replay API ────────────────────────────────────────────
