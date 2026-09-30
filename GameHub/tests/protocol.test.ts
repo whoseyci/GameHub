@@ -23,6 +23,24 @@ describe("protocol guards", () => {
     });
   });
 
+  it("preserves sanitized per-seat reconnect tokens", () => {
+    const msg = parseClientMessage(JSON.stringify({
+      type: "join",
+      pid: "p_primary",
+      name: "Ada",
+      token: "legacy_primary_token",
+      seats: [
+        { pid: "p_primary", name: "Ada", token: "seat_token_123" },
+        { pid: "p_second", name: "Bob", token: "../../bad" },
+      ],
+    }));
+    expect(msg.token).toBe("legacy_primary_token");
+    expect(msg.seats).toEqual([
+      { pid: "p_primary", name: "Ada", token: "seat_token_123" },
+      { pid: "p_second", name: "Bob" },
+    ]);
+  });
+
   it("rejects invalid ids and oversized messages", () => {
     expect(parseClientMessage(JSON.stringify({ type: "join", pid: "../../bad" }))).toBeNull();
     expect(parseClientMessage("x".repeat(MAX_WS_MESSAGE_BYTES + 1))).toBeNull();
