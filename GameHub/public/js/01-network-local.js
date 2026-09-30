@@ -37,8 +37,11 @@ net.send=function(o){
   return false;
 };
 function getSeatPid(i){let p=localStorage.getItem('hub_pid_'+i);if(!p){p='p_'+Math.random().toString(36).slice(2,10)+Date.now().toString(36)+'_'+i;localStorage.setItem('hub_pid_'+i,p);}return p;}
+function seatTokenKey(pid){return 'hub_seat_token_'+pid;}
+function getSeatToken(pid){try{return localStorage.getItem(seatTokenKey(pid))||null;}catch{return null;}}
+function saveSeatToken(pid,token){if(!pid||!token)return;try{localStorage.setItem(seatTokenKey(pid),token);}catch{}}
 function syncOnlinePrimaryName(){const n=($('onlineName')?.value||'').trim();if(!onlineDevicePlayers.length)onlineDevicePlayers=[{name:n||'Player'}];else onlineDevicePlayers[0].name=n||onlineDevicePlayers[0].name||'Player';}
-function onlineSeatsPayload(){syncOnlinePrimaryName();return onlineDevicePlayers.map((p,i)=>({pid:getSeatPid(i),name:(p.name||('Player '+(i+1))).slice(0,20)}));}
+function onlineSeatsPayload(){syncOnlinePrimaryName();return onlineDevicePlayers.map((p,i)=>{const pid=getSeatPid(i);const token=getSeatToken(pid);return {pid,name:(p.name||('Player '+(i+1))).slice(0,20),...(token?{token}: {})};});}
 function renderOnlineDevicePlayers(){syncOnlinePrimaryName();const box=$('onlineDevicePlayers');if(!box)return;box.innerHTML=onlineDevicePlayers.map((p,i)=>`<div style="display:flex;gap:6px;align-items:center;margin-bottom:5px"><input class="input" style="margin:0;padding:8px" value="${p.name.replace(/"/g,'&quot;')}" ${i===0?'placeholder="Main player"':'placeholder="Same-device player"'} oninput="onlineDevicePlayers[${i}].name=this.value; if(${i}===0)$('onlineName').value=this.value"><button class="icon-btn" ${i===0?'disabled style="opacity:.3"':''} onclick="onlineDevicePlayers.splice(${i},1);renderOnlineDevicePlayers()">${Kit.Icon.html('x',{size:14})}</button></div>`).join('');}
 function addOnlineDevicePlayer(){syncOnlinePrimaryName();if(onlineDevicePlayers.length>=8)return;onlineDevicePlayers.push({name:'Player '+(onlineDevicePlayers.length+1)});renderOnlineDevicePlayers();}
 function connectRoom(code,{isPublic=false,isGroup=false,quickGame=null,maxPlayers=8,shard=null,variant=null,restoring=false}={}){
@@ -117,6 +120,7 @@ function handleNet(m){
   // Social layer (chat / reactions). It also peeks at `hello` for chat history.
   if(window.Social){ const consumed=Social.handleNet(m); if(consumed) return; }
   if(m.type==='hello')return;
+  if(m.type==='seat_token'){saveSeatToken(m.pid,m.token);return;}
   if(m.type==='error'){toast(m.message);return;}
   // Structured action rejection (Proposal 10): surface why a move was ignored.
   if(m.type==='action_rejected'){toast(m.reason||'Move not allowed.',2200);return;}
