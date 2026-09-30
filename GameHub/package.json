@@ -21,7 +21,8 @@
     "validate:ci": "npm run typecheck && npm run check:client-games && npm run check:client && npm test -- --run && npm run smoke:client && npm run smoke:replay && npm run smoke:landing && npm run deploy:dry-run",
     "scaffold:game": "node scripts/scaffold-game.mjs",
     "build:client-games": "node scripts/build-client-games.mjs",
-    "check:client-games": "node scripts/build-client-games.mjs --check"
+    "check:client-games": "node scripts/build-client-games.mjs --check",
+    "ci:local": "npm run validate:ci && npm run smoke:browser"
   },
   "dependencies": {
     "partyserver": "^0.0.71"
