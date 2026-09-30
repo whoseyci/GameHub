@@ -191,7 +191,7 @@ card/deck state.
 ## Local development (optional)
 
 Requires Node.js 22+ for current Wrangler tooling. The repo pins this in `.nvmrc`
-and `.node-version`, and CI runs the same checks on GitHub Actions.
+and `.node-version`, and the full CI gate is intentionally run locally to avoid GitHub Actions usage.
 
 ```bash
 npm install
@@ -204,10 +204,11 @@ npm run smoke:client  # jsdom smoke test for cross-game UI/bot cleanup quirks
 npm run smoke:browser # Playwright browser smoke over the real app shell/local flows
 npm run deploy:dry-run
 npm run validate      # local validation gate (no smoke)
-npm run validate:ci   # CI-equivalent gate, including the smoke pass
+npm run validate:ci   # full non-browser CI gate
+npm run ci:local      # complete local CI gate, including Playwright browser smoke
 ```
 
-`npm run deploy:dry-run` validates the Worker bundle, Durable Object bindings, and static assets without deploying (no login needed). `npm run smoke:browser` requires Playwright's browser install (`npx playwright install chromium`).
+`npm run deploy:dry-run` validates the Worker bundle, Durable Object bindings, and static assets without deploying (no login needed). `npm run ci:local` is the authoritative CI command for this repo and runs entirely on your machine. `npm run smoke:browser` requires Playwright's browser install (`npx playwright install chromium`).
 
 ---
 
