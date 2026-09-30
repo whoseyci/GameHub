@@ -17,8 +17,8 @@ to **this** project's stack and conventions. Read this before making changes.
 
 ```bash
 npm run validate        # typecheck + client-games build check + client JS check + vitest + wrangler dry-run
-# or the CI-equivalent (adds the smoke + browser passes):
-npm run validate:ci
+npm run validate:ci     # adds non-browser smoke coverage
+npm run ci:local        # authoritative full local CI gate, including Playwright browser smoke
 ```
 
 If you touch browser code, also run the relevant smoke:
@@ -29,7 +29,7 @@ npm run smoke:client      # jsdom UI / bot-cleanup smoke
 npm run smoke:browser     # Playwright over the real app shell (needs: npx playwright install chromium)
 ```
 
-CI runs `validate:ci` + `browser-smoke` on every push/PR. A red gate blocks merge.
+GitHub-hosted CI is intentionally disabled to preserve Actions budget. Run `npm run ci:local` before merging; this is the authoritative full gate.
 
 ---
 
@@ -257,7 +257,7 @@ and bots without duplication).
 - **Never hand-edit it.** Change the TS source, then:
   ```bash
   npm run build:client-games     # regenerate
-  npm run check:client-games     # verify the committed bundle is up to date (CI checks this)
+  npm run check:client-games     # verify the committed bundle is up to date (local CI checks this)
   ```
 - Commit the regenerated bundle together with the source change.
 
