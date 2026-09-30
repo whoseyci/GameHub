@@ -77,13 +77,14 @@ export function cleanPayload(value: unknown): Record<string, string | number | b
 }
 
 
-export function cleanSeats(value: unknown, fallbackPid: string, fallbackName: string): Array<{ pid: string; name: string }> {
+export function cleanSeats(value: unknown, fallbackPid: string, fallbackName: string): Array<{ pid: string; name: string; token?: string }> {
   if (!Array.isArray(value)) return [{ pid: fallbackPid, name: fallbackName }];
-  const out: Array<{ pid: string; name: string }> = [];
+  const out: Array<{ pid: string; name: string; token?: string }> = [];
   for (const item of value.slice(0, 8) as any[]) {
     const pid = cleanId(item?.pid);
     if (!pid) continue;
-    out.push({ pid, name: cleanName(item?.name, fallbackName) });
+    const token = typeof item?.token === "string" ? cleanId(item.token) || undefined : undefined;
+    out.push({ pid, name: cleanName(item?.name, fallbackName), ...(token ? { token } : {}) });
   }
   return out.length ? out : [{ pid: fallbackPid, name: fallbackName }];
 }
