@@ -5,9 +5,8 @@ Guidance for AI coding agents (and humans) working in this repo. It adapts the
 to **this** project's stack and conventions. Read this before making changes.
 
 > **Where things live:** the deployable app is in **`GameHub/`** (this folder).
-> The deployed Cloudflare Worker is named **`skyjo-pro`** for back-compat even
-> though the product is a multi-game hub. Don't rename the Worker without also
-> updating `wrangler.jsonc` + the dashboard.
+> The deployed Cloudflare Worker is named **`gamehub`**, matching `wrangler.jsonc`.
+> Don't rename the Worker without also updating `wrangler.jsonc` + the dashboard.
 
 ---
 
