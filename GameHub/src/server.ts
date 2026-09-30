@@ -261,7 +261,14 @@ export class Room extends Server<Env> {
     this.ctx.storage.setAlarm(next);
   }
   private touch() { this.lastActivity = Date.now(); this.armAlarm(); }
-  private async issueSeatToken(seat: number, pid: string): Promise<string> {
+  private issueSeatToken(): string {
+    const bytes = new Uint8Array(24);
+    crypto.getRandomValues(bytes);
+    return Array.from(bytes).map((b) => b.toString(16).padStart(2, "0")).join("");
+  }
+  // Legacy deterministic tokens were derived from the public room name. Keep
+  // this only to migrate already-open rooms created before random seat tokens.
+  private async legacySeatToken(seat: number, pid: string): Promise<string> {
     const enc = new TextEncoder();
     const key = await crypto.subtle.importKey("raw", enc.encode(this.name + "_secret_gh_seat_v1"), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
     const sig = await crypto.subtle.sign("HMAC", key, enc.encode(`${seat}:${pid}`));
@@ -562,14 +569,27 @@ export class Room extends Server<Env> {
         const name: string = (seatInfo.name || "Player").slice(0, 20);
         const mi = this.memberIdx(pid);
         if (mi >= 0) {
-          const expectedToken = await this.issueSeatToken(mi, pid);
-          if (this.members[mi].token && msg.token && msg.token !== this.members[mi].token) {
-            try { conn.close(1008, "Seat token mismatch."); } catch {}
-            return;
+          const presentedToken = seatInfo.token || (pid === msg.pid ? msg.token : undefined);
+          const storedToken = this.members[mi].token;
+          if (storedToken) {
+            if (presentedToken !== storedToken) {
+              // One-time compatibility path for rooms that were created before
+              // clients persisted seat tokens. Those stored tokens used the old
+              // deterministic derivation, so migrate them to a random token on
+              // the first reconnect. Modern random tokens always require an
+              // exact presented match.
+              const legacyToken = await this.legacySeatToken(mi, pid);
+              if (storedToken !== legacyToken || presentedToken) {
+                try { conn.close(1008, "Seat token mismatch."); } catch {}
+                return;
+              }
+              this.members[mi].token = this.issueSeatToken();
+            }
+          } else {
+            this.members[mi].token = this.issueSeatToken();
           }
-          this.members[mi].token = expectedToken;
           this.members[mi].name = name;
-          conn.send(JSON.stringify({ type: "seat_token", pid, seat: mi, token: expectedToken }));
+          conn.send(JSON.stringify({ type: "seat_token", pid, seat: mi, token: this.members[mi].token }));
         } else if (this.gameId) {
           if (this.pendingIdx(pid) < 0 && this.members.length + this.pending.length < this.maxPlayers) {
             this.pending.push({ id: pid, name });
@@ -590,9 +610,9 @@ export class Room extends Server<Env> {
           if (this.members.length >= this.maxPlayers) { conn.send(JSON.stringify({ type: "room_full", message: "Room is full." })); return; }
           const autoReady = !!this.quickGame && pid === this.hostId;
           const newIdx = this.members.length;
-          const expectedToken = await this.issueSeatToken(newIdx, pid);
-          this.members.push({ id: pid, name, ready: autoReady, token: expectedToken });
-          conn.send(JSON.stringify({ type: "seat_token", pid, seat: newIdx, token: expectedToken }));
+          const seatToken = this.issueSeatToken();
+          this.members.push({ id: pid, name, ready: autoReady, token: seatToken });
+          conn.send(JSON.stringify({ type: "seat_token", pid, seat: newIdx, token: seatToken }));
         }
         this.log({ kind: "join", actor: pid, gameId: this.gameId, detail: { name, seat: this.memberIdx(pid), pending: this.pendingIdx(pid) >= 0 } });
       }
