@@ -232,3 +232,20 @@ describe("Permanent Card System: Flip 7 fully on CardManager", () => {
     expect(qwixx).not.toContain("qwixx-mini-wrap");
   });
 });
+
+
+describe("server security boundaries", () => {
+  const server = readFileSync(new URL("../src/server.ts", import.meta.url), "utf8");
+
+  it("authenticates the room-internal debug handler, not only the public wrapper", () => {
+    expect(server).toContain('if (url.pathname === "/debug") {');
+    expect(server).toContain('if (!this.env.DEBUG_TOKEN) return new Response("Debug disabled"');
+    expect(server).toContain('req.headers.get("x-debug-token")');
+    expect(server).toContain('headers: { "x-debug-token": env.DEBUG_TOKEN }');
+  });
+
+  it("uses random reconnect tokens for newly issued seats", () => {
+    expect(server).toContain("crypto.getRandomValues(bytes)");
+    expect(server).toContain("presentedToken !== storedToken");
+  });
+});
